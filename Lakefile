@@ -1,15 +1,30 @@
 #|-*- mode:lisp -*-|#
 (in-package :cl-user)
 (defpackage :lake.user
-  (:use :cl :lake :cl-syntax)
+  (:use
+   :cl
+   :lake
+   :cl-syntax)
   (:shadowing-import-from :lake
                           :directory))
 (in-package :lake.user)
 
+(defun generate-compile-option ()
+  )
+
 (use-syntax :interpol)
 
-(task "build" ()
-      (sh "gcc -O2 -S -mavx2 ./source/kernel/src/xMatrix.c -I./source/kernel/include/xMatrix")
-      (sh "gcc -O2 -mavx2 ./source/kernel/src/xMatrix.c -I./source/kernel/include/xMatrix"))
+(defparameter *compiler* "gcc")
+
+(task "build" () ; Todo: Add Namespace and more compile options
+      (sh "gcc -O2 -mavx2 ./source/kernel/src/xMatrix.c -I./source/kernel/include/xMatrix -shared -o ./source/kernel/libxMatrix.dylib")
+      ;(sh "gcc -O2 -S-mavx2 ./source/kernel/src/xMatrix.c -I./source/kernel/include/xMatrix") for disassemble
+      )
+
+(task "test" ()
+      (sh "gcc -O2 -mavx2 ./source/kernel/src/xMatrix.c -I./source/kernel/include/xMatrix -shared -o ./source/kernel/libxMatrix.dylib")
+      (sh "ros ./roswell/xmatrix.ros")
+
+      )
 
 ;;; here follow your tasks...

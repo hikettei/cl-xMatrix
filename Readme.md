@@ -4,9 +4,22 @@
 Matrix Operation Library for CPU.
 
 
-# Supported DataType
+# Specifications
 
-- FP8
-- FP16
-- single-float
-- double-float
+## Supported DataType
+
+- Minifloat (8bit float)
+- FP16 (16bit float)
+- FP32 (single-float)
+
+# Requirements
+
+- x86-64 cpu
+
+# Roadmap
+
+- Threading is managed by lparallel.
+
+- Accelerating with OpenBLAS
+
+- Quantize and 4bit

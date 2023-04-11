@@ -1,0 +1,20 @@
+#!/bin/sh
+#|-*- mode:lisp -*-|#
+#|
+exec ros -Q -- $0 "$@"
+|#
+(progn ;;init forms
+  (ros:ensure-asdf)
+  (load "cl-xmatrix.asd")
+  #+quicklisp(ql:quickload '(:cl-xmatrix :fiveam) :silent t)
+  )
+
+(defpackage :ros.script.xmatrix.3890192095
+  (:use :cl))
+(in-package :ros.script.xmatrix.3890192095)
+
+(defun main (&rest argv)
+  (declare (ignorable argv))
+  (asdf:test-system :cl-xmatrix/test)
+  )
+;;; vim: set ft=lisp lisp:
