@@ -32,7 +32,7 @@
 
 (defun free-mat (matrix)
   "delete matrix"
-  (declare (type matrix matrix))
+  (declare (type matrix matrix))c
   (foreign-free (matrix-vec matrix)))
 
 
@@ -70,7 +70,7 @@
 	  (matrix-dtype matrix)
 	  (matrix-shape matrix)
 	  (matrix-view matrix)
-	  (matrix-vec matrix))) ; todo more infos
+	  (matrix-vec matrix))) ; TODO: more infos
 
 (defstruct (Matrix
 	    (:print-function print-matrix)
