@@ -90,20 +90,22 @@
 	    (:constructor
 		matrix (shape &key (dtype :float)
 			&aux (view (loop repeat (length (the list shape))
-					 collect t))))
+					 collect t))
+			     (matrix (allocate-mat (apply #'* shape) :dtype dtype))))
 	    (:constructor
 		view-of-matrix (matrix &rest view
 				&aux
 				  (shape (matrix-shape matrix))
-				  (dtype (matrix-dtype matrix)))))
-  (vec (allocate-mat (apply #'* shape) :dtype dtype))
+				  (dtype (matrix-dtype matrix))
+				  (matrix (matrix-vec matrix)))))
+  (vec matrix)
   (dtype dtype :type matrix-dtype)
   (shape shape :type cons)
   (view view :type cons)
   (strides (calc-strides shape) :type cons))
 
 ; for test
-(defcfun "fp32_abs" :int
+(defcfun "fp32_abs" :void
 	      (view (:struct ViewInstruction))
 	      (array (:pointer :float)))
 
