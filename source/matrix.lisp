@@ -3,8 +3,7 @@
 
 (defparameter *available-dtypes*
   `(:uint8
-    :float
-    :double))
+    :float))
 
 (defun dtype-p (x)
   (if (find x *available-dtypes*)
@@ -21,7 +20,7 @@
 
 (deftype index ()
   "x >= 0"
-  `(and bignum
+  `(and (or fixnum)
 	(satisfies index-p)))
 
 (defun allocate-mat (size &key (dtype :float))
@@ -67,7 +66,7 @@
 
 (defun print-matrix (matrix stream depth)
   (declare (ignore depth))
-  (format stream "<Matrix :~(~a~) :shape ~a :visible-area ~a~% :vec ~a>"
+  (format stream "<Matrix :~(~a~) :shape ~a :visible-area ~a~% :visible-vec ~a>"
 	  (matrix-dtype matrix)
 	  (matrix-shape matrix)
 	  (matrix-view matrix)
