@@ -1,4 +1,4 @@
-#include <xMatrix/xMatrix.h>
+#include <xMatrix.h>
 #include <float.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -29,6 +29,6 @@ int main () {
   single_float* a = init_single_float_matrix(10, 10);
   single_float* b = init_single_float_matrix(10, 10);
 
-  //fp32_abs(view, a);
+  fp32_abs(view, a);
   return 0;
 }

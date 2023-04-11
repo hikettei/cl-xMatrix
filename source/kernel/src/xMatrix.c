@@ -72,9 +72,3 @@ int cpu_has_avx512(void){
 void fp32_abs(const struct ViewInstruction view, single_float* array) {
   WITH_VIEW_ITER(view, k, array[k]);
 }
-
-
-int main() {
-  printf("%d", cpu_has_avx512());
-  return 1;
-}
