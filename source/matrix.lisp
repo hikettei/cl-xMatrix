@@ -31,8 +31,9 @@
    :count size))
 
 (defun free-mat (matrix)
-  "delete matrix"
+  "Frees matrix"
   (declare (type matrix matrix))
+  ; Todo: check if matrix exists
   (foreign-free (matrix-vec matrix)))
 
 
@@ -62,7 +63,8 @@
 			shape))))
 
 (defun calc-strides (shapes)
-  (map 'list #'(lambda (x) (get-stride shapes x)) shapes))
+  (loop for i fixnum upfrom 0 below (length shapes)
+	collect (get-stride shapes i)))
 
 (defun print-matrix (matrix stream depth)
   (declare (ignore depth))
@@ -89,5 +91,20 @@
   (view view :type cons)
   (strides (calc-strides shape) :type cons))
 
-
+(defun convert-into-lisp-array (matrix &key (freep nil))
+  ""
+  (let ((returning-array (make-array
+			  (apply #'* (matrix-shape matrix))
+			  :element-type t ; fixme
+			  )))
+    (call-with-visible-area matrix #'(lambda (x y)
+				       (declare (ignore y))
+				       (with-view-object (index x)
+					 (setf (aref returning-array index)
+					       (mem-aref (matrix-vec matrix)
+							 (matrix-dtype matrix)
+							 index)))))
+    (if freep
+	(free-mat matrix))
+    returning-array))
 

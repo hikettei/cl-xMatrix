@@ -54,6 +54,34 @@ ViewInstruction is basically created only for 2d-matrix operation, functions mus
   (m shape-2 :type index)
   (n shape-1 :type index))
 
+(defmacro with-expanding-view-object (view &body body)
+  ""
+  `(with-slots ((offset offset)
+	        (stride2 stride2)
+	        (stride1 stride1)
+		(offset2 offset2)
+		(offset1 offset1)
+		(m n)
+		(n n))
+       (the ViewInstruction ,view)
+     (declare (ignorable offset stride2 stride1 offset2 offset1 m n))
+     ,@body))
+
+(defmacro with-view-object ((index view) &body body &aux
+						      (mi (gensym))
+						      (ni (gensym)))
+  "Given view, iterates body with index."
+  `(with-expanding-view-object ,view
+     (dotimes (,mi m)
+       (dotimes (,ni n)
+	 (let* ((,mi (+ ,mi offset2))
+		(,ni (+ ,ni offset1))
+		(,index (+ offset
+			   (* stride2 ,mi)
+			   (* stride1 ,ni))))
+	   ,@body)))))
+			   
+
 (defun subscript-p (subscripts)
   "Returns t if the format of subscripts are correct."
   t)
@@ -146,8 +174,10 @@ Returns - nil"
 					offset1)))
 		      
 		      (with-foreign-object (c '(:struct ViewInstruction))
+		;	(setf (foreign-slot-value c '(:struct ViewInstruction) 'offset) (the fixnum (viewinstruction-offset instruction)))
 			(translate-into-foreign-memory instruction instruction c)
-			(funcall function instruction c)))))
+			(funcall function instruction c)
+			))))
 		 ((= rest-dims 1)
 		  ; (M) regard as (M 1)
 

@@ -17,7 +17,7 @@
   t)
 
 ; Fixme: define-foreign-library and use-foreign-lib...
-(eval-when (:compile-toplevel :load-toplevel :execute)
+(defun load-xmatrix ()
   (let ((libpath (get-shared-xmatrix-pathname)))
     ; Add: conditions and handler-case
     (load-foreign-library libpath)))
@@ -26,3 +26,5 @@
   "Displays cpu-information, TODO: for more details"
   (format stream "~a"
 	  (foreign-funcall "cpu_has_avx2" :int)))
+
+(load-xmatrix)
