@@ -69,6 +69,14 @@ int cpu_has_avx512(void){
     }									\
   } while(0)
 
+static inline single_float fp32_scalar_abs(single_float x) {
+  if (x > 0) {
+    return x;
+  } else {
+    return -1.0f * x;
+  }
+}
+
 void fp32_abs(const struct ViewInstruction view, single_float* vec) {
-  WITH_VIEW_ITER(view, k, vec[k] += 10.0f);
+  WITH_VIEW_ITER(view, k, fp32_scalar_abs(vec[k]));
 }
