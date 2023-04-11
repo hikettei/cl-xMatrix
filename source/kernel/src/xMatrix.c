@@ -70,7 +70,7 @@ int cpu_has_avx512(void){
   } while(0)
 
 void fp32_abs(const struct ViewInstruction view, single_float* array) {
-  WITH_VIEW_ITER(view, k, array[k] += 1.0);
+  WITH_VIEW_ITER(view, k, array[k]);
 }
 
 

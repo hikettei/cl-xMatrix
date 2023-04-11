@@ -10,6 +10,15 @@
       t
       nil))
 
+(defun dtype->lisp-type (dtype)
+  (case dtype
+    (:float
+     'single-float)
+    (T (error "Unknown type ~a" dtype))))
+
+(defun coerce-to-dtype (element dtype)
+  (coerce element (dtype->lisp-type dtype)))
+
 (deftype matrix-dtype ()
   "The type of available dtypes."
   `(and keyword
@@ -28,7 +37,8 @@
 	   (type index size))
   (foreign-alloc
    dtype
-   :count size))
+   :count size
+   :initial-element (coerce-to-dtype 0 dtype)))
 
 (defun free-mat (matrix)
   "Frees matrix"
@@ -108,3 +118,13 @@
 	(free-mat matrix))
     returning-array))
 
+; for test
+(defcfun "fp32_abs" :void
+	      (view :pointer)
+	      (array (:pointer :float)))
+
+(defun absm (m)
+  (call-with-visible-area m
+			  #'(lambda (_ view)
+			      (declare (ignore _))
+			      (fp32-abs view (matrix-vec m)))))
