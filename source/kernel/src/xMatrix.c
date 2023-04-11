@@ -59,10 +59,10 @@ int cpu_has_avx512(void){
 #endif
 }
 
-#define WITH_VIEW_ITER(view, index, element_wise_operation)		\
+#define WITH_VIEW_ITER(view, index, stride, element_wise_operation)	\
   do {									\
-    for (int mi = view.offset2; mi < view.m; mi++) {			\
-      for (int ni = view.offset1; ni < view.n; ni++) {			\
+    for (int mi = view.offset2; mi < view.m; mi+=stride) {			\
+      for (int ni = view.offset1; ni < view.n; ni+=stride) {			\
         int index = view.offset + mi * view.stride2 + ni * view.stride1; \
 	(element_wise_operation);					\
       }									\
@@ -70,6 +70,7 @@ int cpu_has_avx512(void){
   } while(0)
 
 static inline single_float fp32_scalar_abs(single_float x) {
+  // k~k+16をSIMDで並列化する
   if (x > 0) {
     return x;
   } else {
@@ -78,5 +79,5 @@ static inline single_float fp32_scalar_abs(single_float x) {
 }
 
 void fp32_abs(const struct ViewInstruction view, single_float* vec) {
-  WITH_VIEW_ITER(view, k, fp32_scalar_abs(vec[k]));
+  WITH_VIEW_ITER(view, k, 16, fp32_scalar_abs(vec[k]));
 }
