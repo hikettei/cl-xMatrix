@@ -22,7 +22,7 @@
       )
 
 (task "testc" ()
-      
+      (sh "gcc -O2 -mavx2 ./source/kernel/tests/arithmetic.c -I./source/kernel/include/")
       (sh "./a.out")
       )
 (task "test" ()
