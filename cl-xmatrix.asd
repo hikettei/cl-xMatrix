@@ -12,7 +12,7 @@
   :description "matrix operation library for common lisp"
   :pathname "source"
   :serial t
-  :depends-on (:cffi)
+  :depends-on (:cffi :cffi-libffi)
   :components ((:file "package")
 	       (:file "matrix")
 	       (:file "view"))

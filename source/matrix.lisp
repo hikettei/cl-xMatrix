@@ -78,6 +78,7 @@
 
 (defun print-matrix (matrix stream depth)
   (declare (ignore depth))
+  (format stream "~a" (convert-into-lisp-array matrix))
   (format stream "<Matrix :~(~a~) :shape ~a :visible-area ~a~% :visible-vec ~a>"
 	  (matrix-dtype matrix)
 	  (matrix-shape matrix)
@@ -101,30 +102,12 @@
   (view view :type cons)
   (strides (calc-strides shape) :type cons))
 
-(defun convert-into-lisp-array (matrix &key (freep nil))
-  ""
-  (let ((returning-array (make-array
-			  (apply #'* (matrix-shape matrix))
-			  :element-type t ; fixme
-			  )))
-    (call-with-visible-area matrix #'(lambda (x y)
-				       (declare (ignore y))
-				       (with-view-object (index x)
-					 (setf (aref returning-array index)
-					       (mem-aref (matrix-vec matrix)
-							 (matrix-dtype matrix)
-							 index)))))
-    (if freep
-	(free-mat matrix))
-    returning-array))
-
 ; for test
-(defcfun "fp32_abs" :void
-	      (view :pointer)
+(defcfun "fp32_abs" :int
+	      (view (:struct ViewInstruction))
 	      (array (:pointer :float)))
 
 (defun absm (m)
   (call-with-visible-area m
-			  #'(lambda (_ view)
-			      (declare (ignore _))
-			      (fp32-abs view (matrix-vec m)))))
+			  #'(lambda (view)
+			      (print (fp32-abs view (matrix-vec m))))))

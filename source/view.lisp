@@ -4,15 +4,15 @@
 (defun print-view (view stream depth)
   (declare (ignore depth))
   (format stream "=ViewInstruction========~%  total_offset:    ~a~%  strides:       (~a ~a)~%  offsets:       (~a ~a)~%  visible_shape: (~a ~a)~%"
-	  (viewinstruction-offset view)
-	  (viewinstruction-stride2 view)
-	  (viewinstruction-stride1 view)
-	  (viewinstruction-offset2 view)
-	  (viewinstruction-offset1 view)
-	  (viewinstruction-m view)
-	  (viewinstruction-n view)))
+	  (viewinstruction-lisp-offset view)
+	  (viewinstruction-lisp-stride2 view)
+	  (viewinstruction-lisp-stride1 view)
+	  (viewinstruction-lisp-offset2 view)
+	  (viewinstruction-lisp-offset1 view)
+	  (viewinstruction-lisp-m view)
+	  (viewinstruction-lisp-n view)))
 
-(defcstruct ViewInstruction
+(defcstruct (ViewInstruction :class c-viewinstruction)
   (offset :int)
   (stride2 :int)
   (stride1 :int)
@@ -21,24 +21,36 @@
   (m :int)
   (n :int))
 
-(defmethod translate-into-foreign-memory (value (type ViewInstruction) ptr)
+(defmethod translate-from-foreign (ptr (type viewinstruction-lisp))
+  (with-foreign-slots ((offset stride2 stride1 offset2 offset1 m n) ptr (:struct ViewInstruction))
+    (view-instruction offset m n stride2 stride1 offset2 offset1)))
+
+(defmethod expand-from-foreign (ptr (type c-ViewInstruction))
+  `(with-foreign-slots ((offset stride2 stride1 offset2 offset1 m n) ,ptr (:struct ViewInstruction))
+     (view-instruction offset m n stride2 stride1 offset2 offset1)))
+
+(defmethod translate-into-foreign-memory (value (type c-viewinstruction) ptr)
+  (transcript-view value ptr))
+
+(defun transcript-view (value ptr)
   (with-foreign-slots ((offset stride2 stride1 offset2 offset1 m n) ptr (:struct ViewInstruction))
     (setf offset
-	  (viewinstruction-offset value)
+	  (viewinstruction-lisp-offset value)
 	  stride2
-	  (viewinstruction-stride2 value)
+	  (viewinstruction-lisp-stride2 value)
 	  stride1
-	  (viewinstruction-stride1 value)
+	  (viewinstruction-lisp-stride1 value)
 	  offset2
-	  (viewinstruction-offset2 value)
+	  (viewinstruction-lisp-offset2 value)
 	  offset1
-	  (viewinstruction-offset1 value)
+	  (viewinstruction-lisp-offset1 value)
 	  m
-	  (viewinstruction-m value)
+	  (viewinstruction-lisp-m value)
 	  n
-	  (viewinstruction-n value))))
+	  (viewinstruction-lisp-n value))
+    ptr))
 
-(defstruct (ViewInstruction
+(defstruct (ViewInstruction-Lisp
 	    (:print-function print-view)
 	    (:constructor
 		view-instruction (offset shape-2 shape-1 stride-2 stride-1 offset-2 offset-1)))
@@ -63,7 +75,7 @@ ViewInstruction is basically created only for 2d-matrix operation, functions mus
 		(offset1 offset1)
 		(m n)
 		(n n))
-       (the ViewInstruction ,view)
+       (the ViewInstruction-Lisp ,view)
      (declare (ignorable offset stride2 stride1 offset2 offset1 m n))
      ,@body))
 
@@ -80,7 +92,7 @@ ViewInstruction is basically created only for 2d-matrix operation, functions mus
 			   (* stride2 ,mi)
 			   (* stride1 ,ni))))
 	   ,@body)))))
-			   
+
 
 (defun subscript-p (subscripts)
   "Returns t if the format of subscripts are correct."
@@ -124,7 +136,7 @@ ViewInstruction is basically created only for 2d-matrix operation, functions mus
 (defun call-with-visible-area (matrix function)
   "Under this macro, three or more dimensions matrix are expanded into 2d, and set index-variable ViewInstruction.
 
-function - #'(lambda (lisp-structure c-structure-pointer) body)
+function - #'(lambda (lisp-structure) body)
 
 Returns - nil"
   (declare (optimize (speed 3))
@@ -174,9 +186,7 @@ Returns - nil"
 					offset1)))
 		      
 		      (with-foreign-object (c '(:struct ViewInstruction))
-		;	(setf (foreign-slot-value c '(:struct ViewInstruction) 'offset) (the fixnum (viewinstruction-offset instruction)))
-			(translate-into-foreign-memory instruction instruction c)
-			(funcall function instruction c)
+			(funcall function instruction)
 			))))
 		 ((= rest-dims 1)
 		  ; (M) regard as (M 1)
@@ -206,3 +216,21 @@ Returns - nil"
 (defmacro with-broadcasting ((index1 matrix1) (index2 matrix2) &body body)
 
   )
+
+; dokka ugokasu
+
+(defun convert-into-lisp-array (matrix &key (freep nil))
+  ""
+  (let ((returning-array (make-array
+			  (apply #'* (matrix-shape matrix))
+			  :element-type t ; fixme
+			  )))
+    (call-with-visible-area matrix #'(lambda (x)
+				       (with-view-object (index x)
+					 (setf (aref returning-array index)
+					       (mem-aref (matrix-vec matrix)
+							 (matrix-dtype matrix)
+							 index)))))
+    (if freep
+	(free-mat matrix))
+    returning-array))
