@@ -21,7 +21,8 @@
 
 (deftype index ()
   "x >= 0"
-  `(and (satisfies index-p)))
+  `(and bignum
+	(satisfies index-p)))
 
 (defun allocate-mat (size &key (dtype :float))
   (declare (type matrix-dtype dtype)
@@ -32,7 +33,7 @@
 
 (defun free-mat (matrix)
   "delete matrix"
-  (declare (type matrix matrix))c
+  (declare (type matrix matrix))
   (foreign-free (matrix-vec matrix)))
 
 
@@ -75,7 +76,9 @@
 (defstruct (Matrix
 	    (:print-function print-matrix)
 	    (:constructor
-		matrix (shape &key (dtype :float) &aux (view `(t))))
+		matrix (shape &key (dtype :float)
+			&aux (view (loop repeat (length (the list shape))
+					 collect t))))
 	    (:constructor
 		view-of-matrix (matrix &rest view
 				&aux
