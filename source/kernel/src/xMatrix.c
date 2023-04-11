@@ -61,8 +61,8 @@ int cpu_has_avx512(void){
 
 #define WITH_VIEW_ITER(view, index, element_wise_operation)		\
   do {									\
-    for (int mi = view.offset2; mi <= view.m; mi++) {			\
-      for (int ni = view.offset1; ni <= view.n; ni++) {			\
+    for (int mi = view.offset2; mi < view.m; mi++) {			\
+      for (int ni = view.offset1; ni < view.n; ni++) {			\
         int index = view.offset + mi * view.stride2 + ni * view.stride1; \
 	(element_wise_operation);					\
       }									\
@@ -70,5 +70,5 @@ int cpu_has_avx512(void){
   } while(0)
 
 void fp32_abs(const struct ViewInstruction view, single_float* array) {
-  WITH_VIEW_ITER(view, k, array[k]);
+  WITH_VIEW_ITER(view, k, array[k] += 10.0f);
 }
