@@ -25,7 +25,6 @@ struct ViewInstruction {
   int n;
 };
 
-
 // element-wise mathematical functions
 
 void fp32_abs(const struct ViewInstruction, single_float*);

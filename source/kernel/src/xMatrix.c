@@ -59,6 +59,19 @@ int cpu_has_avx512(void){
 #endif
 }
 
+// Configs about SIMD
+
+#define ALIGN 64
+
+#define FP32_SIMD_STEP 8
+
+// Macros for STORING AND LOADING
+
+
+
+#define FP32_m256_LOAD_VEC(var, i, vec) __m256 var = _mm256_loadu_ps(vec + i);
+
+
 #define WITH_VIEW_ITER(view, index, stride, element_wise_operation)	\
   do {									\
     for (int mi = view.offset2; mi < view.m; mi+=stride) {			\
@@ -69,15 +82,15 @@ int cpu_has_avx512(void){
     }									\
   } while(0)
 
-static inline single_float fp32_scalar_abs(single_float x) {
-  // k~k+16をSIMDで並列化する
-  if (x > 0) {
-    return x;
-  } else {
-    return -1.0f * x;
-  }
+
+
+static inline void fp32_abs_simd(single_float* x, __m256 sign_mask, int i) {
+  __m256 vec = _mm256_loadu_ps(&x[i]);
+  __m256 abs_vec = _mm256_andnot_ps(sign_mask, vec);
+  _mm256_storeu_ps(&x[i], abs_vec);
 }
 
 void fp32_abs(const struct ViewInstruction view, single_float* vec) {
-  WITH_VIEW_ITER(view, k, 16, fp32_scalar_abs(vec[k]));
+  __m256 sign_mask = _mm256_set1_ps(-0.0f);
+  WITH_VIEW_ITER(view, i, FP32_SIMD_STEP, fp32_abs_simd(vec, sign_mask, i));
 }

@@ -234,3 +234,10 @@ Returns - nil"
     (if freep
 	(free-mat matrix))
     returning-array))
+
+(defun randn (matrix)
+  (call-with-visible-area matrix #'(lambda (x)
+				     (with-view-object (index x)
+				       ; this is tmp
+				       (setf (mem-aref (matrix-vec matrix) :float index)
+					     (- (random 1.0) 0.5))))))
