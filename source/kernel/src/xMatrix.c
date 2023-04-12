@@ -63,29 +63,31 @@ int cpu_has_avx512(void){
 
 #define ALIGN 64
 
+#if defined(__AVX2__)
+
+#define FP32_SIMD_STEP 8
+#define XMAT_FP32_LOADU_PS(var, pointer) __m256 var = _mm256_loadu_ps(pointer);
+// 四回LOADできないっけ？
+
+#elif defined(__AVX__)
+
 #define FP32_SIMD_STEP 8
 
+#endif
+
 // Macros for STORING AND LOADING
-
-
-
-#define FP32_m256_LOAD_VEC(var, i, vec) __m256 var = _mm256_loadu_ps(vec + i);
 
 // simd_operation -> SIMD Operation, reminder = element_wise_operation
 #define WITH_VIEW_ITER(view, index, stride, simd_operation, reminder)	\
   do {									\
-    int last_mi_index_for_rem = 0;					\
     int last_ni_index_for_rem = 0;					\
-    for (int mi = view.offset2; mi < view.m; mi+=stride) {		\
+    for (int mi = view.offset2; mi < view.m; mi++) {    		\
       for (int ni = view.offset1; ni < view.n; ni+=stride) {		\
-	last_mi_index_for_rem = mi+stride;				\
 	last_ni_index_for_rem = ni+stride;				\
 	int index = view.offset + mi * view.stride2 + ni * view.stride1; \
 	(simd_operation);						\
       }									\
-    }									\
-    for (int mi=view.offset2 - last_mi_index_for_rem;mi<view.m;mi++) {	\
-      for(int ni =view.offset1 - last_ni_index_for_rem;ni<view.n;ni++) { \
+      for(int ni=last_ni_index_for_rem;ni<view.n;ni++) {		\
 	int index = view.offset + mi * view.stride2 + ni * view.stride1; \
 	(reminder);							\
       }									\
@@ -94,7 +96,7 @@ int cpu_has_avx512(void){
 
 
 static inline void fp32_abs_simd(single_float* x, __m256 sign_mask, int i) {
-  __m256 vec = _mm256_loadu_ps(&x[i]);
+  XMAT_FP32_LOADU_PS(vec, &x[i]);
   __m256 abs_vec = _mm256_andnot_ps(sign_mask, vec);
   _mm256_storeu_ps(&x[i], abs_vec);
 }
@@ -111,3 +113,27 @@ void fp32_abs(const struct ViewInstruction view, single_float* vec) {
 		 fp32_abs_simd(vec, sign_mask, i),
 		 fp32_abs_scalarwise(vec, i));
 }
+
+/*
+static inline void fp16_abs_simd(fp16_t* x, __m256 sign_mask, int i) {
+  __m256 vec = _mm256_loadu_ps(&x[i]);
+  __m256 abs_vec = _mm256_andnot_ps(sign_mask, vec);
+  _mm256_storeu_ps(&x[i], abs_vec);
+}
+
+static inline void fp16_abs_scalarwise(fp16_t* x, __m256 sign_mask, int i) {
+  if (x[i] < 0) {
+    x[i] = -x[i];
+  }
+}
+
+
+void fp16_abs(const struct ViewInstruction view, single_float* vec) {
+  __m256 sign_mask = _mm256_set1_ps(-0.0f);
+  WITH_VIEW_ITER(view, i, 2 * FP32_SIMD_STEP,
+		 fp16_abs_simd(vec, sign_mask, i),
+		 fp16_abs_scalarwise(vec, i));
+}
+
+
+*/
