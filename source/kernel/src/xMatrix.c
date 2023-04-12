@@ -71,17 +71,26 @@ int cpu_has_avx512(void){
 
 #define FP32_m256_LOAD_VEC(var, i, vec) __m256 var = _mm256_loadu_ps(vec + i);
 
-
-#define WITH_VIEW_ITER(view, index, stride, element_wise_operation)	\
+// simd_operation -> SIMD Operation, reminder = element_wise_operation
+#define WITH_VIEW_ITER(view, index, stride, simd_operation, reminder)	\
   do {									\
-    for (int mi = view.offset2; mi < view.m; mi+=stride) {			\
-      for (int ni = view.offset1; ni < view.n; ni+=stride) {			\
-        int index = view.offset + mi * view.stride2 + ni * view.stride1; \
-	(element_wise_operation);					\
+    int last_mi_index_for_rem = 0;					\
+    int last_ni_index_for_rem = 0;					\
+    for (int mi = view.offset2; mi < view.m; mi+=stride) {		\
+      for (int ni = view.offset1; ni < view.n; ni+=stride) {		\
+	last_mi_index_for_rem = mi+stride;				\
+	last_ni_index_for_rem = ni+stride;				\
+	int index = view.offset + mi * view.stride2 + ni * view.stride1; \
+	(simd_operation);						\
+      }									\
+    }									\
+    for (int mi=view.offset2 - last_mi_index_for_rem;mi<view.m;mi++) {	\
+      for(int ni =view.offset1 - last_ni_index_for_rem;ni<view.n;ni++) { \
+	int index = view.offset + mi * view.stride2 + ni * view.stride1; \
+	(reminder);							\
       }									\
     }									\
   } while(0)
-
 
 
 static inline void fp32_abs_simd(single_float* x, __m256 sign_mask, int i) {
@@ -90,7 +99,15 @@ static inline void fp32_abs_simd(single_float* x, __m256 sign_mask, int i) {
   _mm256_storeu_ps(&x[i], abs_vec);
 }
 
+static inline void fp32_abs_scalarwise(single_float* x, int i) {
+  if (x[i] < 0) {
+    x[i] = -x[i];
+  }
+}
+
 void fp32_abs(const struct ViewInstruction view, single_float* vec) {
   __m256 sign_mask = _mm256_set1_ps(-0.0f);
-  WITH_VIEW_ITER(view, i, FP32_SIMD_STEP, fp32_abs_simd(vec, sign_mask, i));
+  WITH_VIEW_ITER(view, i, FP32_SIMD_STEP,
+		 fp32_abs_simd(vec, sign_mask, i),
+		 fp32_abs_scalarwise(vec, i));
 }

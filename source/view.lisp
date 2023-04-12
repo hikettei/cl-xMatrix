@@ -240,4 +240,4 @@ Returns - nil"
 				     (with-view-object (index x)
 				       ; this is tmp
 				       (setf (mem-aref (matrix-vec matrix) :float index)
-					     (- (random 1.0) 0.5))))))
+					     (- (random 1.0) 2.5))))))
