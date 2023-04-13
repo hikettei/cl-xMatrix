@@ -2,6 +2,7 @@
 #include "quantize.h"
 
 #include <math.h>
+#include <stdint.h>
 
 // FP32 <-> FP16
 
@@ -76,6 +77,15 @@ static inline fp16_t compute_fp32_to_fp16(float f) {
     return (sign >> 16) | (shl1_w > UINT32_C(0xFF000000) ? UINT16_C(0x7E00) : nonsign);
 }
 
-// Ref: https://papers.nips.cc/paper/2020/file/13b919438259814cd5be8cb45877d577-Paper.pdf
+// Excepted: Post-training quantization.
+// Ref (Including To read):
+// https://papers.nips.cc/paper/2020/file/13b919438259814cd5be8cb45877d577-Paper.pdf
+// https://arxiv.org/pdf/1810.05723.pdf
+// https://arxiv.org/pdf/2301.12017v1.pdf
 // FP32 <-> INT4
 
+
+
+void logscaling_hidden_parameters_int4(int4* x) {
+
+}

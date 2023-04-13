@@ -50,3 +50,5 @@ element-wiseな関数を一個作ってviewのサポート
 5. 4bit量子化に挑戦
 
 6. 他の関数をSIMD化してみる(AVX, AVX2)
+
+Personally, I'm highly interested in performance when combining INT4 operations with Maddness.
