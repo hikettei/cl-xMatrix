@@ -67,7 +67,6 @@ int cpu_has_avx512(void){
 
 #define FP32_SIMD_STEP 8
 #define XMAT_FP32_LOADU_PS(var, pointer) __m256 var = _mm256_loadu_ps(pointer);
-// 四回LOADできないっけ？
 
 #elif defined(__AVX__)
 
