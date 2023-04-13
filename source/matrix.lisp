@@ -3,7 +3,8 @@
 
 (defparameter *available-dtypes*
   `(:uint8
-    :float))
+    :float
+    :int))
 
 (defun dtype-p (x)
   (if (find x *available-dtypes*)
@@ -14,6 +15,7 @@
   (case dtype
     (:float
      'single-float)
+    (:int 'fixnum)
     (T (error "Unknown type ~a" dtype))))
 
 (defun coerce-to-dtype (element dtype)
@@ -88,8 +90,7 @@
 (defstruct (Matrix
 	    (:print-function print-matrix)
 	    (:constructor
-		matrix (shape &key
-				(dtype :float)
+		matrix (shape &key (dtype :float)
 			&aux (view (loop repeat (length (the list shape))
 					 collect t))
 			  (matrix-vec (allocate-mat (apply #'* shape) :dtype dtype))))

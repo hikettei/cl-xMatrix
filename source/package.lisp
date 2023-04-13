@@ -3,7 +3,7 @@
 
 
 (defpackage :cl-xmatrix
-  (:use :cl :cffi) ; To Add: GC by trivial-garbage or something
+  (:use :cl :cffi) ;; To Add: GC by trivial-garbage or something
   (:export
    #:matrix
    #:free-mat))
@@ -19,11 +19,11 @@
 (defun xmatrix-built-p ()
   t)
 
-; Fixme: define-foreign-library and use-foreign-lib...
+;; Fixme: define-foreign-library and use-foreign-lib...
 (defun load-xmatrix ()
   (let ((libpath (get-shared-xmatrix-pathname))
 	(libpath1 (get-shared-libmaddness-pathname)))
-    ; Add: conditions and handler-case
+    ;; Add: conditions and handler-case
     (load-foreign-library libpath)
     (load-foreign-library libpath1)))
 
