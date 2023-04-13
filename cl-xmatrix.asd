@@ -15,7 +15,9 @@
   :depends-on (:cffi :cffi-libffi)
   :components ((:file "package")
 	       (:file "matrix")
-	       (:file "view"))
+	       (:file "view")
+	       (:file "quantize")
+	       (:file "mathematical"))
   :in-order-to ((test-op (test-op cl-xmatrix/test))))
 
 (defpackage cl-xmatrix-test
