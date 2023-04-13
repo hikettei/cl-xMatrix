@@ -107,6 +107,7 @@ static inline void fp32_abs_scalarwise(single_float* x, int i) {
   }
 }
 
+// To Add: RELU, SIGMOID, TANH etc...
 void fp32_abs(const struct ViewInstruction view, single_float* vec) {
   __m256 sign_mask = _mm256_set1_ps(-0.0f);
   WITH_VIEW_ITER(view, i, FP32_SIMD_STEP,
@@ -114,26 +115,3 @@ void fp32_abs(const struct ViewInstruction view, single_float* vec) {
 		 fp32_abs_scalarwise(vec, i));
 }
 
-/*
-static inline void fp16_abs_simd(fp16_t* x, __m256 sign_mask, int i) {
-  __m256 vec = _mm256_loadu_ps(&x[i]);
-  __m256 abs_vec = _mm256_andnot_ps(sign_mask, vec);
-  _mm256_storeu_ps(&x[i], abs_vec);
-}
-
-static inline void fp16_abs_scalarwise(fp16_t* x, __m256 sign_mask, int i) {
-  if (x[i] < 0) {
-    x[i] = -x[i];
-  }
-}
-
-
-void fp16_abs(const struct ViewInstruction view, single_float* vec) {
-  __m256 sign_mask = _mm256_set1_ps(-0.0f);
-  WITH_VIEW_ITER(view, i, 2 * FP32_SIMD_STEP,
-		 fp16_abs_simd(vec, sign_mask, i),
-		 fp16_abs_scalarwise(vec, i));
-}
-
-
-*/

@@ -5,7 +5,16 @@
 // uint8
 typedef uint8_t minifloat;
 // 16bit float.
+
+// ref: https://github.com/ggerganov/ggml/blob/553929cf771634fc29b0700967a0621d56647f09/include/ggml/ggml.h#L186
+
+#ifdef __ARM_NEON
+// we use the built-in 16-bit float type
 typedef __fp16 fp16_t;
+#else
+typedef uint16_t fp16_t;
+#endif
+
 // 32bit float
 typedef float single_float;
 
@@ -28,4 +37,4 @@ struct ViewInstruction {
 // element-wise mathematical functions
 
 void fp32_abs(const struct ViewInstruction, single_float*);
-
+void fp16_abs(const struct ViewInstruction, single_float*);

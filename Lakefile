@@ -17,8 +17,10 @@
 (defparameter *compiler* "gcc")
 
 (task "build" () ; Todo: Add Namespace and more compile options
-      (sh "gcc -O2 -mavx2 ./source/kernel/src/xMatrix.c -I./source/kernel/include/xMatrix -shared -o ./source/kernel/libxMatrix.dylib")
-      ;(sh "gcc -O2 -S-mavx2 ./source/kernel/src/xMatrix.c -I./source/kernel/include/xMatrix") for disassemble
+      (sh "gcc -c -fPIC -O3 -mavx2 ./source/kernel/src/xMatrix.c -I./source/kernel/include/xMatrix -o ./source/kernel/src/xMatrix.o")
+      (sh "gcc -c -fPIC -O3 -mavx2 ./source/kernel/src/quantize.c -I./source/kernel/include/xMatrix -o ./source/kernel/src/quantize.o")
+
+      (sh "gcc -shared ./source/kernel/src/xMatrix.o ./source/kernel/src/quantize.o -o ./source/kernel/libxMatrix.dylib")
       )
 
 (task "testc" ()

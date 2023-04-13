@@ -184,7 +184,12 @@ Returns - nil"
 					(nth (1+ dim-indicator) strides)
 					offset2
 					offset1)))
-		      
+
+#|
+Note:
+		      (M 1) fails to be paralellized.
+		      Reshaping (M 1) into (1 M) may work. (TODO for performance)
+|#
 		      (with-foreign-object (c '(:struct ViewInstruction))
 			(funcall function instruction)
 			))))
@@ -234,10 +239,3 @@ Returns - nil"
     (if freep
 	(free-mat matrix))
     returning-array))
-
-(defun randn (matrix)
-  (call-with-visible-area matrix #'(lambda (x)
-				     (with-view-object (index x)
-				       ; this is tmp
-				       (setf (mem-aref (matrix-vec matrix) :float index)
-					     (- (random 1.0) 2.5))))))
