@@ -47,10 +47,13 @@ void mithral_encode(const int8_t *X, int64_t nrows, int ncols,
                     int ncodebooks, uint8_t *out);
 
 // versio with int8 data
-extern "C"
-void mithral_encode_int8_t(const int8_t *X, int64_t nrows, int ncols,
-			   const uint32_t *splitdims, const int8_t *all_splitvals,
-			   int ncodebooks, uint8_t *out);
+extern "C" {
+  void mithral_encode_int8_t(const int8_t *X, int64_t nrows, int ncols,
+			     const uint32_t *splitdims, const int8_t *all_splitvals,
+			     int ncodebooks, uint8_t *out) {
+    mithral_encode(X, nrows, ncols, splitdims, all_splitvals, ncodebooks, out);
+  }
+}
 
 
 void zip_bolt_colmajor(const uint8_t *codes_in, int64_t nrows,

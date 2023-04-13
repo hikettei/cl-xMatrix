@@ -251,12 +251,6 @@ void mithral_encode(const int8_t *X, int64_t nrows, int ncols,
   // }
 }
 
-extern "C"
-void mithral_encode_int8_t(const int8_t *X, int64_t nrows, int ncols,
-			   const uint32_t *splitdims, const int8_t *all_splitvals,
-			   int ncodebooks, uint8_t *out) {
-  mithral_encode(X, nrows, ncols, splitdims, all_splitvals, ncodebooks, out);
-}
 
 // wrapper for int8 version that can deal with scales and offsets provided
 void mithral_encode(const int8_t *X, int64_t nrows, int ncols,
