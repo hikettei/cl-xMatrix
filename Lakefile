@@ -19,8 +19,9 @@
 (task "build" () ; Todo: Add Namespace and more compile options
       (sh "gcc -c -fPIC -O3 -mavx2 ./source/kernel/src/xMatrix.c -I./source/kernel/include/xMatrix -o ./source/kernel/src/xMatrix.o")
       (sh "gcc -c -fPIC -O3 -mavx2 ./source/kernel/src/quantize.c -I./source/kernel/include/xMatrix -o ./source/kernel/src/quantize.o")
+      (sh "gcc -c -fPIC -O3 -mavx2 ./source/kernel/src/maddness.c -I./source/kernel/include/xMatrix -o ./source/kernel/src/maddness.o")
 
-      (sh "gcc -shared ./source/kernel/src/xMatrix.o ./source/kernel/src/quantize.o -o ./source/kernel/libxMatrix.dylib")
+      (sh "gcc -shared ./source/kernel/src/xMatrix.o ./source/kernel/src/quantize.o ./source/kernel/src/maddness.o -o ./source/kernel/libxMatrix.dylib")
       )
 
 (task "testc" ()

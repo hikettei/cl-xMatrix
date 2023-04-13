@@ -3,6 +3,7 @@
 
 #include <math.h>
 #include <stdint.h>
+#include <stdlib.h>
 
 // FP32 <-> FP16
 
@@ -77,15 +78,40 @@ static inline fp16_t compute_fp32_to_fp16(float f) {
     return (sign >> 16) | (shl1_w > UINT32_C(0xFF000000) ? UINT16_C(0x7E00) : nonsign);
 }
 
-// Excepted: Post-training quantization.
+
+#define WITH_ELWISE_VIEW(view, index, element_wise_operation)		\
+  do {									\
+    for (int mi = view.offset2; mi < view.m; mi++) {			\
+      for (int ni = view.offset1; ni < view.n; ni++) {			\
+        int index = view.offset + mi * view.stride2 + ni * view.stride1; \
+	(element_wise_operation);					\
+      }									\
+    }									\
+  } while(0)
+
+fp16_t* convert_fp32_into_fp16(const struct ViewInstruction view, single_float* x) {
+  fp16_t* result = (fp16_t*)malloc(view.m * view.n * sizeof(fp16_t));
+
+  WITH_ELWISE_VIEW(view, i, result[i] = compute_fp32_to_fp16(x[i]));
+  
+  free(x);
+  return result;
+}
+
+
+single_float* convert_fp16_into_fp32(const struct ViewInstruction view, fp16_t* x) {
+  single_float* result = (single_float*)malloc(view.m * view.n * sizeof(single_float));
+
+  WITH_ELWISE_VIEW(view, i, result[i] = compute_fp16_to_fp32(x[i]));
+  
+  free(x);
+  return result;
+}
+
+
+// Todo:
 // Ref (Including To read):
 // https://papers.nips.cc/paper/2020/file/13b919438259814cd5be8cb45877d577-Paper.pdf
 // https://arxiv.org/pdf/1810.05723.pdf
 // https://arxiv.org/pdf/2301.12017v1.pdf
 // FP32 <-> INT4
-
-
-
-void logscaling_hidden_parameters_int4(int4* x) {
-
-}
