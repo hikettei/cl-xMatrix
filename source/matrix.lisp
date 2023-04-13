@@ -88,20 +88,41 @@
 (defstruct (Matrix
 	    (:print-function print-matrix)
 	    (:constructor
-		matrix (shape &key (dtype :float)
+		matrix (shape &key
+				(dtype :float)
 			&aux (view (loop repeat (length (the list shape))
 					 collect t))
-			     (matrix (allocate-mat (apply #'* shape) :dtype dtype))))
+			  (matrix-vec (allocate-mat (apply #'* shape) :dtype dtype))))
 	    (:constructor
 		view-of-matrix (matrix &rest view
 				&aux
 				  (shape (matrix-shape matrix))
 				  (dtype (matrix-dtype matrix))
-				  (matrix (matrix-vec matrix)))))
-  (vec matrix)
+				  (matrix-vec (matrix-vec matrix))))
+	    (:constructor
+		quantize-matrix (matrix
+				 &key (quantize-into :fp16)
+				 &aux (matrix-vec
+				       (vec-quantize-into
+					(matrix-vec matrix)
+					(matrix-shape matrix)
+					quantize-into))
+				   (dtype (vec-dtype-quantized quantize-into))
+				   (shape (matrix-shape matrix))
+				   (view (loop repeat (length (the list shape))
+					       collect t)))))
+  (vec matrix-vec)
   (dtype dtype :type matrix-dtype)
   (shape shape :type cons)
   (view view :type cons)
   (strides (calc-strides shape) :type cons))
 
 
+(defun randn (matrix)
+  (call-with-visible-area matrix #'(lambda (x)
+				     (with-view-object (index x)
+				       ; this is tmp
+				       (setf
+					(mem-aref
+					 (matrix-vec matrix) :float index)
+					     (- (random 1.0) 2.5))))))

@@ -7,7 +7,7 @@
 	      (view (:struct ViewInstruction))
 	      (array (:pointer :float)))
 
-(defun absm (m)
+(defun %abs (m)
   (call-with-visible-area m
 			  #'(lambda (view)
-			      (print (fp32-abs view (matrix-vec m))))))
+			      (fp32-abs view (matrix-vec m)))))

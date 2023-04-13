@@ -12,6 +12,23 @@
 	  (viewinstruction-lisp-m view)
 	  (viewinstruction-lisp-n view)))
 
+(defstruct (ViewInstruction-Lisp
+	    (:print-function print-view)
+	    (:constructor
+		view-instruction (offset shape-2 shape-1 stride-2 stride-1 offset-2 offset-1)))
+  "A Common Instruction for xMatrix, which realise view-function.
+ViewInstruction is basically created only for 2d-matrix operation, functions must handle 3d-matrix with with-view macro, and as for 2d is this object.
+
+(m n)"
+  (offset offset :type index) ; the nd-dimensional matrix begins with...
+  (stride2 stride-2 :type index)
+  (stride1 stride-1 :type index)
+  (offset2 offset-2 :type index) ; the start point
+  (offset1 offset-1 :type index) ; the start point (2 3)
+  (m shape-2 :type index)
+  (n shape-1 :type index))
+
+
 (defcstruct (ViewInstruction :class c-viewinstruction)
   (offset :int)
   (stride2 :int)
@@ -49,22 +66,6 @@
 	  n
 	  (viewinstruction-lisp-n value))
     ptr))
-
-(defstruct (ViewInstruction-Lisp
-	    (:print-function print-view)
-	    (:constructor
-		view-instruction (offset shape-2 shape-1 stride-2 stride-1 offset-2 offset-1)))
-  "A Common Instruction for xMatrix, which realise view-function.
-ViewInstruction is basically created only for 2d-matrix operation, functions must handle 3d-matrix with with-view macro, and as for 2d is this object.
-
-(m n)"
-  (offset offset :type index) ; the nd-dimensional matrix begins with...
-  (stride2 stride-2 :type index)
-  (stride1 stride-1 :type index)
-  (offset2 offset-2 :type index) ; the start point
-  (offset1 offset-1 :type index) ; the start point (2 3)
-  (m shape-2 :type index)
-  (n shape-1 :type index))
 
 (defmacro with-expanding-view-object (view &body body)
   ""

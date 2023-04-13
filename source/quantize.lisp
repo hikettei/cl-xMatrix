@@ -20,3 +20,27 @@
   (view (:struct ViewInstruction))
   (x (:pointer :uint8)))
 
+(defun fp32->fp16 (size pointer)
+  "Creates a new matrix whose dtype is uint8, the old matrix is freed.
+Matrix is given by (matrix-vec mat)"
+  (prog1
+      (convert-fp32-into-fp16 size pointer)
+    ;(free-mat pointer)
+    ))
+
+(defun fp16->fp32 (size pointer)
+  (prog1
+      (convert-fp16-into-fp32 size pointer)
+    ;(free-mat pointer)
+    ))
+
+(defun vec-quantize-into (pointer shape dtype)
+  (case dtype
+    (:fp16
+     (fp32->fp16 (apply #'* shape) pointer))
+    (:float pointer)))
+
+(defun vec-dtype-quantized (dtype)
+  (case dtype
+    (:fp16 :uint8)
+    (T dtype)))
