@@ -89,7 +89,7 @@ static inline fp16_t compute_fp32_to_fp16(float f) {
     }									\
   } while(0)
 
-fp16_t* convert_fp32_into_fp16(const struct ViewInstruction view, single_float* x) {
+fp16_t* convert_fp32_into_fp16_within_view(const struct ViewInstruction view, single_float* x) {
   fp16_t* result = (fp16_t*)malloc(view.m * view.n * sizeof(fp16_t));
 
   WITH_ELWISE_VIEW(view, i, result[i] = compute_fp32_to_fp16(x[i]));
@@ -99,10 +99,34 @@ fp16_t* convert_fp32_into_fp16(const struct ViewInstruction view, single_float* 
 }
 
 
-single_float* convert_fp16_into_fp32(const struct ViewInstruction view, fp16_t* x) {
+single_float* convert_fp16_into_fp32_within_view(const struct ViewInstruction view, fp16_t* x) {
   single_float* result = (single_float*)malloc(view.m * view.n * sizeof(single_float));
 
   WITH_ELWISE_VIEW(view, i, result[i] = compute_fp16_to_fp32(x[i]));
+  
+  free(x);
+  return result;
+}
+
+
+fp16_t* convert_fp32_into_fp16(int size, single_float* x) {
+  fp16_t* result = (fp16_t*)malloc(size * sizeof(fp16_t));
+
+  for (int i=0; i<size; i++) {
+    result[i] = compute_fp32_to_fp16(x[i]);
+  }
+  
+  free(x);
+  return result;
+}
+
+
+single_float* convert_fp16_into_fp32(int size, fp16_t* x) {
+  single_float* result = (single_float*)malloc(size * sizeof(single_float));
+
+  for (int i=0; i<size; i++) {
+    result[i] = compute_fp16_to_fp32(x[i]);
+  }
   
   free(x);
   return result;
