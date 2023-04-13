@@ -42,5 +42,5 @@ Matrix is given by (matrix-vec mat)"
 
 (defun vec-dtype-quantized (dtype)
   (case dtype
-    (:fp16 :uint8)
+    (:fp16 :uint16)
     (T dtype)))

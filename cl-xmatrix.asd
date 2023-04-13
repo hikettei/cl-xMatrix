@@ -17,6 +17,7 @@
 	       (:file "matrix")
 	       (:file "view")
 	       (:file "quantize")
+	       (:file "mithral")
 	       (:file "mathematical"))
   :in-order-to ((test-op (test-op cl-xmatrix/test))))
 

@@ -2,7 +2,7 @@
 (in-package :cl-xmatrix)
 
 (defparameter *available-dtypes*
-  `(:uint8
+  `(:uint16
     :float
     :int))
 
@@ -117,13 +117,3 @@
   (shape shape :type cons)
   (view view :type cons)
   (strides (calc-strides shape) :type cons))
-
-
-(defun randn (matrix)
-  (call-with-visible-area matrix #'(lambda (x)
-				     (with-view-object (index x)
-				       ; this is tmp
-				       (setf
-					(mem-aref
-					 (matrix-vec matrix) :float index)
-					     (- (random 1.0) 2.5))))))

@@ -48,10 +48,16 @@ void mithral_encode(const int8_t *X, int64_t nrows, int ncols,
 
 // versio with int8 data
 extern "C" {
-  void mithral_encode_int8_t(const int8_t *X, int64_t nrows, int ncols,
-			     const uint32_t *splitdims, const int8_t *all_splitvals,
-			     int ncodebooks, uint8_t *out) {
-    mithral_encode(X, nrows, ncols, splitdims, all_splitvals, ncodebooks, out);
+  void mithral_encode_int16_t(const int16_t *X,
+			      int64_t nrows,
+			      int ncols,
+			      const uint32_t *splitdims,
+			      const int8_t *all_splitvals,
+			      const uint8_t *shifts,
+			      const int16_t *offsets,
+			      int ncodebooks,
+			      uint8_t *out) {
+    mithral_encode(X, nrows, ncols, splitdims, all_splitvals, shifts, offsets, ncodebooks, out);
   }
 }
 

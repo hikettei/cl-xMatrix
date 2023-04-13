@@ -28,12 +28,10 @@
       )
 
 (task "testc" ()
-      (sh "gcc -O2 -mavx2 ./source/kernel/tests/arithmetic.c ./source/kernel/src/xMatrix.c -I./source/kernel/include/xMatrix")
       (sh "./a.out")
       )
 
 (task "test" ()
-      (sh "gcc -O2 -mavx2 ./source/kernel/src/xMatrix.c -I./source/kernel/include/xMatrix -shared -o ./source/kernel/libxMatrix.dylib")
       (sh "ros ./roswell/xmatrix.ros"))
 
 ;;; here follow your tasks...
