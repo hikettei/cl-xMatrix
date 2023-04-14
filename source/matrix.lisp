@@ -124,4 +124,4 @@
   (shape shape :type cons)
   (view view :type cons)
   (visible-shape (visible-shape shape view) :type cons) 
-  (strides (calc-strides shape) :type cons))
+  (strides (calc-strides (visible-shape shape view)) :type cons))

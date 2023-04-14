@@ -20,7 +20,8 @@
 		(setf
 		 (mem-aref
 		  (matrix-vec matrix) (matrix-dtype matrix) index)
-		 (expt (mem-aref (matrix-vec matrix) (matrix-dtype matrix) index) 2))))))
+		 (expt (mem-aref (matrix-vec matrix) (matrix-dtype matrix) index) 2)))))
+  matrix)
 
 (defun %scalar-add (matrix scalar)
   ;; tmp
@@ -31,7 +32,48 @@
 		(setf
 		 (mem-aref
 		  (matrix-vec matrix) (matrix-dtype matrix) index)
-		 (+ (mem-aref (matrix-vec matrix) (matrix-dtype matrix) index) scalar))))))
+		 (+ (mem-aref (matrix-vec matrix) (matrix-dtype matrix) index) scalar)))))
+  matrix)
+
+(defun %adds (matrix matrix1)
+  "matrix, matrix1 assumed not to have view."
+  ;; tmp
+  (declare (optimize (safety 0)))
+  (call-with-visible-area
+   matrix #'(lambda (x)
+	      (with-view-object (index x)
+		(setf
+		 (mem-aref
+		  (matrix-vec matrix) (matrix-dtype matrix) index)
+		 (+ (mem-aref (matrix-vec matrix) (matrix-dtype matrix) index)
+		    (mem-aref (matrix-vec matrix) (matrix-dtype matrix1) index))))))
+  matrix)
+
+(defun %scalar-mul (matrix scalar)
+  ;; tmp
+  (declare (optimize (safety 0)))
+  (call-with-visible-area
+   matrix #'(lambda (x)
+	      (with-view-object (index x)
+		(setf
+		 (mem-aref
+		  (matrix-vec matrix) (matrix-dtype matrix) index)
+		 (* (mem-aref (matrix-vec matrix) (matrix-dtype matrix) index) scalar)))))
+  matrix)
+
+(defun %fill (matrix scalar)
+  ;; tmp
+  (declare (optimize (safety 0)))
+  (call-with-visible-area
+   matrix #'(lambda (x)
+	      (with-view-object (index x)
+		(setf
+		 (mem-aref
+		  (matrix-vec matrix)
+		  (matrix-dtype matrix)
+		  index)
+		 scalar))))
+  matrix)
 
 
 (defun randn (matrix)

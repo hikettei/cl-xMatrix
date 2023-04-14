@@ -114,7 +114,8 @@
 			   (dim nil)
 			   (val nil)
 			   (x-orig nil))
-  "Note: Returns a list"
+  "Note: Returns a list
+Algorithm. 1 Maddness Hash"
   (let* ((id0 (* 2 (bucket-id bucket)))
  	 (id1 (+ id0 1)))
 
@@ -144,7 +145,28 @@
 	       (mask (%cmp x-orig-t val)) ;; val is scalar
 	       (not-mask (%lognot mask))
 	       
-	))))
+	       ))))))
+
+(defmethod col-variances ((bucket MSBucket))
+  (if (< (bucket-n bucket) 1)
+      (matrix `(1 ,(bucket-d bucket)) :dtype :float)
+      (let ((ex2 (%scalar-mul
+		  (%copy (bucket-sumx2 bucket))
+		  (/ (bucket-n bucket))))
+	    (ex (%scalar-mul
+		  (%copy (bucket-sumx bucket))
+		  (/ (bucket-n bucket)))))
+	(%scalar-add
+	 ex2
+	 (%scalar-mul
+	  (%square ex)
+	  -1.0)))))
+
+(defmethod col-sum-sqs ((bucket MSBucket))
+  (%scalar-mul (col-variances bucket)
+	       (bucket-n bucket)))
+
+    
 
 (defun create-codebook-idxs (D C &key (start-or-end :start))
   "
@@ -205,7 +227,24 @@
 		    :sumx2 (%sum x-square :axis 0)
 		    :point-ids (loop for i fixnum upfrom 0 below N
 				     collect i))))
-    )
+	 (splits)
+	 (col-losses (matrix `(1 ,D) :dtype :float))
+	 (offset 0.0)
+	 (scal-by 1.0)
+	 (X (%scalar-add (%scalar-mul X scal-by) offset)))
+
+    (loop repeat nsplits
+	  do (progn
+	       (%fill col-losses 0.0)
+
+	       (dolist (buck buckets)
+		 (let ((loss (col-sum-sqs buck)))
+		   (%adds col-losses loss)
+		   (free-mat loss)))
+
+	       (print col-losses)
+
+	       ))))
 
 (defun init-and-learn-mithral (X C ncodebooks)
   "Learns and initializes hash-function, g(a) and prototypes."
@@ -225,7 +264,7 @@
 	 (all-splits nil)
 	 (all-buckets nil)
 	 ;; indices of disjoints based on C are needed when training KMeans.
-	 (pq-idxs (create-codebook-start-and-end-idxs X C)))
+	 (pq-idxs (create-codebook-idxs D C :start-or-end :start)))
 
     (dotimes (cth C)
       (let ((cth-idx (nth cth pq-idxs)))
@@ -239,7 +278,7 @@
 
 	    ))))))
 
-;; NxD @ DxM Todo: Transpose source in advance?
+;; N x D @ D x M
 (defclass MithralAMM ()
   ((n :initarg :n :type fixnum :reader mithral-n)
    (d :initarg :d :type fixnum :reader mithral-d)
