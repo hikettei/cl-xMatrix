@@ -51,4 +51,3 @@ element-wiseな関数を一個作ってviewのサポート
 
 6. 他の関数をSIMD化してみる(AVX, AVX2)
 
-Personally, I'm highly interested in performance when combining INT4 operations with Maddness.
