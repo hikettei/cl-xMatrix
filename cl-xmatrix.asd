@@ -18,7 +18,11 @@
 	       (:file "view")
 	       (:file "quantize")
 	       (:file "mithral")
-	       (:file "mathematical"))
+	       (:file "mathematical")
+	       (:file "operations")
+
+	       ;;(:file "mha")
+	       )
   :in-order-to ((test-op (test-op cl-xmatrix/test))))
 
 (defpackage cl-xmatrix-test

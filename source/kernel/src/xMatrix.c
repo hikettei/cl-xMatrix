@@ -114,3 +114,22 @@ void fp32_abs(const struct ViewInstruction view, single_float* vec) {
 		 fp32_abs_scalarwise(vec, i));
 }
 
+
+
+#define WITH_ELWISE_VIEW(view, index, index1, element_wise_operation)	\
+  do {									\
+    for (int mi = view.offset2; mi < view.m; mi++) {			\
+      for (int ni = view.offset1; ni < view.n; ni++) {			\
+        int index = view.offset + mi * view.stride2 + ni * view.stride1; \
+	int k = view.offset + (mi - view.offset2) * view.stride2 + (ni - view.offset1) * view.stride1; \
+	(element_wise_operation);					\
+      }									\
+    }									\
+  } while(0)
+
+
+// Todo: FP16, SIMD
+void fp32_copy(const struct ViewInstruction view, single_float* vec1, single_float* vec2) {
+  // Vec2 has no any offsets. So i must be absolute
+  WITH_ELWISE_VIEW(view, i, k, vec2[k] = vec1[i]);
+}

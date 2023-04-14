@@ -103,15 +103,21 @@
 	  "Assertion Failed with X.dims == 2 ~a"
 	  (matrix-shape x))
 
-  (let* ((K 16)
+  (let* ((x-error (%copy X))
+	 (x-orig x)
+	 (K 16)
 	 (D (second (matrix-shape X)))
 	 (all-prototypes (matrix `(,C ,K ,D) :dtype (matrix-dtype X)))
 	 (all-splits nil)
-	 (all-buckets)
+	 (all-buckets nil)
+	 ;; indices of disjoints based on C are needed when training KMeans.
 	 (pq-idxs (create-codebook-start-and-end-idxs X C)))
-    
-    
-    ))
+
+    (dotimes (cth C)
+      (with-views ((use-x-error x-error t (0 1))
+		   (use-x-orig  x-orig  t (0 1)))
+
+	))))
 
 ;; NxD @ DxM Todo: Transpose source in advance?
 (defclass MithralAMM ()

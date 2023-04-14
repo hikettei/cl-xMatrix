@@ -116,6 +116,20 @@ ViewInstruction is basically created only for 2d-matrix operation, functions mus
   ; supply the lack of dims.
   (apply #'view-of-matrix matrix subscripts))
 
+(defmacro with-view ((var matrix &rest subscripts) &body body)
+  `(let ((,var (view ,matrix ,@subscripts)))
+     ,@body))
+
+(defmacro with-views ((&rest forms) &body body)
+  "(with-view a1 (with-view a2 ... ))"
+  (labels ((expand-views (binding-specs body)
+	     (if (endp binding-specs)
+		 `(progn ,@body)
+		 `(with-view ,(first binding-specs)
+		    ,(expand-views (cdr binding-specs) body)))))
+    (expand-views forms body)))
+       
+
 
 (declaim (ftype (function (t fixnum) index) view-startindex view-endindex)
 	 (inline view-startindex view-endindex))

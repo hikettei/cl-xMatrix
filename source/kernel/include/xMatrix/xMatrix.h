@@ -38,3 +38,5 @@ struct ViewInstruction {
 
 void fp32_abs(const struct ViewInstruction, single_float*);
 void fp16_abs(const struct ViewInstruction, single_float*);
+
+void fp32_copy(const struct ViewInstruction, single_float*, single_float*);
