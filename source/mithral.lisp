@@ -17,40 +17,134 @@
 ;; First _learn_hash_buckets_and_prototype
 ;; For first, impl some arithmetic ops.
 
-(defun randn (matrix)
-  (call-with-visible-area matrix #'(lambda (x)
-				     (with-view-object (index x)
-				       ; this is tmp
-				       (setf
-					(mem-aref
-					 (matrix-vec matrix) :float index)
-					(- (random 1.0) 2.5))))))
-(defun mithral-square (matrix)
-  ;; tmp
-  (declare (optimize (safety 0)))
-  (call-with-visible-area
-   matrix #'(lambda (x)
-	      (with-view-object (index x)
-		(setf
-		 (mem-aref
-		  (matrix-vec matrix) :uint16 index)
-		 (expt (mem-aref (matrix-vec matrix) :uint16 index) 2))))))
+;; Never forget to memfree
+(defstruct (MSBucket
+	    (:conc-name bucket-)
+	    (:constructor
+		make-bucket (&key
+			       (d nil)
+			       (n 0)
+			       (sumx nil)
+			       (sumx2 nil)
+			       (point-ids nil)
+			       (bucket-id 0)
+			       (adjustable nil)
+			       (dtype :float)
+			     &aux
+			       (point-ids (when (null point-ids)
+					    (unless (= N 0)
+					      (error "Assetion failed with N = 0"))
+					    nil))
+			       (n (length point-ids))
+			       (id bucket-id)
+			       (point-ids point-ids)
+			       (d (cond
+				    ((and (or (null d)
+					      (< d 1))
+					  (not (null sumx)))
+				     (apply #'* (matrix-shape sumx)))
+				    ((and (or (null d)
+					      (< d 1))
+					  (not (null sumx2)))
+				     (apply #'* (matrix-shape sumx2)))
+				    (t
+				     (if (null d)
+					 (error "Assertion Failed because d is nil")
+					 d))))
+			       (sumx (if sumx
+					 sumx
+					 (matrix `(,d) :dtype dtype)))
+			       (sumx2 (if sumx2
+					  sumx2
+					  (matrix `(,d) :dtype dtype))))))
+  (point-ids point-ids :type list)
+  (n n :type index)
+  (id id :type fixnum)
+  (adjustable adjustable :type boolean)
+  (d d :type fixnum)
+  (sumx sumx :type matrix)
+  (sumx2 sumx2 :type matrix))
 
-(defun mithral-sum (matrix)
-  (let ((total 0))
-    (declare (type fixnum total)
-	     (optimize (safety 0)))
-    (call-with-visible-area
-     matrix #'(lambda (x)
-		(with-view-object (index x)
-		  (incf total
-		   (mem-aref
-		    (matrix-vec matrix) :uint16 index)))))
-    total))
 
-(defun learn_mithral_initialization (X N D ncodebooks)
-  
-  )
+(defmethod destroy-bucket ((bucket MSBucket))
+  (with-slots ((sumx sumx) (sumx2 sumx2)) bucket
+    (free-mat sumx)
+    (free-mat sumx2)))
+
+(defmethod add-point ((bucket MSBucket) point &key (point-idx nil))
+  (unless (bucket-adjustable bucket)
+    (error "The bucket is not adjustable."))
+
+  (incf (bucket-n bucket) 1)
+  (%scalar-add (bucket-sumx bucket) point)
+  (%scalar-add (bucket-sumx2 bucket) (expt point 2))
+
+  (push point-idx (bucket-point-ids bucket))
+  (setf (bucket-point-ids bucket)
+	(delete-duplicates (bucket-point-ids bucket) :test #'=))
+  nil)
+
+(defmethod remove-point ((bucket MSBucket) point &key (point-idx nil))
+  (unless (bucket-adjustable bucket)
+    (error "The bucket is not adjustable."))
+
+  (decf (bucket-n bucket) 1)
+  (%scalar-add (bucket-sumx bucket) (- point))
+  (%scalar-add (bucket-sumx2 bucket) (- (expt point 2)))
+
+  (setf (bucket-point-ids bucket)
+	(delete-if #'(lambda (x) (= x point-idx)) (bucket-point-ids bucket)))
+  nil)
+
+(defmethod deepcopy ((bucket MSBucket)
+		     &key (bucket-id nil)
+		     &aux
+		       (bucket-id (if bucket-id
+				      bucket-id
+				      (bucket-id bucket))))
+  (make-bucket
+   :sumx (%copy (bucket-sumx bucket))
+   :sumx2 (%copy (bucket-sumx2 bucket))
+   :point-ids (copy-list (bucket-point-ids bucket))
+   :bucket-id bucket-id))
+
+(defmethod bucket-split ((bucket MSBucket)
+			 &key
+			   (x nil)
+			   (dim nil)
+			   (val nil)
+			   (x-orig nil))
+  "Note: Returns a list"
+  (let* ((id0 (* 2 (bucket-id bucket)))
+ 	 (id1 (+ id0 1)))
+
+    (when (or (null x)
+	      (< (bucket-n bucket) 2))
+      (let ((return-value (list (deepcopy bucket :bucket-id id0)
+				(make-bucket :d (bucket-d bucket)
+					     :bucket-id (bucket-id bucket)))))
+
+	;; should delete current bucket? (destroy-bucket bucket)
+	;; if the bucket is never used...
+	(return-from bucket-split return-value)))
+
+    (if (null (bucket-point-ids bucket))
+	(error "Assertion Failed because point-ids=nil"))
+
+    ;; Bucket(0) -> Bucket(1), Bucket(2), Bucket(3), ...
+
+    (let ((result)
+	  (transition-states (bucket-point-ids bucket)))
+      (dolist (transition transition-states)
+	;; x-orig[N, D], x-orig-t [1~3, D] etc...
+	(let* ((x-t (unless (< transition (car (matrix-visible-shape x-orig)))
+		      nil
+		      (view x-orig transition t)))
+	       (x-orig-t x-t)
+	       (mask (%cmp x-orig-t val)) ;; val is scalar
+	       (not-mask (%lognot mask))
+	       
+	))))
 
 (defun create-codebook-idxs (D C &key (start-or-end :start))
   "
@@ -94,6 +188,25 @@
       ;; Todo: Make it matrix?
       result)))
 
+(defun learn-binary-tree-splits (X
+				 x-orig
+				 N
+				 D
+				 &key
+				   (nsplits 4)
+				   (need-prototypes nil))
+  ;; dont forget memfree them
+  (let* ((X (%copy X))
+	 (X-square (%square (%copy x)))
+	 (X-orig (%copy x-orig))
+	 (buckets (list
+		   (make-bucket
+		    :sumx (%sum x :axis 0)
+		    :sumx2 (%sum x-square :axis 0)
+		    :point-ids (loop for i fixnum upfrom 0 below N
+				     collect i))))
+    )
+
 (defun init-and-learn-mithral (X C ncodebooks)
   "Learns and initializes hash-function, g(a) and prototypes."
   (declare (type matrix x)) ;; X.dtype = :uint16_t
@@ -103,9 +216,10 @@
 	  "Assertion Failed with X.dims == 2 ~a"
 	  (matrix-shape x))
 
-  (let* ((x-error (%copy X))
+  (let* ((x-error (%copy X)) ;; memfree x-error
 	 (x-orig x)
 	 (K 16)
+	 (N (car (matrix-shape X)))
 	 (D (second (matrix-shape X)))
 	 (all-prototypes (matrix `(,C ,K ,D) :dtype (matrix-dtype X)))
 	 (all-splits nil)
@@ -114,10 +228,16 @@
 	 (pq-idxs (create-codebook-start-and-end-idxs X C)))
 
     (dotimes (cth C)
-      (with-views ((use-x-error x-error t (0 1))
-		   (use-x-orig  x-orig  t (0 1)))
+      (let ((cth-idx (nth cth pq-idxs)))
+	(with-views ((use-x-error x-error t `(,(first cth-idx)
+					      ,(second cth-idx)))
+		     (use-x-orig  x-orig  t `(,(first cth-idx)
+					      ,(second cth-idx))))
+	  (multiple-value-bind (msplits protos buckets)
+	      (learn-binary-tree-splits use-x-error use-x-orig N D :need-prototypes nil)
+	    (declare (ignore protos))
 
-	))))
+	    ))))))
 
 ;; NxD @ DxM Todo: Transpose source in advance?
 (defclass MithralAMM ()

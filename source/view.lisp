@@ -130,7 +130,6 @@ ViewInstruction is basically created only for 2d-matrix operation, functions mus
     (expand-views forms body)))
        
 
-
 (declaim (ftype (function (t fixnum) index) view-startindex view-endindex)
 	 (inline view-startindex view-endindex))
 (defun view-startindex (view _)
@@ -233,6 +232,20 @@ Note:
        0
        (length dims))
       nil)))
+
+;; (disassemble #'matrix-visible-row-major-index)
+(defun matrix-visible-row-major-index (matrix &rest indices)
+  "Todo: Error check"
+  (declare (optimize (speed 3) (safety 0))
+	   (type matrix matrix))
+  (let ((strides (matrix-strides matrix))
+	(total 0))
+    (declare (type index total))
+    (loop for i fixnum upfrom 0 below (length strides)
+	  do (incf total
+		   (the index (* (the index (nth i strides))
+				 (the index (nth i indices))))))
+    total))
 
 (defmacro within-2d-view ()
 
