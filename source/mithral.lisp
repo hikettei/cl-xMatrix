@@ -14,6 +14,8 @@
   (ncodebooks :int)
   (out-pointer (:pointer :uint8)))
 
+;; First _learn_hash_buckets_and_prototype
+;; For first, impl some arithmetic ops.
 
 (defun randn (matrix)
   (call-with-visible-area matrix #'(lambda (x)
@@ -47,10 +49,53 @@
     total))
 
 (defun learn_mithral_initialization (X N D ncodebooks)
-
+  
   )
 
-(defun learn_mithral (X ncodebooks)
+(defun create-codebook-idxs (D C &key (start-or-end :start))
+  "
+    returns vector (C, 2)
+    [
+      start_idx_0, end_idx_0,
+      start_idx_1, end_idx_1,
+      ...
+    ]
+  "
+  (declare (optimize (speed 3))
+	   (type index D C)
+	   (type keyword start-or-end))
+
+  (unless (find start-or-end (list :start :end))
+    (error "start-or-end = :start :end"))
+
+  (unless (>= D C)
+    (error "Assertion Failed with D >= C"))
+  ;; Simply, perhaps it should be rewrriten like:
+  ;; (loop for i fixnum upfrom 0 below D by (round (/ D C))
+  ;; collect (list (* i (round (/ D C))) (* (1+ i) (round (/ D C)))))
+  (let ((full-len-subvec (round (/ D C)))
+	(start-idx 0))
+    (declare (type index start-idx full-len-subvec))
+    (let ((result
+	    (loop for n fixnum upfrom 0 below C
+		  collect (let ((subvec-len full-len-subvec))
+			    (declare (type index subvec-len))
+			    (case start-or-end
+			      (:start
+			       (if (< n (mod D C))
+				   (incf subvec-len 1)))
+			      (:end
+			       (if (< (+ C (- n) (- 1)) (mod D C))
+				   (incf subvec-len 1))))
+			    (let ((end-idx (min D (the index (+ start-idx subvec-len)))))
+			      (prog1
+				  (list start-idx end-idx)
+				(setq start-idx end-idx)))))))
+      ;; Todo: Make it matrix?
+      result)))
+
+(defun init-and-learn-mithral (X C ncodebooks)
+  "Learns and initializes hash-function, g(a) and prototypes."
   (declare (type matrix x)) ;; X.dtype = :uint16_t
 
   (assert (= 2 (length (the list (matrix-shape X))))
@@ -58,8 +103,13 @@
 	  "Assertion Failed with X.dims == 2 ~a"
 	  (matrix-shape x))
 
-  (let ((N (car (matrix-shape X)))
-	(D (second (matrix-shape X))))
+  (let* ((K 16)
+	 (D (second (matrix-shape X)))
+	 (all-prototypes (matrix `(,C ,K ,D) :dtype (matrix-dtype X)))
+	 (all-splits nil)
+	 (all-buckets)
+	 (pq-idxs (create-codebook-start-and-end-idxs X C)))
+    
     
     ))
 

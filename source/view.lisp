@@ -68,7 +68,7 @@ ViewInstruction is basically created only for 2d-matrix operation, functions mus
     ptr))
 
 (defmacro with-expanding-view-object (view &body body)
-  ""
+  "Note: this macro is depcrecated"
   `(with-slots ((offset offset)
 	        (stride2 stride2)
 	        (stride1 stride1)
@@ -80,19 +80,25 @@ ViewInstruction is basically created only for 2d-matrix operation, functions mus
      (declare (ignorable offset stride2 stride1 offset2 offset1 m n))
      ,@body))
 
-(defmacro with-view-object ((index view) &body body &aux
-						      (mi (gensym))
-						      (ni (gensym)))
+(defmacro with-view-object ((index view &key (absolute (gensym)))
+			    &body body &aux
+					 (mi (gensym))
+					 (ni (gensym)))
   "Given view, iterates body with index."
-  `(with-expanding-view-object ,view
-     (dotimes (,mi m)
-       (dotimes (,ni n)
-	 (let* ((,mi (+ ,mi offset2))
-		(,ni (+ ,ni offset1))
-		(,index (+ offset
-			   (* stride2 ,mi)
-			   (* stride1 ,ni))))
-	   ,@body)))))
+  `(dotimes (,mi (viewinstruction-lisp-m ,view))
+     (dotimes (,ni (viewinstruction-lisp-n ,view))
+       (let* ((,index (+ (viewinstruction-lisp-offset ,view)
+			 (* (viewinstruction-lisp-stride2 ,view)
+			    (+ ,mi (viewinstruction-lisp-offset2 ,view)))
+			 (* (viewinstruction-lisp-stride1 ,view)
+			    (+ ,ni (viewinstruction-lisp-offset1 ,view))))) ;; (2 3 4 ...)
+	      (,absolute (+ (viewinstruction-lisp-offset ,view)
+			    (* (viewinstruction-lisp-stride2 ,view)
+			       ,mi)
+			    (* (viewinstruction-lisp-stride1 ,view)
+			       ,ni)))) ;; (0 1 2 ...)
+	 (declare (ignorable ,absolute))
+	 ,@body))))
 
 
 (defun subscript-p (subscripts)
@@ -188,7 +194,7 @@ Returns - nil"
 
 #|
 Note:
-		      (M 1) fails to be paralellized.
+		      (M 1) fails to be paralellized by SIMD.
 		      Reshaping (M 1) into (1 M) may work. (TODO for performance)
 |#
 		      (with-foreign-object (c '(:struct ViewInstruction))
@@ -226,14 +232,14 @@ Note:
 ; dokka ugokasu
 
 (defun convert-into-lisp-array (matrix &key (freep nil))
-  ""
+  "Convert matrix's visible area into common lisp's simple array"
   (let ((returning-array (make-array
-			  (apply #'* (matrix-shape matrix))
+			  (apply #'* (matrix-visible-shape matrix))
 			  :element-type t ; fixme
 			  )))
     (call-with-visible-area matrix #'(lambda (x)
-				       (with-view-object (index x)
-					 (setf (aref returning-array index)
+				       (with-view-object (index x :absolute index1)
+					 (setf (aref returning-array index1)
 					       (mem-aref (matrix-vec matrix)
 							 (matrix-dtype matrix)
 							 index)))))

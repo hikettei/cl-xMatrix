@@ -78,6 +78,13 @@
   (loop for i fixnum upfrom 0 below (length shapes)
 	collect (get-stride shapes i)))
 
+(defun visible-shape (orig-shape view)
+  "Computes the shape of visible area."
+  (loop for i fixnum upfrom 0 below (length (the list orig-shape))
+	collect (- (view-endindex (nth i view)
+				  (nth i orig-shape))
+		   (view-startindex (nth i view) (nth i orig-shape)))))
+
 (defun print-matrix (matrix stream depth)
   (declare (ignore depth))
   (format stream "~a" (convert-into-lisp-array matrix))
@@ -116,4 +123,5 @@
   (dtype dtype :type matrix-dtype)
   (shape shape :type cons)
   (view view :type cons)
+  (visible-shape (visible-shape shape view) :type cons) 
   (strides (calc-strides shape) :type cons))
