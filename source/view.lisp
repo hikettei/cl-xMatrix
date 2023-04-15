@@ -101,8 +101,9 @@ ViewInstruction is basically created only for 2d-matrix operation, functions mus
 	 ,@body))))
 
 
-(defun subscript-p (subscripts)
-  "Returns t if the format of subscripts are correct."
+(defun subscript-p (subscript)
+  "Returns t if the format of subscripts are correct.
+Legal Subscript -> fixnum/list/t, (external-option ~)"
   t)
 
 (defun subscript-compatiable (matrix subscripts)
@@ -110,11 +111,58 @@ ViewInstruction is basically created only for 2d-matrix operation, functions mus
   t)
 
 (defun view (matrix &rest subscripts)
-  "Creates a view-object"
+  "Creates a view-object
+subscript is following:
+
+Primitive Operations:
+  - fixnum
+  - (start-index end-index)
+  - t
+
+External Operations: (Speed is not my concern)
+  - (:indices 0 2 4 3 ...)
+
+>>Detecting errors is todo, good luck :D<<
+
+1. Unwrapped view-object (consisted of primitive operations):
+  call-with-visible-area -> CFFI/Common Lisp's function
+
+2. Wrapped view-object by external operations (possess :indices)
+  call-with-visible-area ->
+       ExternalOperationParser (<- do (dotimes (i indices)))
+         -> call-with-visible-area -> CFFI/Common Lisp's function
+       Finally, modifies the matrix."
+  
   (declare (type (satisfies subscript-p) subscripts)
 	   (type Matrix matrix))
-  ; supply the lack of dims.
-  (apply #'view-of-matrix matrix subscripts))
+  ;; supply the lack of dims.
+
+  (labels ((external-operations-p (sub)
+	     (when (and (typep sub 'list)
+			(typep (car sub) 'keyword))
+	       (if (eql (car sub) :indices)
+		   t
+		   (error "Unknown External Operation: ~a. Only :indices keyword is available" sub)))))
+
+    (unless (= (length (matrix-shape matrix))
+	       (length subscripts))
+      (error "view, dimensions doesn't match (auto complement is to do)"))
+    
+    (let ((external-operations (find-if #'external-operations-p subscripts)))
+      (if external-operations
+	  (let ((external-operation-dim
+		  (position-if #'external-operations-p subscripts)))
+	    (unless (= (count-if #'external-operations-p subscripts) 1)
+	      (error "External options can be used at once in one view-obj."))
+
+	    (let ((view-to-return (apply #'view-of-matrix matrix subscripts)))
+	      (setf (matrix-external-operation view-to-return)
+		    external-operations)
+	      (setf (matrix-external-operation-dim view-to-return)
+		    external-operation-dim)
+	      view-to-return))
+	  ;; Otherwise creates view-object normally. 
+	  (apply #'view-of-matrix matrix subscripts)))))
 
 (defmacro with-view ((var matrix &rest subscripts) &body body)
   `(let ((,var (view ,matrix ,@subscripts)))
@@ -136,7 +184,15 @@ ViewInstruction is basically created only for 2d-matrix operation, functions mus
   (declare (ignore _))
   (typecase view
     (list
-     (the index (car view)))
+     (typecase (car view)
+       (index (the index (car view)))
+       (keyword
+	(case (car view)
+	  (:indices
+	   0)
+	  (T
+	   (error "view-startindex: unknown keyword"))))
+       (T (error "view-startindex: invaild view-instruction fell through"))))
     (index
      (the index view))
     (t
@@ -146,11 +202,41 @@ ViewInstruction is basically created only for 2d-matrix operation, functions mus
   (declare (optimize (safety 0)))
   (typecase view
     (list
-     (the index (second view)))
+     (typecase (car view)
+       (index (the index (second view)))
+       (keyword
+	(case (car view)
+	  (:indices
+	   1)
+	  (T
+	   (error "view-endindex: unknown keyword"))))
+       (T (error "view-endindex: unknown view-instruction fell through"))))
     (index
      (the index (1+ view)))
     (t
      (the index shape))))
+
+(defun call-with-visible-area-and-extope (matrix function)
+  "Handles the external operation of matrix"
+  (declare (optimize (speed 3))
+	   (type matrix matrix)
+	   (type function function))
+  (with-slots ((external-operation external-operation)
+	       (external-operation-dim external-operation-dim))
+      matrix
+    (case (car external-operation)
+      (:indices
+       (let ((indices (cdr external-operation))
+	     ;; copy-list: avoid side effects.
+	     (view   (copy-list (matrix-view matrix))))
+	 (dolist (index indices)
+	   (setf (nth external-operation-dim view) index)
+	   (let ((matrix* (apply #'view matrix view)))
+	     (call-with-visible-area matrix* function))))
+       nil)
+      (T
+       (error "Can't handle with unknown ext-operation ~a" external-operation))))
+  nil)
 
 
 (defun call-with-visible-area (matrix function)
@@ -162,6 +248,11 @@ Returns - nil"
   (declare (optimize (speed 3))
 	   (type matrix matrix)
 	   (type function function))
+
+  (when (matrix-external-operation matrix)
+    (return-from call-with-visible-area
+      (call-with-visible-area-and-extope matrix function)))
+  
   (let ((dims (matrix-shape matrix))
 	(views (matrix-view matrix))
 	(strides (matrix-strides matrix)))
@@ -210,12 +301,12 @@ Note:
 		      (M 1) fails to be paralellized by SIMD.
 		      Reshaping (M 1) into (1 M) may work. (TODO for performance)
 |#
-		      (with-foreign-object (c '(:struct ViewInstruction))
-			(funcall function instruction)
-			))))
+		
+		      (funcall function instruction))))
 		 ((= rest-dims 1)
 		  ; (M) regard as (M 1)
 
+		  (format t "Warning: CALL_WITH_VISIBLE_AREA currently doesn't support for 1d mat (plz reshape it into (1 M))")
 		  ; fixme
 		  (setq dims `(,@dims 1))
 		  (setq views `(,@views 1))

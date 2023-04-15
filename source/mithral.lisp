@@ -23,9 +23,9 @@
 ;; Bucket B(t, i) where t is the tree's depth and is in the index in the node.
 
 ;; Figure:
-;;               B(1, 1)
+;;               B(1, 1) <- Possess the original X
 ;;           /---------------\
-;;       B(2, 1)           B(2,2)    
+;;       B(2, 1)           B(2,2) <- They possess the view of X. (TODO)
 ;;     /---------\        /--------\
 ;;   B(3, 1)  B(3, 2)  B(3, 3)  B(3, 4)    
 ;;
@@ -126,9 +126,10 @@
 				      bucket-id
 				      (bucket-id bucket))))
   "Creates the clone of the bucket"
+  ;; To fix: don't create copy! the toplevel matrix's view is enough.
   (make-bucket
-   :sumx (%copy (bucket-sumx bucket))
-   :sumx2 (%copy (bucket-sumx2 bucket))
+   :sumx  (bucket-sumx bucket)
+   :sumx2 (bucket-sumx2 bucket)
    :point-ids (copy-list (bucket-point-ids bucket))
    :bucket-id bucket-id))
 
@@ -140,30 +141,55 @@
 			   (x-orig nil))
   ;; 書き直す！
   "Given val (threshold v?), splits the bucket, and increment: node-level t+=1.
-B(t, ?) -> B(t+1, ?), B(t+1, ??), ..."
+B(t, ?) -> B(t+1, ?), B(t+1, ??), ...
+
+Algorithm 2 Adding The Next Level to The Hashing Tree.
+
+Bucket-Split: B(A) -> B(id0), B(id1)"
+  ;; それぞれの分割した行列は、オリジナルのView
   (let* ((id0 (* 2 (bucket-id bucket)))
  	 (id1 (+ id0 1)))
+    (declare (type index id0 id1))
 
     (when (or (null x)
 	      (< (bucket-n bucket) 2))
+      ;; Copy of this Bucket + An Empty Bucket.
       (let ((return-value (list (deepcopy bucket :bucket-id id0)
 				(make-bucket :d (bucket-d bucket)
 					     :bucket-id (bucket-id bucket)))))
-
-	;; should delete current bucket? (destroy-bucket bucket)
-	;; if the bucket is never used...
 	(return-from bucket-split return-value)))
 
     (if (null (bucket-point-ids bucket))
 	(error "Assertion Failed because point-ids=nil"))
 
-    ;; Bucket(0) -> Bucket(1), Bucket(2), Bucket(3), ...
+    
+    ;; Bucket(t, 0) -> Bucket(t+1, ?), Bucket(t+1, ??) ...
+    ;; ? = transition-states
 
-    (let ((result)
+
+    (let ((bucket-id0)
+	  (bucket-id1))
+      (declare (type list bucket-id0 bucket-id1))
+
+      (labels ((create-bucket ()
+
+		 )
+	       (create-buckets (id)
+		 
+		 ))
+
+
+	)
+      )
+    
+    (let ((result-buckets)
 	  (transition-states (bucket-point-ids bucket)))
+      (declare (type list result-buckets transition-states))
       (dolist (transition transition-states)
 	;; x-orig[N, D], x-orig-t [1~3, D] etc...
+
 	(let* ((x-t (unless (< transition (car (matrix-visible-shape x-orig)))
+		      ;; Assure if the transition index < the original matix's N
 		      nil
 		      (view x-orig transition t)))
 	       (x-orig-t x-t)
@@ -173,7 +199,18 @@ B(t, ?) -> B(t+1, ?), B(t+1, ??), ..."
 	       ;; 著者の実装に寄せない方がいい気がしてきた
 	       ))))))
 
-;; optimal_split_vals
+;; todo: view強化
+(defmethod optimial-split-val ((bucket MSBucket) x dim)
+  "Returns the split vals j"
+
+  (cond
+    ((or (< (bucket-n bucket) 2)
+	 (null (bucket-point-ids bucket)))
+     (values 0 0))
+    (T
+     ;(optimial-split-val (view x point-ids))
+     )))
+
 
 ;; Computes losses
 (defmethod col-variances ((bucket MSBucket))
@@ -194,7 +231,6 @@ B(t, ?) -> B(t+1, ?), B(t+1, ??), ..."
 (defmethod col-sum-sqs ((bucket MSBucket))
   (%scalar-mul (col-variances bucket)
 	       (bucket-n bucket)))
-
     
 
 (defun create-codebook-idxs (D C &key (start-or-end :start))
@@ -237,30 +273,43 @@ B(t, ?) -> B(t+1, ?), B(t+1, ??), ..."
 				 N
 				 D
 				 &key
-				   (nsplits 4)
+				   (nsplits 4) ;; Levels of resuting binary hash tree. (4 is the best).
 				   (need-prototypes nil))
-  ;; dont forget memfree them
-  (let* ((X (%copy X))
-	 (X-square (%square (%copy x)))
-	 (X-orig (%copy x-orig))
+  "Training the given prototype, X and X-orig
+  X, X-orig = [C, D]"
+
+  ;; Assert:: (> nsplits 4)
+  
+  ;; NOTE: DONT FORGET MEMFREE
+  ;; Note: Operations Bucket does is barely: sum/elwise-mul/elwise-div?
+  (let* ((X-copy (%copy X)) ;; X-copy is shared by every buckets.
+	 (X-square (%square (%copy X)))
+	 (X-orig (%copy x-orig)) ;; X-copy is shared too?
 	 (buckets (list
 		   ;; Creates the toplevel of bucket.
 		   ;; point-ids = 0~N because it has the original X.
+		   ;; Semantics: B(1, 0) -> B(2, 0), B(2, 1), ..., B(2, N)
 		   (make-bucket
 		    :sumx (%sum x :axis 0)
 		    :sumx2 (%sum x-square :axis 0)
 		    :point-ids (loop for i fixnum upfrom 0 below N
 				     collect i))))
 	 (splits)
+	 
+	 ;; The storerooms of losses (should be list?)
 	 (col-losses (matrix `(1 ,D) :dtype :float))
+	 
 	 (offset 0.0)
 	 (scal-by 1.0)
-	 (X (%scalar-add (%scalar-mul X scal-by) offset)))
+	 ;; X' = alpha*X + offset
+	 (x-copy (%scalar-add (%scalar-mul X-copy scal-by) offset)))
 
+    ;; これより下でAlloc禁止
+    
     (loop repeat nsplits
 	  do (progn
 	       (%fill col-losses 0.0)
-
+	       
 	       (dolist (buck buckets)
 		 (let ((loss (col-sum-sqs buck)))
 		   (%adds col-losses loss)
@@ -271,7 +320,14 @@ B(t, ?) -> B(t+1, ?), B(t+1, ??), ..."
 	       
 	       
 
-	       ))))
+	       ))
+
+    (free-mat X-copy)
+    (free-mat X-square)
+    (free-mat X-orig)
+    (free-mat col-losses)
+
+    ))
 
 
 (defun init-and-learn-mithral (X
@@ -296,23 +352,29 @@ y = [D M] (To be multiplied)"
 	 (N (car (matrix-shape X)))
 	 (D (second (matrix-shape X)))
 	 (all-prototypes (matrix `(,C ,K ,D) :dtype (matrix-dtype X)))
-	 (all-splits nil)
-	 (all-buckets nil)
-	 ;; indices of disjoints based on C are needed when training KMeans.
+	 (all-splits nil) ;; The Result
+	 (all-buckets nil) ;; Tmp List
+	 ;; indices of disjoints based on C are needed when training KMeans. (j)
 	 (pq-idxs (create-codebook-idxs D C :start-or-end :start)))
 
-    (dotimes (cth C) ;; Applying each disjoint-point.
+    (dotimes (cth C) ;; Applying to each prototypes.
       (let ((cth-idx (nth cth pq-idxs)))
 	(with-views ((use-x-error x-error t `(,(first cth-idx)
 					      ,(second cth-idx)))
 		     (use-x-orig  x-orig  t `(,(first cth-idx)
 					      ,(second cth-idx))))
+	  ;; Iteraiton: [100, D] -> [0~4, D], [4~8, D] ...
 	  (multiple-value-bind (msplits protos buckets)
-	      (learn-binary-tree-splits use-x-error use-x-orig N D :need-prototypes nil)
+	      (learn-binary-tree-splits
+	       use-x-error use-x-orig N D :need-prototypes nil)
 	    (declare (ignore protos))
 
 	    ;; Appending prototypes and so on
-	    ))))))
+	    ))))
+
+    (free-mat x-error)
+
+    ))
 
 ;; N x D @ D x M
 (defclass MithralAMM ()

@@ -119,9 +119,11 @@
 				   (shape (matrix-shape matrix))
 				   (view (loop repeat (length (the list shape))
 					       collect t)))))
-  (vec matrix-vec)
+  (vec matrix-vec) ;; The ORIGINAL Matrix's CFFI Pointer
   (dtype dtype :type matrix-dtype)
-  (shape shape :type cons)
-  (view view :type cons)
-  (visible-shape (visible-shape shape view) :type cons) 
+  (shape shape :type cons) ;; The ORIGINAL Matrix's shape
+  (view view :type cons) ;; view instruction
+  (external-operation nil)
+  (external-operation-dim nil)
+  (visible-shape (visible-shape shape view) :type cons) ;; visible area's shape following viewinstruction
   (strides (calc-strides (visible-shape shape view)) :type cons))
