@@ -47,8 +47,8 @@
 			       (point-ids nil) ;;
 			       (bucket-id 0)   ;; The bucket's index.
 			       (adjustable nil);; allowed to modify? (maybe unused)
-			       (dtype :float)  ;; dtype of matrix
 			     &aux
+			       (dtype :float) ;;:tmp
 			       (point-ids (when (null point-ids)
 					    (unless (= N 0)
 					      (error "Assetion failed with N = 0"))
@@ -175,13 +175,11 @@ Bucket-Split: B(A) -> B(id0), B(id1)"
       ;; dim and val is a parameter to be optimized.
 
       ;; Note: X and point-idxs are compatible?
-      (let* ((x (view x `(:indices ,@transition-states dim) t))
-	     (x-mask (%cmp> x val))
-	     (not-mask (%lognot x-mask)))
+      (let* ((xd (view x `(:indices ,@transition-states dim) t)))
+	(print xd)
 
 	))))
 
-;; todo: view強化
 (defmethod optimal-split-val ((bucket MSBucket) x dim)
   "Returns the split vals j"
 
@@ -190,8 +188,10 @@ Bucket-Split: B(A) -> B(id0), B(id1)"
 	 (null (bucket-point-ids bucket)))
      (values 0 0))
     (T
-     
-     )))
+     (let ((my-idx (bucket-point-ids bucket)))
+       (compute-optimal-split-val
+	(view x my-idx t)
+	dim)))))
 
 
 ;; Computes losses
@@ -213,7 +213,89 @@ Bucket-Split: B(A) -> B(id0), B(id1)"
 (defmethod col-sum-sqs ((bucket MSBucket))
   (%scalar-mul (col-variances bucket)
 	       (bucket-n bucket)))
-    
+
+(defmethod bucket-loss ((bucket MSBucket))
+  (let ((loss (%sumup (col-sum-sqs bucket))))
+    (if (> loss 0)
+	loss
+	0.0)))
+
+;; Todo Benchmark
+(defun cumsse-cols (x
+		    &aux
+		      (N (car (matrix-visible-shape x)))
+		      (D (second (matrix-visible-shape x)))
+		      (dtype (matrix-dtype x)))
+  "Computes SSE (Sum of Square Errors) column-wise"
+  (declare (optimize (speed 3))
+	   (type index N D))
+  (let ((cumsses (matrix `(,N ,D) :dtype dtype))
+	(cumX-cols (matrix `(1 ,D) :dtype dtype))
+	(cumx2-cols (matrix `(1 ,D) :dtype dtype)))
+
+
+    (dotimes (j D)
+      (with-views ((cxc cumX-cols j t)
+		   (cxc2 cumX2-cols j t)
+		   (x* x 0 j))
+	(%move x* cxc)
+	(%move x* cxc2)
+	(%square cxc2)))
+
+    (let ((sqarea))
+      (loop for i fixnum upfrom 0 below N
+	    do (let ((lr (/ (1+ i))))
+		 (dotimes (j D)
+		   (with-views ((cs cumsses i j)
+				(cxc cumX-cols j t)
+				(cxc2 cumX2-cols j t)
+				(x* x i j))
+		     (%adds cxc x*)
+		     (%adds cxc2 (%square (if sqarea
+					      (progn
+						(%move x* sqarea))
+					      (progn
+						(setq sqarea (%copy x*))
+						sqarea)))) ;; copy
+		     (let* ((meanX (%scalar-mul cxc lr))
+			    (mx (%muls meanX cxc))
+			    (mx (%scalar-mul mx -1.0)))
+		       
+		       (%move cxc2 cs)
+		       (%adds cs mx))))))
+      (free-mat cumX-cols)
+      (free-mat cumx2-cols)
+      (if sqarea
+	  (free-mat sqarea))
+      cumsses)))
+
+(defun compute-optimal-split-val (x dim)
+  (let* ((N (car (matrix-visible-shape X)))
+ 	 (sort-idxs (argsort (convert-into-lisp-array (view x t dim) :freep nil)))
+	 (sort-idxs-rev (reverse sort-idxs))
+	 (sses-head          (cumsse-cols (view x sort-idxs-rev t)))
+	 (sses-tail-reversed (cumsse-cols (view x sort-idxs t)))
+	 (sses sses-head)
+	 (last-index  (car (matrix-visible-shape sses-head)))
+	 (indices (loop for i downfrom last-index to 0
+			collect i)))
+    ;; to free: cumsse-cols
+
+    (%adds (view sses `(0, (1- last-index)) t)
+	   (view sses-tail-reversed `(:indices ,@indices) t))
+
+    (let* ((sses (%sum sses :axis 1)) ;; To Free: SSES
+	   (best-idx (aref
+		      (argsort (convert-into-lisp-array sses :freep nil) :test #'<)
+		      0))
+	   (next-idx (min (1- N) (1+ best-idx)))
+	   (col (%copy (view x t dim))))
+
+      ;; todo: sort vals
+
+      
+
+      )))
 
 (defun create-codebook-idxs (D C &key (start-or-end :start))
   "Returning the disjoint indices in this format: [0, 8], [8, 16] ... [start_id, end_id], maddness split the offline matrix A's each row into C. (Prototypes)"
@@ -250,21 +332,36 @@ Bucket-Split: B(A) -> B(id0), B(id1)"
       ;; Todo: Make it matrix?
       result)))
 
+(defun argsort (array &key (test #'>))
+  (declare (optimize (speed 3))
+	   (type function test)
+	   (type (simple-array t (*)) array))
+  (mapcar #'second
+          (stable-sort
+            (loop
+              for index fixnum from 0
+              for element-i fixnum upfrom 0 below (array-total-size array)
+              collect (list (aref array element-i) index))
+	    test
+            :key #'first)))
+
 (defun learn-binary-tree-splits (X
 				 x-orig
 				 N
-				 D
 				 &key
 				   (nsplits 4) ;; Levels of resuting binary hash tree. (4 is the best).
 				   (need-prototypes nil))
   "Training the given prototype, X and X-orig
-  X, X-orig = [C, D]"
+  X, X-orig = [C, D]
+Algorithm 2. Adding The Next Levels to The Tree"
 
   ;; Assert:: (> nsplits 4)
   
   ;; NOTE: DONT FORGET MEMFREE
   ;; Note: Operations Bucket does is barely: sum/elwise-mul/elwise-div?
-  (let* ((X-copy (%copy X)) ;; X-copy is shared by every buckets.
+  
+  (let* ((D (second (matrix-visible-shape X)))
+	 (X-copy (%copy X)) ;; X-copy is shared by every buckets.
 	 (X-square (%square (%copy X)))
 	 (X-orig (%copy x-orig)) ;; X-copy is shared too?
 	 (buckets (list
@@ -290,13 +387,36 @@ Bucket-Split: B(A) -> B(id0), B(id1)"
     
     (loop repeat nsplits
 	  do (progn
+	       ;; be list?
 	       (%fill col-losses 0.0)
 	       
+	       ;; heuristic = bucket_sse
 	       (dolist (buck buckets)
 		 (let ((loss (col-sum-sqs buck)))
 		   (%adds col-losses loss)
 		   (free-mat loss)))
 
+	       ;; dim-order -> [Largest Loss ... Smallest Loss]
+	       (let* ((dim-order (the list (argsort (convert-into-lisp-array col-losses :freep nil))))
+		      (dim-size (length dim-order))
+		      (total-losses (matrix `(1 ,dim-size) :dtype (matrix-dtype X)))
+		      (dim-split-vals))
+
+		 (loop for d fixnum upfrom 0
+		       for dim fixnum in dim-order
+		       do (let ((split-vals))
+			    (dolist (b buckets)
+			      (multiple-value-bind (val loss) (optimal-split-val b X dim)
+
+				)
+			    
+
+			      ))
+
+		 (print dim-order))
+
+		 
+	       
 	       
 
 	       
@@ -304,10 +424,10 @@ Bucket-Split: B(A) -> B(id0), B(id1)"
 
 	       ))
 
-    (free-mat X-copy)
-    (free-mat X-square)
-    (free-mat X-orig)
-    (free-mat col-losses)
+    ;(free-mat X-copy)
+    ;(free-mat X-square)
+    ;(free-mat X-orig)
+    ;(free-mat col-losses)
 
     ))
 
@@ -322,7 +442,8 @@ In the maddness paper, the single-float matrix X is compressed into lower bit's 
 
 X = [N D] (To be optimized)
 y = [D M] (To be multiplied)"
-  (declare (type matrix x)) ;; X.dtype = :uint16_t
+  (declare (type matrix x)
+	   (type index C ncodebooks)) ;; X.dtype = :uint16_t
 
   (assert (= 2 (length (the list (matrix-shape X))))
 	  (x)
@@ -347,8 +468,7 @@ y = [D M] (To be multiplied)"
 					      ,(second cth-idx))))
 	  ;; Iteraiton: [100, D] -> [0~4, D], [4~8, D] ...
 	  (multiple-value-bind (msplits protos buckets)
-	      (learn-binary-tree-splits
-	       use-x-error use-x-orig N D :need-prototypes nil)
+	      (learn-binary-tree-splits use-x-error use-x-orig N :need-prototypes nil)
 	    (declare (ignore protos))
 
 	    ;; Appending prototypes and so on
