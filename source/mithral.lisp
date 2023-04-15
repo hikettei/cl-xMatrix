@@ -169,14 +169,7 @@ Algorithm. 1 Maddness Hash"
     
 
 (defun create-codebook-idxs (D C &key (start-or-end :start))
-  "
-    returns vector (C, 2)
-    [
-      start_idx_0, end_idx_0,
-      start_idx_1, end_idx_1,
-      ...
-    ]
-  "
+  "Returning the disjoint indices in this format: [0, 8], [8, 16] ... [start_id, end_id], maddness split the offline matrix A's each row into C. (Prototypes)"
   (declare (optimize (speed 3))
 	   (type index D C)
 	   (type keyword start-or-end))
@@ -242,12 +235,22 @@ Algorithm. 1 Maddness Hash"
 		   (%adds col-losses loss)
 		   (free-mat loss)))
 
-	       (print col-losses)
+	       
+	       
 
 	       ))))
 
-(defun init-and-learn-mithral (X C ncodebooks)
-  "Learns and initializes hash-function, g(a) and prototypes."
+
+(defun init-and-learn-mithral (X
+			       C
+			       ncodebooks
+			       &key
+				 (K 16))
+  "Creates All Prototypes from C, and learning hash-function g(a).
+In the maddness paper, the single-float matrix X is compressed into lower bit's matrix, 8bit and restored as it was. however this implementation exceptes to X uint16_t.
+
+X = [N D] (To be optimized)
+y = [D M] (To be multiplied)"
   (declare (type matrix x)) ;; X.dtype = :uint16_t
 
   (assert (= 2 (length (the list (matrix-shape X))))
@@ -255,9 +258,8 @@ Algorithm. 1 Maddness Hash"
 	  "Assertion Failed with X.dims == 2 ~a"
 	  (matrix-shape x))
 
-  (let* ((x-error (%copy X)) ;; memfree x-error
-	 (x-orig x)
-	 (K 16)
+  (let* ((x-error (%copy X)) ;; Valid Dataset (DONT FORGET: memfree x-error)
+	 (x-orig x) ;; Training Dataset (minimize ||a-a'||)
 	 (N (car (matrix-shape X)))
 	 (D (second (matrix-shape X)))
 	 (all-prototypes (matrix `(,C ,K ,D) :dtype (matrix-dtype X)))
@@ -266,7 +268,7 @@ Algorithm. 1 Maddness Hash"
 	 ;; indices of disjoints based on C are needed when training KMeans.
 	 (pq-idxs (create-codebook-idxs D C :start-or-end :start)))
 
-    (dotimes (cth C)
+    (dotimes (cth C) ;; Applying each disjoint-point.
       (let ((cth-idx (nth cth pq-idxs)))
 	(with-views ((use-x-error x-error t `(,(first cth-idx)
 					      ,(second cth-idx)))
@@ -276,6 +278,7 @@ Algorithm. 1 Maddness Hash"
 	      (learn-binary-tree-splits use-x-error use-x-orig N D :need-prototypes nil)
 	    (declare (ignore protos))
 
+	    ;; Appending prototypes and so on
 	    ))))))
 
 ;; N x D @ D x M

@@ -121,7 +121,7 @@ void fp32_abs(const struct ViewInstruction view, single_float* vec) {
     for (int mi = view.offset2; mi < view.m; mi++) {			\
       for (int ni = view.offset1; ni < view.n; ni++) {			\
         int index = view.offset + mi * view.stride2 + ni * view.stride1; \
-	int k = view.offset + (mi - view.offset2) * view.stride2 + (ni - view.offset1) * view.stride1; \
+	int index1 = view.offset + (mi - view.offset2) * view.stride2 + (ni - view.offset1) * view.stride1; \
 	(element_wise_operation);					\
       }									\
     }									\
