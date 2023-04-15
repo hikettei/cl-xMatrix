@@ -1,8 +1,12 @@
 
 (in-package :cl-xmatrix)
 
-;; Wrappers for Mithral
-		  
+;; This is the my reimplementation of Maddness
+;; https://arxiv.org/pdf/2106.10860.pdf
+;; Ref: (Bolt, the author's implementation) https://github.com/dblalock/bolt/blob/e7726a4c165cc45ac117e9eabd8761013a26640e/experiments/python/clusterize.py#L1362
+;;      (Halutmatmul) https://github.com/joennlae/halutmatmul
+
+;; Wrappers for Mithral's C++ API
 (defcfun ("mithral_encode_int16_t" mithral-encode) :void
   (X-pointer (:pointer :uint16))
   (nrows :int64)
@@ -14,22 +18,36 @@
   (ncodebooks :int)
   (out-pointer (:pointer :uint8)))
 
-;; First _learn_hash_buckets_and_prototype
-;; For first, impl some arithmetic ops.
 
-;; Never forget to memfree
-(defstruct (MSBucket
+;; 4.2 Learning the Hash-Function Parameters
+;; Bucket B(t, i) where t is the tree's depth and is in the index in the node.
+
+;; Figure:
+;;               B(1, 1)
+;;           /---------------\
+;;       B(2, 1)           B(2,2)    
+;;     /---------\        /--------\
+;;   B(3, 1)  B(3, 2)  B(3, 3)  B(3, 4)    
+;;
+;; In each level of t, 
+;;
+;; In conclusion, through this operation: I obtain: the optimized thresholds v and split indices j
+;; Note: I don't have to make copies of X every time the node goes deeper but alloc space for sumx1, sumx2.
+;; Note: B(1, 1) is the special case that the vector is the equivalent to the original. (that is why often I've compared (< d 1))
+;; Todo: perhaps I can give the more faster implementation of traning.
+
+(defstruct (MSBucket ;; Bucket
 	    (:conc-name bucket-)
 	    (:constructor
 		make-bucket (&key
-			       (d nil)
-			       (n 0)
-			       (sumx nil)
-			       (sumx2 nil)
-			       (point-ids nil)
-			       (bucket-id 0)
-			       (adjustable nil)
-			       (dtype :float)
+			       (d nil)         ;; d=tree's level (i.e.: t)
+			       (n 0)           ;; the number of nodes the bucket has.
+			       (sumx nil)      ;; For compute losses
+			       (sumx2 nil)     ;; For compute losses
+			       (point-ids nil) ;;
+			       (bucket-id 0)   ;; The bucket's index.
+			       (adjustable nil);; allowed to modify? (maybe unused)
+			       (dtype :float)  ;; dtype of matrix
 			     &aux
 			       (point-ids (when (null point-ids)
 					    (unless (= N 0)
@@ -39,13 +57,15 @@
 			       (id bucket-id)
 			       (point-ids point-ids)
 			       (d (cond
-				    ((and (or (null d)
-					      (< d 1))
+				    ((and (or (null d) ;; is bucket a top?
+					      (< d 1)) 
 					  (not (null sumx)))
+				     ;; => Bucket posses the original X.
 				     (apply #'* (matrix-shape sumx)))
-				    ((and (or (null d)
+				    ((and (or (null d) ;; is bucket a top?
 					      (< d 1))
 					  (not (null sumx2)))
+				     ;; => Bucket possess the original X.
 				     (apply #'* (matrix-shape sumx2)))
 				    (t
 				     (if (null d)
@@ -57,9 +77,9 @@
 			       (sumx2 (if sumx2
 					  sumx2
 					  (matrix `(,d) :dtype dtype))))))
-  (point-ids point-ids :type list)
+  (point-ids point-ids :type list) ;; the list of indices that could be branch's destination.
   (n n :type index)
-  (id id :type fixnum)
+  (id id :type fixnum) ;; split-index j1 ... j4
   (adjustable adjustable :type boolean)
   (d d :type fixnum)
   (sumx sumx :type matrix)
@@ -67,11 +87,14 @@
 
 
 (defmethod destroy-bucket ((bucket MSBucket))
+  "Memfree the bucket's non-gc-able matrices"
   (with-slots ((sumx sumx) (sumx2 sumx2)) bucket
     (free-mat sumx)
     (free-mat sumx2)))
 
 (defmethod add-point ((bucket MSBucket) point &key (point-idx nil))
+  "B(3, 1)  B(3, 2)  B(3, 3)  B(3, 4) ... <- add B(t, point-idx)
+   It isn't evaluated until bucket-split is called."
   (unless (bucket-adjustable bucket)
     (error "The bucket is not adjustable."))
 
@@ -102,6 +125,7 @@
 		       (bucket-id (if bucket-id
 				      bucket-id
 				      (bucket-id bucket))))
+  "Creates the clone of the bucket"
   (make-bucket
    :sumx (%copy (bucket-sumx bucket))
    :sumx2 (%copy (bucket-sumx2 bucket))
@@ -114,8 +138,9 @@
 			   (dim nil)
 			   (val nil)
 			   (x-orig nil))
-  "Note: Returns a list
-Algorithm. 1 Maddness Hash"
+  ;; 書き直す！
+  "Given val (threshold v?), splits the bucket, and increment: node-level t+=1.
+B(t, ?) -> B(t+1, ?), B(t+1, ??), ..."
   (let* ((id0 (* 2 (bucket-id bucket)))
  	 (id1 (+ id0 1)))
 
@@ -144,9 +169,13 @@ Algorithm. 1 Maddness Hash"
 	       (x-orig-t x-t)
 	       (mask (%cmp x-orig-t val)) ;; val is scalar
 	       (not-mask (%lognot mask))
-	       
+
+	       ;; 著者の実装に寄せない方がいい気がしてきた
 	       ))))))
 
+;; optimal_split_vals
+
+;; Computes losses
 (defmethod col-variances ((bucket MSBucket))
   (if (< (bucket-n bucket) 1)
       (matrix `(1 ,(bucket-d bucket)) :dtype :float)
@@ -215,6 +244,8 @@ Algorithm. 1 Maddness Hash"
 	 (X-square (%square (%copy x)))
 	 (X-orig (%copy x-orig))
 	 (buckets (list
+		   ;; Creates the toplevel of bucket.
+		   ;; point-ids = 0~N because it has the original X.
 		   (make-bucket
 		    :sumx (%sum x :axis 0)
 		    :sumx2 (%sum x-square :axis 0)
@@ -234,6 +265,8 @@ Algorithm. 1 Maddness Hash"
 		 (let ((loss (col-sum-sqs buck)))
 		   (%adds col-losses loss)
 		   (free-mat loss)))
+
+	       
 
 	       
 	       
