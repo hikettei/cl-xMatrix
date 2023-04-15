@@ -125,7 +125,7 @@ Legal Subscript -> fixnum/list/t, (external-option ~)"
 		     ;; note: don't return sub directly, add view.
 		     (typecase view
 		       (index
-			;; M[2][0][0]
+			;; M[2][0]
 			(+ view sub))
 		       (list
 			(typecase (car view)
@@ -148,13 +148,13 @@ Legal Subscript -> fixnum/list/t, (external-option ~)"
 		       (list
 			(typecase (car view)
 			  (keyword
-			   ;; M[:indices 1 2 3][2:4]
+			   ;; M[:indices 1 2 3 4][0:2]
 			   ;; Todo: Detect out of range
 			   `(:indices
 			     ,@(loop for i fixnum upfrom (car sub) below (second sub)
 				     collect (nth i (cdr view)))))
 			  (index
-			   ;; M[2:10]([1:2])
+			   ;; M[2:10][1:2] -> M[3:5]
 			   ;; Todo: Detect out of range.
 			   `(,(+ (car view) (car sub))
 			     ,(+ (car view) (second sub))))
@@ -174,11 +174,18 @@ Legal Subscript -> fixnum/list/t, (external-option ~)"
 					 'list
 					 #'(lambda (k)
 					     (nth k (cdr view)))
-					 sub)))
+					 (cdr sub))))
 			  (index
-			   ;; M[:indices 1 2 3 4 5][0:2]
-			   `(:indices ,@(loop for k fixnum upfrom (car sub) below (second sub)
-					      collect (nth k (cdr view)))))
+			   ;; M[2:6][:indices 1 2]
+			   (let ((ls (loop for i fixnum
+					   upfrom (car view)
+					     below (second view)
+					   collect i)))
+			     `(:indices ,@(map
+					   'list
+					   #'(lambda (k)
+					       (nth k ls))
+					   (cdr sub)))))
 			  (T
 			   (error "Cant handle this subscript: ~a" view))))
 		       ;; M[T][:indices 1 2 3]
@@ -203,7 +210,7 @@ Legal Subscript -> fixnum/list/t, (external-option ~)"
       subscripts))
 
 (defun view (matrix &rest subscripts
-	     &aux ;; to add: -1 -2...
+	     &aux ;; todo: support -1 -2...
 	       (subscripts (compute-absolute-subscripts matrix subscripts)))
   "Creates a view-object
 subscript is following:
@@ -257,14 +264,14 @@ Memo: define-external-operation or something would be fun."
 		  (position-if #'external-operations-p subscripts)))
 	    (unless (= (count-if #'external-operations-p subscripts) 1)
 	      (error "External options can be used at once in one view-obj."))
-
+	    
 	    (let ((view-to-return (apply #'view-of-matrix matrix subscripts)))
 	      (setf (matrix-external-operation view-to-return)
 		    external-operations)
 	      (setf (matrix-external-operation-dim view-to-return)
 		    external-operation-dim)
 	      view-to-return))
-	  ;; Otherwise creates view-object normally. 
+	  ;; Otherwise creates view-object normally.
 	  (apply #'view-of-matrix matrix subscripts)))))
 
 (defmacro with-view ((var matrix &rest subscripts) &body body)
@@ -291,8 +298,7 @@ Memo: define-external-operation or something would be fun."
        (index (the index (car view)))
        (keyword
 	(case (car view)
-	  (:indices
-	   0)
+	  (:indices 0)
 	  (T
 	   (error "view-startindex: unknown keyword"))))
        (T (error "view-startindex: invaild view-instruction fell through"))))
@@ -309,8 +315,7 @@ Memo: define-external-operation or something would be fun."
        (index (the index (second view)))
        (keyword
 	(case (car view)
-	  (:indices
-	   1)
+	  (:indices (1- (length view)))
 	  (T
 	   (error "view-endindex: unknown keyword"))))
        (T (error "view-endindex: unknown view-instruction fell through"))))
@@ -334,7 +339,7 @@ Memo: define-external-operation or something would be fun."
 	     (view   (copy-list (matrix-view matrix))))
 	 (dolist (index indices)
 	   (setf (nth external-operation-dim view) index)
-	   (let ((matrix* (apply #'view matrix view)))
+	   (let ((matrix* (apply #'view-of-matrix matrix view)))
 	     (call-with-visible-area matrix* function))))
        nil)
       (T
