@@ -165,42 +165,24 @@ Bucket-Split: B(A) -> B(id0), B(id1)"
     
     ;; Bucket(t, 0) -> Bucket(t+1, ?), Bucket(t+1, ??) ...
     ;; ? = transition-states
-
-
-    (let ((bucket-id0)
-	  (bucket-id1))
-      (declare (type list bucket-id0 bucket-id1))
-
-      (labels ((create-bucket ()
-
-		 )
-	       (create-buckets (id)
-		 
-		 ))
-
-
-	)
-      )
     
-    (let ((result-buckets)
-	  (transition-states (bucket-point-ids bucket)))
-      (declare (type list result-buckets transition-states))
-      (dolist (transition transition-states)
-	;; x-orig[N, D], x-orig-t [1~3, D] etc...
+    (let ((transition-states (bucket-point-ids bucket)))
+      (declare (type list transition-states))
+      ;;%cmp %lognot
 
-	(let* ((x-t (unless (< transition (car (matrix-visible-shape x-orig)))
-		      ;; Assure if the transition index < the original matix's N
-		      nil
-		      (view x-orig transition t)))
-	       (x-orig-t x-t)
-	       (mask (%cmp x-orig-t val)) ;; val is scalar
-	       (not-mask (%lognot mask))
+      ;; Create masks for point-idx rows
+      ;; And Compares the row[dim] with val.
+      ;; dim and val is a parameter to be optimized.
 
-	       ;; 著者の実装に寄せない方がいい気がしてきた
-	       ))))))
+      ;; Note: X and point-idxs are compatible?
+      (let* ((x (view x `(:indices ,@transition-states dim) t))
+	     (x-mask (%cmp> x val))
+	     (not-mask (%lognot x-mask)))
+
+	))))
 
 ;; todo: view強化
-(defmethod optimial-split-val ((bucket MSBucket) x dim)
+(defmethod optimal-split-val ((bucket MSBucket) x dim)
   "Returns the split vals j"
 
   (cond
@@ -208,7 +190,7 @@ Bucket-Split: B(A) -> B(id0), B(id1)"
 	 (null (bucket-point-ids bucket)))
      (values 0 0))
     (T
-     ;(optimial-split-val (view x point-ids))
+     
      )))
 
 

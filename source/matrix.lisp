@@ -87,12 +87,15 @@
 
 (defun print-matrix (matrix stream depth)
   (declare (ignore depth))
-  (format stream "~a" (convert-into-lisp-array matrix))
-  (format stream "<Matrix :~(~a~) :shape ~a :visible-area ~a~% :visible-vec ~a>"
+  (format stream "<Matrix :~(~a~) :shape ~a :view ~a~% :visible-shape ~a :visible-vec ~a>"
 	  (matrix-dtype matrix)
 	  (matrix-shape matrix)
 	  (matrix-view matrix)
-	  (matrix-vec matrix))) ; TODO: more infos
+	  (matrix-visible-shape matrix)
+	  (convert-into-lisp-array matrix))) ; TODO: more infos
+
+;; Note: view-of-matrix is NOT ALLOWED to use the view-object's information
+;; Use the original matrix's SHAPE, strides and so on...
 
 (defstruct (Matrix
 	    (:print-function print-matrix)
@@ -100,14 +103,18 @@
 		matrix (shape &key (dtype :float)
 			&aux (view (loop repeat (length (the list shape))
 					 collect t))
-			  (matrix-vec (allocate-mat (apply #'* shape) :dtype dtype))))
+			  (matrix-vec (allocate-mat (apply #'* shape) :dtype dtype))
+			  (projected-p nil)))
 	    (:constructor
-		view-of-matrix (matrix &rest view
+		view-of-matrix (matrix
+				&rest view
 				&aux
 				  (shape (matrix-shape matrix))
 				  (dtype (matrix-dtype matrix))
-				  (matrix-vec (matrix-vec matrix))))
+				  (matrix-vec (matrix-vec matrix))
+				  (projected-p t)))
 	    (:constructor
+		;; Todo: Debug (for view ga ayasii)
 		quantize-matrix (matrix
 				 &key (quantize-into :fp16)
 				 &aux (matrix-vec
@@ -118,7 +125,10 @@
 				   (dtype (vec-dtype-quantized quantize-into))
 				   (shape (matrix-shape matrix))
 				   (view (loop repeat (length (the list shape))
-					       collect t)))))
+					       collect t))
+				   (projected-p
+				    (matrix-projected-p matrix)))))
+  (projected-p projected-p :type boolean) ;; Is view-object?
   (vec matrix-vec) ;; The ORIGINAL Matrix's CFFI Pointer
   (dtype dtype :type matrix-dtype)
   (shape shape :type cons) ;; The ORIGINAL Matrix's shape

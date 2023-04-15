@@ -110,7 +110,101 @@ Legal Subscript -> fixnum/list/t, (external-option ~)"
   "Returns t if the subscripts are compatiable to matrix."
   t)
 
-(defun view (matrix &rest subscripts)
+(defun compute-absolute-subscripts (orig-mat subscripts)
+  ""
+  (if (matrix-projected-p orig-mat)
+      ;; View-Object -> (view) -> View-Object
+      (progn
+	;; orig-mat turned out to be view-obj, subscripts are relative.
+	(let ((old-view (matrix-view orig-mat))
+	      (original-shape (matrix-shape orig-mat)))
+	  (declare (ignore original-shape)) ;; to be used for error handling
+	  ;; This implementation is so ugly ><
+	  ;; because the below code describes all cases: (e.g.: Slice->Fixnum, Indices->Fixnum)
+	  (labels ((handle-ext-index (view sub)
+		     ;; note: don't return sub directly, add view.
+		     (typecase view
+		       (index
+			;; M[2][0][0]
+			(+ view sub))
+		       (list
+			(typecase (car view)
+			  (keyword
+			   ;; M[:indices 1 2 3 4][1]
+			   (nth sub (cdr view)))
+			  (index
+			   ;; M[2:4].view(1)
+			   (+ (car view) sub))
+			  (T
+			   (error "Cant handle this subscript: ~a" view))))
+		       (t
+			;; M[T][0]
+			sub)))
+		   (handle-ext-range (view sub)
+		     (typecase view
+		       (index
+			;; M[1].view([2:4])
+			(error "view: out of range"))
+		       (list
+			(typecase (car view)
+			  (keyword
+			   ;; M[:indices 1 2 3][2:4]
+			   ;; Todo: Detect out of range
+			   `(:indices
+			     ,@(loop for i fixnum upfrom (car sub) below (second sub)
+				     collect (nth i (cdr view)))))
+			  (index
+			   ;; M[2:10]([1:2])
+			   ;; Todo: Detect out of range.
+			   `(,(+ (car view) (car sub))
+			     ,(+ (car view) (second sub))))
+			  (T
+			   (error "Cant handle this subscript: ~a" view))))
+		       (t sub)))
+		   (handle-ext-kw (view sub)
+		     (typecase view
+		       (index
+			;; M[0][:indices 1 2 3]
+			(error "view: out of range"))
+		       (list
+			(typecase (car view)
+			  (keyword
+			   ;; M[:indices 1 2 3][:indices 0 1]
+			   `(:indices ,@(map
+					 'list
+					 #'(lambda (k)
+					     (nth k (cdr view)))
+					 sub)))
+			  (index
+			   ;; M[:indices 1 2 3 4 5][0:2]
+			   `(:indices ,@(loop for k fixnum upfrom (car sub) below (second sub)
+					      collect (nth k (cdr view)))))
+			  (T
+			   (error "Cant handle this subscript: ~a" view))))
+		       ;; M[T][:indices 1 2 3]
+		       (t sub))))
+	    (map 'list #'(lambda (old-view-axis sub)
+			   ;; sub = view(orig-axis, old-view)
+			   ;; solve on the around way
+			   (typecase sub
+			     (index
+			      (handle-ext-index old-view-axis sub))
+			     (list
+			      (typecase (car sub)
+				(keyword
+				 (handle-ext-kw old-view-axis sub))
+				(index
+				 (handle-ext-range old-view-axis sub))
+				(t (error "Cant handle this subscript: ~a" sub))))
+			     ;; M[:indices 1 2 3][t]
+			     (t old-view-axis)))
+		 old-view subscripts))))
+      ;; Original Matrix -> (view) -> View-Object
+      subscripts))
+
+(defun view (matrix &rest subscripts
+	     &aux ;; to add: -1 -2...
+	       (subscripts (compute-absolute-subscripts matrix subscripts)))
   "Creates a view-object
 subscript is following:
 
@@ -119,7 +213,7 @@ Primitive Operations:
   - (start-index end-index)
   - t
 
-External Operations: (Speed is not my concern)
+External Operations: (Speed is not my concern, and it works like macro).
   - (:indices 0 2 4 3 ...)
 
 >>Detecting errors is todo, good luck :D<<
@@ -131,11 +225,20 @@ External Operations: (Speed is not my concern)
   call-with-visible-area ->
        ExternalOperationParser (<- do (dotimes (i indices)))
          -> call-with-visible-area -> CFFI/Common Lisp's function
-       Finally, modifies the matrix."
+       Finally, modifies the matrix.
+
+;; Note: view-object -> view-object
+;; Semantics:
+;; Matrix -> (view) -> View-object is ok.
+;; View-object -> (view) -> View-object is undefined. (should be matrix -> view-object)
+;; So, view-object -> (view) -> view-object is treated as:
+;; view-object -> matrix -> (view-with-nested) -> view-object.
+
+Memo: define-external-operation or something would be fun."
   
   (declare (type (satisfies subscript-p) subscripts)
 	   (type Matrix matrix))
-  ;; supply the lack of dims.
+  ;; TODO: complement the lack of dims.
 
   (labels ((external-operations-p (sub)
 	     (when (and (typep sub 'list)
