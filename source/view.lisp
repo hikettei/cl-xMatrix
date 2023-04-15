@@ -342,18 +342,19 @@ Note:
 
   )
 
-;Todo Broadcasting is with-visible-areaをまとめて二回
+;;Todo Broadcasting is with-visible-areaをまとめて二回
+;; 個人的にはPrimitiveな機能だけあれば満足。matrix1をBroadcasting不可にする代わりにちょっとでも速度マシにしたい、個人的に(1, M) (N, 1)みたいな計算滅多に使わないからこれで十分じゃね？w (片方Broadcastingのルールだけで書き直せる)
 (defmacro with-broadcasting ((index1 matrix1) (index2 matrix2) &body body)
 
   )
 
-; dokka ugokasu
-
+;; Print関数を綺麗にする (cl-waffeのrender-tensor関数の移植+小数点全部表示+最適化)
+;; Jama nanode dokka ugokase
 (defun convert-into-lisp-array (matrix &key (freep nil))
   "Convert matrix's visible area into common lisp's simple array"
   (let ((returning-array (make-array
 			  (apply #'* (matrix-visible-shape matrix))
-			  :element-type t ; fixme
+			  :element-type t ;; FixMe
 			  )))
     (call-with-visible-area matrix #'(lambda (x)
 				       (with-view-object (index x :absolute index1)

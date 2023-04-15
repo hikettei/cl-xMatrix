@@ -1,15 +1,33 @@
 
 # xMatrix
 
-My playground for matrix operations.
+My playground for matrix operations. No guarantee of code.
+
+In my spare time, I might collect APIs and write tests, and make it library.
+
+If so, cl-xMatrix can became:
+
+- The only library (for Common Lisp) which supports: FP16 Quantization, view-function. (but only cpus)
+- The library which includes a lot of the AMM methods.
 
 # Features
 
+Ease of use and processing transparency first, speed comes second.
+
 ## View Function
+
+Provides view function that are fully equivalent to Numpy and Torch's View. Calling view itself doesn't make any copies, but treated as a matrix with a different shape.
+
+Also, view function includes these external operations:
+
+`:indices 1 2 3...`
+
 
 ## CFFI Pointer Array
 
+
 ## Connection between CFFI Pointer and Lisp Array
+
 
 # Specifications
 
@@ -25,13 +43,13 @@ My playground for matrix operations.
 
 # Roadmap
 
-- Accelerating with OpenBLAS
+- Accelerating with OpenBLAS (only gemm but uint16?)
 
-- Quantize and 4bit
+- Quantize and 4bit (FP16 is done, int4 is really necessary?...)
 
-- Lisp-level multi-threading support
+- Lisp-level multi-threading support.
 
-- Lisp-level view function support
+- Lisp-level view function support (almost done but error check)
 
 
 # Todo:
