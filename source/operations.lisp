@@ -78,3 +78,7 @@
 (defun 1d-mat-aref (matrix index)
   ""
   (mem-aref (matrix-vec matrix) (matrix-dtype matrix) index))
+
+;; (defun add (), alias for %scalar-add %broadcast-add %adds, +
+;; m+= instead of add is more intuitive naming?
+

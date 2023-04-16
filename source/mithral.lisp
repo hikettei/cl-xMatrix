@@ -168,6 +168,7 @@ Bucket-Split: B(A) -> B(id0), B(id1)"
     
     (let ((transition-states (bucket-point-ids bucket)))
       (declare (type list transition-states))
+      
       ;;%cmp %lognot
 
       ;; Create masks for point-idx rows
@@ -175,10 +176,46 @@ Bucket-Split: B(A) -> B(id0), B(id1)"
       ;; dim and val is a parameter to be optimized.
 
       ;; Note: X and point-idxs are compatible?
-      (let* ((xd (view x `(:indices ,@transition-states dim) t)))
-	(print xd)
 
-	))))
+      (labels ((create-buckets (points ids bucket-id
+				&aux
+				  (sumx (if ids
+					    (%sum points :axis 0)))
+				  (sumx2 (if ids
+					     (%sum (%square points) :axis 0))))
+		 (make-bucket :d (bucket-d bucket)
+			      :point-ids points ;; array?
+			      :sumx sumx
+			      :sumx2 sumx2
+			      :bucket-id bucket-id))
+	       (%cmp> (matrix
+		       scalar
+		       &aux
+			 (N (car (matrix-visible-shape matrix)))
+			 (result (loop repeat N collect nil)))
+		 "matrix = [N, 1]"
+		 (call-with-visible-area
+		  matrix
+		  #'(lambda (view)
+		      (with-view-object (index view :absolute i)
+			(setf (nth i result) (if (> (1d-mat-aref matrix index) val)
+						 t
+						 nil)))))
+		 result))
+	(let* ((xd (view x `(:indices ,@transition-states dim) t))
+	       (mask (%cmp> (view xd t dim) val)) ; %cmp > val
+	       (not-mask mask) ;; %lognot??? 
+	       (x0 (%copy (view x not-mask t))) ;; :tflist
+	       (x1 (%copy (view x mask t))) ;; view: enhancement: :tfvalues t nil t ... -> :indices
+	       (ids0 (view transition-states not-mask)) ;; they're list.
+	       (ids1 (view transition-states mask)))
+
+
+	  (prog1
+	      (values (create-buckets x0 ids0 id0)
+		      (create-buckets x1 ids1 id1))
+	    (free-mat x0)
+	    (free-mat x1)))))))
 
 (defmethod optimal-split-val ((bucket MSBucket) x dim)
   "Returns the split vals j"
@@ -201,8 +238,8 @@ Bucket-Split: B(A) -> B(id0), B(id1)"
 		  (%copy (bucket-sumx2 bucket))
 		  (/ (bucket-n bucket))))
 	    (ex (%scalar-mul
-		  (%copy (bucket-sumx bucket))
-		  (/ (bucket-n bucket)))))
+		 (%copy (bucket-sumx bucket))
+		 (/ (bucket-n bucket)))))
 	(%scalar-add
 	 ex2
 	 (%scalar-mul
@@ -381,7 +418,8 @@ x - One of prototypes. [num_idxs, D]"
 				 N
 				 &key
 				   (nsplits 4) ;; Levels of resuting binary hash tree. (4 is the best).
-				   (need-prototypes nil))
+				   (need-prototypes nil)
+				   (learn-quantize-params t))
   "Training the given prototype, X and X-orig
   X, X-orig = [C, D]
 Algorithm 2. Adding The Next Levels to The Tree"
@@ -401,7 +439,7 @@ Algorithm 2. Adding The Next Levels to The Tree"
 		    :sumx2 (%sum x-square :axis 0)
 		    :point-ids (loop for i fixnum upfrom 0 below N
 				     collect i))))
-	 (all-split-vals)
+	 (splits)
 	 
 	 ;; The storerooms of losses (should be list?)
 	 (col-losses (matrix `(1 ,D) :dtype :float))
@@ -427,6 +465,7 @@ Algorithm 2. Adding The Next Levels to The Tree"
 
 	       ;; dim-order -> [Largest Loss ... Smallest Loss]
 	       (let* ((dim-order (the list (argsort (convert-into-lisp-array col-losses :freep nil))))
+		      (all-split-vals)
 		      (dim-size (length dim-order))
 		      (total-losses (matrix `(1 ,dim-size) :dtype (matrix-dtype X))))
 
@@ -464,10 +503,25 @@ Algorithm 2. Adding The Next Levels to The Tree"
 				:threshold use-split-vals
 				:alpha nil
 				:beta  nil)))
-		   (print split)
-		   
 
-		   ))))))
+		   (if learn-quantize-params
+		       (progn
+
+			 )
+		       (with-slots ((alpha alpha) (beta beta)) split
+			 (setf alpha scal-by)
+			 (setf beta offset)))
+
+		   (push split splits)
+
+		   (let ((new-buckets))
+		     (loop for i fixnum upfrom 0
+			   for b in buckets
+			   do (progn
+				
+				))
+		     (setq buckets new-buckets)
+		     )))))))
 
 
 (defun init-and-learn-mithral (X

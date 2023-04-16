@@ -209,8 +209,42 @@ Legal Subscript -> fixnum/list/t, (external-option ~)"
       ;; Original Matrix -> (view) -> View-Object
       subscripts))
 
+(defun parse-and-replace-tflist-subscripts (matrix
+					    subscripts
+					    &aux
+					    (tf-p
+					     #'(lambda (x)
+						 (and (typep x 'list)
+						      (eql (car x)
+							   :tflist))))
+					     (candiates
+					      (position-if
+					       tf-p
+					       subscripts)))
+
+  (if candiates
+      (let* ((tflist (find-if tf-p subscripts))
+	     (tflist-args (cdr tflist)))
+	(unless (= (count-if tf-p subscripts) 1)
+	  (error "External options can be used at once in one view-obj."))
+	(unless (= (nth candiates (matrix-visible-shape matrix))
+		   (length tflist-args))
+	  (error "view, assertion failed with (length tflist) = matrix[dim].size"))
+	(let ((indices (loop for i fixnum upfrom 0
+			     for tf in tflist-args
+			     if tf
+			       collect i)))
+	  (setf (nth candiates subscripts) `(:indices ,@indices))
+	  subscripts))
+
+      subscripts))
+
 (defun view (matrix &rest subscripts
-	     &aux ;; todo: support -1 -2...
+	     &aux
+	       ;; todo: support -1 -2...
+	       ;; (subscripts (normalize-subscripts ))
+	       ;; Replace :tflist -> :indices
+	       (subscripts (parse-and-replace-tflist-subscripts matrix subscripts))
 	       (subscripts (compute-absolute-subscripts matrix subscripts)))
   "Creates a view-object
 subscript is following:
@@ -221,7 +255,8 @@ Primitive Operations:
   - t
 
 External Operations: (Speed is not my concern, and it works like macro).
-  - (:indices 0 2 4 3 ...)
+  - (:indices 0 2 4 3 ...) (the length of args is any)
+  - (:tflist t nil nil t ...) (the length of args must be correspond with the axis)
 
 >>Detecting errors is todo, good luck :D<<
 
