@@ -219,6 +219,30 @@ Bucket-Split: B(A) -> B(id0), B(id1)"
 	loss
 	0.0)))
 
+
+
+;; MultiSplit = [split-dim value-threshold alpha beta]
+(defstruct MultiSplit
+  (split-dim 0 :type index)
+  threshold
+  alpha
+  beta)
+
+(defmethod preprocess-x ((msplit MultiSplit) x)
+  "y = alpha*x + beta element-wise, and destructively"
+  (let ((x x))
+    (unless (null (multisplit-beta msplit))
+      (setq x (%scalar-add x (- (multisplit-beta msplit)))))
+
+    (unless (null (multisplit-alpha msplit))
+      (setq x (%scalar-mul x (multisplit-alpha msplit))))
+
+    x))
+
+
+
+
+
 ;; Todo Benchmark
 (defun cumsse-cols (x
 		    &aux
@@ -435,7 +459,12 @@ Algorithm 2. Adding The Next Levels to The Tree"
 		 (let* ((best-trying-dim (car (argsort (convert-into-lisp-array total-losses :freep nil) :test #'<)))
 			(best-dim (nth best-trying-dim dim-order))
 			(use-split-vals (nth best-trying-dim all-split-vals))
-			(split nil))
+			(split (make-multisplit
+				:split-dim best-dim
+				:threshold use-split-vals
+				:alpha nil
+				:beta  nil)))
+		   (print split)
 		   
 
 		   ))))))
