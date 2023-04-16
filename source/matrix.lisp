@@ -87,7 +87,7 @@
 
 (defun print-matrix (matrix stream depth)
   (declare (ignore depth))
-  (format stream "<Matrix :~(~a~) :shape ~a :view ~a~% :visible-shape ~a :visible-vec ~a>"
+  (format stream "<Matrix :~(~a~) :shape ~a :view ~a :visible-shape ~a ~% :vec ~a>"
 	  (matrix-dtype matrix)
 	  (matrix-shape matrix)
 	  (matrix-view matrix)
@@ -137,3 +137,4 @@
   (external-operation-dim nil)
   (visible-shape (visible-shape shape view) :type cons) ;; visible area's shape following viewinstruction
   (strides (calc-strides (visible-shape shape view)) :type cons))
+

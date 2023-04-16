@@ -257,7 +257,6 @@ Bucket-Split: B(A) -> B(id0), B(id1)"
 	0.0)))
 
 
-
 ;; MultiSplit = [split-dim value-threshold alpha beta]
 (defstruct MultiSplit
   (split-dim 0 :type index)
@@ -450,9 +449,7 @@ scal-by, offset: alpha, beta which corresponds to y = alpha*x + beta."
 	 (offset 0.0)
 	 (scal-by 1.0)
 	 ;; X' = alpha*X + offset
-	 (x-copy (%scalar-add (%scalar-mul X-copy scal-by) offset)))
-
-    ;; これより下でAlloc禁止
+	 (x (%scalar-add (%scalar-mul X-copy scal-by) offset)))
 
     ;; Loop for splits times.
     (loop repeat nsplits
@@ -517,14 +514,21 @@ scal-by, offset: alpha, beta which corresponds to y = alpha*x + beta."
 
 		   (push split splits)
 
-		   (let ((new-buckets))
-		     (loop for i fixnum upfrom 0
-			   for b in buckets
-			   do (progn
-				
-				))
-		     (setq buckets new-buckets)
-		     )))))))
+		   (let ((new-buckets (loop for i fixnum upfrom 0
+					    for b in buckets
+					    nconc (let ((val (nth i use-split-vals)))
+						    (bucket-split b :dim best-dim :val val :x-orig x-orig)))))
+
+		     ;(mapc #'destroy-bucket buckets)
+		     (setq buckets new-buckets))))))
+    (let ((loss (loop for b in buckets
+		      sum (bucket-loss b))))
+      (if need-prototypes
+	  (progn
+
+	    )
+	  (progn
+	    (values splits loss buckets))))))
 
 
 (defun init-and-learn-mithral (X
@@ -564,12 +568,11 @@ y = [D M] (To be multiplied)"
 	  ;; Iteraiton: [100, D] -> [0~4, D], [4~8, D] ...
 	  (multiple-value-bind (msplits protos buckets)
 	      (learn-binary-tree-splits use-x-error use-x-orig N :need-prototypes nil)
-	    (declare (ignore protos))
 
-	    ;; Appending prototypes and so on
+	    (print msplits)
+	    (print protos)
+	    (print buckets)
 	    ))))
-
-    (free-mat x-error)
 
     ))
 
