@@ -422,7 +422,10 @@ x - One of prototypes. [num_idxs, D]"
 				   (learn-quantize-params t))
   "Training the given prototype, X and X-orig
   X, X-orig = [C, D]
-Algorithm 2. Adding The Next Levels to The Tree"
+Algorithm 2. Adding The Next Levels to The Tree
+
+learn-quantize-params : set t if X's dtype isn't uint_8. (restore 8bit aggregations)
+scal-by, offset: alpha, beta which corresponds to y = alpha*x + beta."
 
   ;; Assert:: (> nsplits 4)
   

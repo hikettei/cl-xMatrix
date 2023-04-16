@@ -6,7 +6,20 @@
   (:use :cl :cffi) ;; To Add: GC by trivial-garbage or something
   (:export
    #:matrix
-   #:free-mat))
+   #:free-mat)
+
+  ;; View APIs
+  (:export
+   #:view
+   #:with-view
+   #:with-views
+   #:call-with-visible-area
+   #:with-view-object
+   ))
+
+;; Memo
+;; :shadowing-import-from ,and then cl-xmatrix::+
+;; Intermixied APIs for arithmetic operations: cl-xmatrix::+ と cl-xmatrix::add (+はalias for add).
 
 (in-package :cl-xmatrix)
 
