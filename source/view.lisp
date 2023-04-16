@@ -473,3 +473,12 @@ Note:
     (if freep
 	(free-mat matrix))
     returning-array))
+
+(defun from-lisp-array (matrix lisp-array)
+  "Matrix <- Lisp-Array"
+  (call-with-visible-area matrix #'(lambda (x)
+				     (with-view-object (index x :absolute index1)
+				       (setf (mem-aref (matrix-vec matrix)
+						       (matrix-dtype matrix)
+						       index)
+					     (aref lisp-array index1))))))

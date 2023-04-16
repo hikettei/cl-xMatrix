@@ -226,7 +226,9 @@ Bucket-Split: B(A) -> B(id0), B(id1)"
 		      (N (car (matrix-visible-shape x)))
 		      (D (second (matrix-visible-shape x)))
 		      (dtype (matrix-dtype x)))
-  "Computes SSE (Sum of Square Errors) column-wise"
+  "Computes SSE (Sum of Square Errors) column-wise.
+Input: X [N D]
+Output: Cumsses [N D]"
   (declare (optimize (speed 3))
 	   (type index N D))
   (let ((cumsses (matrix `(,N ,D) :dtype dtype))
@@ -256,11 +258,10 @@ Bucket-Split: B(A) -> B(id0), B(id1)"
 						(%move x* sqarea))
 					      (progn
 						(setq sqarea (%copy x*))
-						sqarea)))) ;; copy
+						sqarea))))
 		     (let* ((meanX (%scalar-mul cxc lr))
 			    (mx (%muls meanX cxc))
 			    (mx (%scalar-mul mx -1.0)))
-		       
 		       (%move cxc2 cs)
 		       (%adds cs mx))))))
       (free-mat cumX-cols)
@@ -270,32 +271,39 @@ Bucket-Split: B(A) -> B(id0), B(id1)"
       cumsses)))
 
 (defun compute-optimal-split-val (x dim)
+  "Given x and dim, computes a optimal split-values.
+
+x - One of prototypes. [num_idxs, D]"
   (let* ((N (car (matrix-visible-shape X)))
  	 (sort-idxs (argsort (convert-into-lisp-array (view x t dim) :freep nil)))
-	 (sort-idxs-rev (reverse sort-idxs))
-	 (sses-head          (cumsse-cols (view x sort-idxs-rev t)))
-	 (sses-tail-reversed (cumsse-cols (view x sort-idxs t)))
+	 (sort-idxs-rev      (reverse sort-idxs))
+	 (sses-head          (cumsse-cols (view x `(:indices ,@sort-idxs-rev) t)))
+	 (sses-tail-reversed (cumsse-cols (view x `(:indices ,@sort-idxs) t)))
 	 (sses sses-head)
 	 (last-index  (car (matrix-visible-shape sses-head)))
 	 (indices (loop for i downfrom last-index to 0
 			collect i)))
     ;; to free: cumsse-cols
 
-    (%adds (view sses `(0, (1- last-index)) t)
+    (%adds (view sses `(0 ,(1- last-index)) t)
 	   (view sses-tail-reversed `(:indices ,@indices) t))
 
-    (let* ((sses (%sum sses :axis 1)) ;; To Free: SSES
-	   (best-idx (aref
-		      (argsort (convert-into-lisp-array sses :freep nil) :test #'<)
-		      0))
+    (let* ((sses (%sum sses :axis 1))
+	   (best-idx (nth 0 (argsort (convert-into-lisp-array sses :freep nil) :test #'<)))
 	   (next-idx (min (1- N) (1+ best-idx)))
-	   (col (%copy (view x t dim))))
+	   (col (%copy (view x t dim)))
+	   (best-col (view col (nth best-idx sort-idxs) t))
+	   (next-col (%copy (view col (nth next-idx sort-idxs) t))))
 
-      ;; todo: sort vals
-
+      (%adds best-col next-col)
+      (%scalar-mul best-col 0.5)
       
+      (free-mat next-col)
+      (free-mat sses-head)
+      (free-mat sses-tail-reversed)
+      (free-mat sses)
 
-      )))
+      (values best-col (view sses best-idx t)))))
 
 (defun create-codebook-idxs (D C &key (start-or-end :start))
   "Returning the disjoint indices in this format: [0, 8], [8, 16] ... [start_id, end_id], maddness split the offline matrix A's each row into C. (Prototypes)"
@@ -429,7 +437,7 @@ Algorithm 2. Adding The Next Levels to The Tree"
     ;(free-mat X-orig)
     ;(free-mat col-losses)
 
-    ))
+    )))
 
 
 (defun init-and-learn-mithral (X
