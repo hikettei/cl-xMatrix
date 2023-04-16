@@ -74,3 +74,7 @@
 			  (%sumup m*))))))
 	     (T (error "no impl")))))
       matrix1)))
+
+(defun 1d-mat-aref (matrix index)
+  ""
+  (mem-aref (matrix-vec matrix) (matrix-dtype matrix) index))

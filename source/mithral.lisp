@@ -193,7 +193,6 @@ Bucket-Split: B(A) -> B(id0), B(id1)"
 	(view x my-idx t)
 	dim)))))
 
-
 ;; Computes losses
 (defmethod col-variances ((bucket MSBucket))
   (if (< (bucket-n bucket) 1)
@@ -283,7 +282,6 @@ x - One of prototypes. [num_idxs, D]"
 	 (last-index  (car (matrix-visible-shape sses-head)))
 	 (indices (loop for i downfrom last-index to 0
 			collect i)))
-    ;; to free: cumsse-cols
 
     (%adds (view sses `(0 ,(1- last-index)) t)
 	   (view sses-tail-reversed `(:indices ,@indices) t))
@@ -337,8 +335,8 @@ x - One of prototypes. [num_idxs, D]"
 			      (prog1
 				  (list start-idx end-idx)
 				(setq start-idx end-idx)))))))
-      ;; Todo: Make it matrix?
-      result)))
+      ;;result
+      (butlast result)))) ;; Fixme: Last Result is invaild
 
 (defun argsort (array &key (test #'>))
   (declare (optimize (speed 3))
@@ -346,13 +344,14 @@ x - One of prototypes. [num_idxs, D]"
 	   (type (simple-array t (*)) array))
   (mapcar #'second
           (stable-sort
-            (loop
-              for index fixnum from 0
-              for element-i fixnum upfrom 0 below (array-total-size array)
-              collect (list (aref array element-i) index))
-	    test
-            :key #'first)))
+           (loop
+             for index fixnum from 0
+             for element-i fixnum upfrom 0 below (array-total-size array)
+             collect (list (aref array element-i) index))
+	   test
+           :key #'first)))
 
+;; FixMe: Refactor it since the code is crazy...
 (defun learn-binary-tree-splits (X
 				 x-orig
 				 N
@@ -365,9 +364,6 @@ Algorithm 2. Adding The Next Levels to The Tree"
 
   ;; Assert:: (> nsplits 4)
   
-  ;; NOTE: DONT FORGET MEMFREE
-  ;; Note: Operations Bucket does is barely: sum/elwise-mul/elwise-div?
-  
   (let* ((D (second (matrix-visible-shape X)))
 	 (X-copy (%copy X)) ;; X-copy is shared by every buckets.
 	 (X-square (%square (%copy X)))
@@ -377,11 +373,11 @@ Algorithm 2. Adding The Next Levels to The Tree"
 		   ;; point-ids = 0~N because it has the original X.
 		   ;; Semantics: B(1, 0) -> B(2, 0), B(2, 1), ..., B(2, N)
 		   (make-bucket
-		    :sumx (%sum x :axis 0)
+		    :sumx (%sum x-copy :axis 0)
 		    :sumx2 (%sum x-square :axis 0)
 		    :point-ids (loop for i fixnum upfrom 0 below N
 				     collect i))))
-	 (splits)
+	 (all-split-vals)
 	 
 	 ;; The storerooms of losses (should be list?)
 	 (col-losses (matrix `(1 ,D) :dtype :float))
@@ -392,7 +388,8 @@ Algorithm 2. Adding The Next Levels to The Tree"
 	 (x-copy (%scalar-add (%scalar-mul X-copy scal-by) offset)))
 
     ;; これより下でAlloc禁止
-    
+
+    ;; Loop for splits times.
     (loop repeat nsplits
 	  do (progn
 	       ;; be list?
@@ -407,37 +404,41 @@ Algorithm 2. Adding The Next Levels to The Tree"
 	       ;; dim-order -> [Largest Loss ... Smallest Loss]
 	       (let* ((dim-order (the list (argsort (convert-into-lisp-array col-losses :freep nil))))
 		      (dim-size (length dim-order))
-		      (total-losses (matrix `(1 ,dim-size) :dtype (matrix-dtype X)))
-		      (dim-split-vals))
+		      (total-losses (matrix `(1 ,dim-size) :dtype (matrix-dtype X))))
 
-		 (loop for d fixnum upfrom 0
-		       for dim fixnum in dim-order
-		       do (let ((split-vals))
-			    (dolist (b buckets)
-			      (multiple-value-bind (val loss) (optimal-split-val b X dim)
+		 (labels ((previous-min-losses (d)
+			    "Find out minimize value in the range of total-losses[:d]"
+			    (let ((idx  (car (argsort (convert-into-lisp-array
+						       (view total-losses t `(0 ,d))
+						       :freep nil)
+						      :test #'<))))
+			      (1d-mat-aref total-losses idx))))
 
-				)
-			    
+		   ;; Todo: Refactor...
+		   ;; Loop for (length dim-order) times.
+		   (loop for d fixnum upfrom 0
+			 for dim fixnum in dim-order
+			 do (let ((split-vals))
+			      (loop
+				named bucket-training-iter
+				for b in buckets
+				do (multiple-value-bind (val loss) (optimal-split-val b X dim)
+				     (%scalar-add (view total-losses t d) loss)
+				     (when (and (> d 0)
+						(> (1d-mat-aref total-losses d)
+						    (previous-min-losses d)))
+				       ;; Early Stopping
+				       (return-from bucket-training-iter))
+				     (push val split-vals)))
+			      (push (reverse split-vals) all-split-vals))))
+	       ;; The code below belongs to 1th iter.
+		 (let* ((best-trying-dim (car (argsort (convert-into-lisp-array total-losses :freep nil) :test #'<)))
+			(best-dim (nth best-trying-dim dim-order))
+			(use-split-vals (nth best-trying-dim all-split-vals))
+			(split nil))
+		   
 
-			      ))
-
-		 (print dim-order))
-
-		 
-	       
-	       
-
-	       
-	       
-
-	       ))
-
-    ;(free-mat X-copy)
-    ;(free-mat X-square)
-    ;(free-mat X-orig)
-    ;(free-mat col-losses)
-
-    )))
+		   ))))))
 
 
 (defun init-and-learn-mithral (X
@@ -527,20 +528,20 @@ y = [D M] (To be multiplied)"
 
 #|
 (defun mithral-encode (X-pointer nrows ncols splitdims-pointer all-splitvals-pointer ncodebooks out-pointer dtype)
-  (case dtype
-    (:int8
-     (foreign-funcall "mithral_encode_int8_t"
-		      (:pointer :uint8) X-pointer
-		      :int nrows
-		      :int ncols
-		      (:pointer :int32) splitdims-pointer
-		      (:pointer :uint8) all-splitvals-pointer
-		      :int ncodebooks
-		      (:pointer :uint8) out-pointer
-		      :void))
-    (:float
+(case dtype
+(:int8
+(foreign-funcall "mithral_encode_int8_t"
+(:pointer :uint8) X-pointer
+:int nrows
+:int ncols
+(:pointer :int32) splitdims-pointer
+(:pointer :uint8) all-splitvals-pointer
+:int ncodebooks
+(:pointer :uint8) out-pointer
+:void))
+(:float
 
-     )))
+)))
 |#
 
 (defun test-mithral ()
@@ -554,15 +555,15 @@ y = [D M] (To be multiplied)"
 	(all-splitvals (quantize-matrix (matrix `(64 128))))
 	(out (quantize-matrix (matrix `(64 128)))))
     (mithral-encode
-                   (matrix-vec x)
-		    nrows
-		    ncols
-		    (matrix-vec splitdims)
-		    (matrix-vec all-splitvals)
-		    shifts
-		    offsets
-		    ncodebooks
-		    (matrix-vec out))
+     (matrix-vec x)
+     nrows
+     ncols
+     (matrix-vec splitdims)
+     (matrix-vec all-splitvals)
+     shifts
+     offsets
+     ncodebooks
+     (matrix-vec out))
     t))
 
 (defun offline-learning ())
