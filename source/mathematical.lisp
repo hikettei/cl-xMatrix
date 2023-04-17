@@ -49,6 +49,21 @@
 		    (mem-aref (matrix-vec matrix) (matrix-dtype matrix1) index))))))
   matrix)
 
+(defun %subs (matrix matrix1)
+  "matrix, matrix1 assumed not to have view.
+matrix-=matrix1"
+  ;; tmp
+  (declare (optimize (safety 0)))
+  (call-with-visible-area
+   matrix #'(lambda (x)
+	      (with-view-object (index x)
+		(setf
+		 (mem-aref
+		  (matrix-vec matrix) (matrix-dtype matrix) index)
+		 (- (mem-aref (matrix-vec matrix) (matrix-dtype matrix) index)
+		    (mem-aref (matrix-vec matrix) (matrix-dtype matrix1) index))))))
+  matrix)
+
 (defun %muls (matrix matrix1)
   "matrix, matrix1 assumed not to have view."
   ;; tmp

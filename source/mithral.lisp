@@ -73,10 +73,10 @@
 					 d))))
 			       (sumx (if sumx
 					 sumx
-					 (matrix `(,d) :dtype dtype)))
+					 (matrix `(1  ,d) :dtype dtype)))
 			       (sumx2 (if sumx2
 					  sumx2
-					  (matrix `(,d) :dtype dtype))))))
+					  (matrix `(1 ,d) :dtype dtype))))))
   (point-ids point-ids :type list) ;; the list of indices that could be branch's destination.
   (n n :type index)
   (id id :type fixnum) ;; split-index j1 ... j4
@@ -245,6 +245,10 @@ Bucket-Split: B(A) -> B(id0), B(id1)"
 	 (%scalar-mul
 	  (%square ex)
 	  -1.0)))))
+
+(defmethod col-means ((bucket MSBucket))
+  (%scalar-mul (%copy (bucket-sumx bucket))
+	       (/ (max 1 (bucket-n bucket)))))
 
 (defmethod col-sum-sqs ((bucket MSBucket))
   (%scalar-mul (col-variances bucket)
@@ -542,7 +546,8 @@ In the maddness paper, the single-float matrix X is compressed into lower bit's 
 X = [N D] (To be optimized)
 y = [D M] (To be multiplied)"
   (declare (type matrix x)
-	   (type index C ncodebooks)) ;; X.dtype = :uint16_t
+	   (type index C ncodebooks)
+	   (ignore ncodebooks)) ;; X.dtype = :uint16_t
 
   (assert (= 2 (length (the list (matrix-shape X))))
 	  (x)
@@ -559,22 +564,52 @@ y = [D M] (To be multiplied)"
 	 ;; indices of disjoints based on C are needed when training KMeans. (j)
 	 (pq-idxs (create-codebook-idxs D C :start-or-end :start)))
 
-    (dotimes (cth C) ;; Applying to each prototypes.
+    (dotimes (cth (length pq-idxs)) ;; Applying to each prototypes.
       (let ((cth-idx (nth cth pq-idxs)))
 	(with-views ((use-x-error x-error t `(,(first cth-idx)
 					      ,(second cth-idx)))
 		     (use-x-orig  x-orig  t `(,(first cth-idx)
 					      ,(second cth-idx))))
 	  ;; Iteraiton: [100, D] -> [0~4, D], [4~8, D] ...
-	  (multiple-value-bind (msplits protos buckets)
+	  (multiple-value-bind (msplits loss buckets)
 	      (learn-binary-tree-splits use-x-error use-x-orig N :need-prototypes nil)
+	    (declare (ignore loss))
 
-	    (print msplits)
-	    (print protos)
-	    (print buckets)
-	    ))))
+	    (loop for s in msplits
+		  do (setf (multisplit-split-dim s)
+			   (+ (first cth-idx)
+			      (multisplit-split-dim s))))
 
-    ))
+	    (push msplits all-splits)
+	    (push buckets all-buckets) ;; rev them
+
+		    
+            ;; update residuals and store prototypes
+            ;; idxs = IDs that were look at for current codebook
+            ;; buck.point_ids = rows that landed in certain K
+            ;;   [    0     5    21 ... 99950 99979 99999] (N=100000)
+            ;; X_error = is here still the A input
+            ;; remove centroid from all the points that lie in a certain codebook
+            ;; set prototype value
+
+	    (let ((centroids (matrix `(1 ,D) :dtype (matrix-dtype X)))
+		  (idxs (loop for i fixnum
+			      upfrom (first cth-idx)
+				below (second cth-idx)
+			      collect i)))
+	      (loop for b fixnum upfrom 0
+		    for bucket in buckets
+		    if (bucket-point-ids bucket)
+		      do (progn
+			   (%fill centroids 0.0)
+			   (with-views ((c* centroids t `(:indices ,@idxs))
+					(xerr* X-error `(:indices ,@(bucket-point-ids bucket)) t))
+			     (%subs xerr* c*)
+			     (with-view (protos* all-prototypes cth b t)
+			       (%move c* protos*)))))
+	      ;; Todo: Ram Usage
+	      (free-mat centroids))
+	    (values x-error (reverse all-splits) all-prototypes (reverse all-buckets))))))))
 
 ;; N x D @ D x M
 (defclass MithralAMM ()
@@ -657,6 +692,5 @@ y = [D M] (To be multiplied)"
 
 (defun offline-learning ())
 (defmacro with-mithral-learning ())
-
 
 

@@ -1,6 +1,7 @@
 
 (in-package :cl-xmatrix)
 
+;; APIs for Dtypes
 
 (defcfun "convert_fp32_into_fp16" (:pointer :uint8)
   (size :int)

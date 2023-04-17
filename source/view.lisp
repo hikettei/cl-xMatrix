@@ -1,6 +1,11 @@
 
 (in-package :cl-xmatrix)
 
+;(define-condition ViewIndexError (simple-error)
+;  ()
+;  ())
+
+
 (defun print-view (view stream depth)
   (declare (ignore depth))
   (format stream "=ViewInstruction========~%  total_offset:    ~a~%  strides:       (~a ~a)~%  offsets:       (~a ~a)~%  visible_shape: (~a ~a)~%"
