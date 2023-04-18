@@ -3,7 +3,7 @@
 
 ;; Memo: https://www.lispforum.com/viewtopic.php?t=4296
 ;; Heap Corruptionなぜ起こる？？？
-
+;; or: Add with-mem-barricades
 (defparameter *available-dtypes*
   `(:uint16
     :float

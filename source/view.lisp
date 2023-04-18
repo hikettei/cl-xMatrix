@@ -288,7 +288,7 @@ External Operations: (Speed is not my concern, and it works like macro).
 Memo: define-external-operation or something would be fun."
   
   (declare (type (satisfies subscript-p) subscripts)
-	   (type Matrix matrix))
+	   (type matrix matrix))
   ;; TODO: complement the lack of dims.
 
   (labels ((external-operations-p (sub)

@@ -132,14 +132,14 @@
   "Creates the clone of the bucket"
   ;; To fix: don't create copy! the toplevel matrix's view is enough.
   (make-bucket
-   :sumx      (bucket-sumx bucket)
+   :sumx      (bucket-sumx bucket) ;; I don't know why but I guess coping them will make it stable.
    :sumx2     (bucket-sumx2 bucket)
    :point-ids (copy-list (bucket-point-ids bucket))
    :bucket-id bucket-id))
 
 (defmethod bucket-split ((bucket MSBucket)
+			 x
 			 &key
-			   (x nil)
 			   (dim nil)
 			   (val nil)
 			   (x-orig nil))
@@ -149,16 +149,19 @@ B(t, ?) -> B(t+1, ?), B(t+1, ??), ...
 Algorithm 2 Adding The Next Level to The Hashing Tree.
 
 Bucket-Split: B(A) -> B(id0), B(id1)"
-  (declare (ignore x-orig))
+  (declare (ignore x-orig)
+	   (type number val))
   
   ;; それぞれの分割した行列は、オリジナルのView
-  ;; Viewどころか、Sumx/Sumx2は遅延評価で良くね？
+  ;; Viewどころか、Sumx/Sumx2は遅延評価にすべき？固定のHeapを使いたい
+  ;; Is it more clever way to lazy-evaluate SumX/SumX2? since i wanna use static-heap area.
+
+  ;; Algorithm 1. MaddnessHash
   (let* ((id0 (* 2 (bucket-id bucket)))
  	 (id1 (+ id0 1)))
     (declare (type index id0 id1))
 
-    (when (or (null x)
-	      (< (bucket-n bucket) 2))
+    (when (or (null x) (< (bucket-n bucket) 2))
       ;; Copy of this Bucket + An Empty Bucket.
       (let ((return-value (list (deepcopy bucket :bucket-id id0)
 				(make-bucket :d (bucket-d bucket)
@@ -167,7 +170,6 @@ Bucket-Split: B(A) -> B(id0), B(id1)"
 
     (if (null (bucket-point-ids bucket))
 	(error "Assertion Failed because point-ids=nil"))
-
     
     ;; Bucket(t, 0) -> Bucket(t+1, ?), Bucket(t+1, ??) ...
     ;; ? = transition-states
@@ -188,7 +190,7 @@ Bucket-Split: B(A) -> B(id0), B(id1)"
 				  (sumx2 (if ids
 					     (%sum (%square points) :axis 0))))
 		 (make-bucket :d (bucket-d bucket)
-			      :point-ids points
+			      :point-ids ids
 			      :sumx sumx
 			      :sumx2 sumx2
 			      :bucket-id bucket-id))
@@ -197,7 +199,7 @@ Bucket-Split: B(A) -> B(id0), B(id1)"
 		       &aux
 			 (N (car (matrix-visible-shape matrix)))
 			 (result (loop repeat N collect nil)))
-		 "matrix = [N, 1]"
+		 "matrix = [N, 1]. Result=List"
 		 (call-with-visible-area
 		  matrix
 		  #'(lambda (view)
@@ -205,15 +207,20 @@ Bucket-Split: B(A) -> B(id0), B(id1)"
 			(setf (nth i result) (if (> (1d-mat-aref matrix index) scalar)
 						 t
 						 nil)))))
-		 result))
-	(let* ((xd (view x `(:indices ,@transition-states dim) t))
-	       (mask (%cmp> (view xd t dim) (print val))) ; %cmp > val
-	       (not-mask mask) ;; %lognot??? 
-	       (x0 (%copy (view x not-mask t))) ;; :tflist
-	       (x1 (%copy (view x mask t))) ;; view: enhancement: :tfvalues t nil t ... -> :indices
-	       (ids0 (view transition-states not-mask)) ;; Fix:: they're list.
-	       (ids1 (view transition-states mask)))
-
+		 result)
+	       (list-tf-map (list tf-list)
+		 (loop for l in list
+		       for tf in tf-list
+		       if tf
+			 collect l)))
+	(let* ((xd (view x `(:indices ,@transition-states) dim))
+	       (mask (%cmp> (view xd t dim) val)) ; %cmp > val
+	       (not-mask (map 'list #'not mask)) ;; Python impls uses lognot but why?
+	       (x0 (%copy (view x `(:tflist ,@not-mask) t)))
+	       (x1 (%copy (view x `(:tflist ,@mask) t)))
+	       (ids0 (list-tf-map transition-states not-mask)) ;; Fix:: they're list.
+	       (ids1 (list-tf-map transition-states mask)))
+	  
 	  (prog1
 	      (values (create-buckets x0 ids0 id0)
 		      (create-buckets x1 ids1 id1))
@@ -337,6 +344,7 @@ Output: Cumsses [N D]"
 	  (free-mat sqarea))
       cumsses)))
 
+;; 6: fp=0x7f65648 pc=0x536a2e6b CL-XMATRIX::COMPUTE-OPTIMAL-SPLIT-VAL
 (declaim (ftype (function (matrix index) (values matrix matrix)) compute-optimal-split-val))
 (defun compute-optimal-split-val (x dim)
   "Given x and dim, computes a optimal split-values.
@@ -368,7 +376,6 @@ x - One of prototypes. [num_idxs, D]"
       (free-mat next-col)
       (free-mat sses-head)
       (free-mat sses-tail-reversed)
-      (free-mat sses)
 
       ;; matrix matrix
       (values best-col (view sses best-idx t)))))
@@ -536,8 +543,8 @@ scal-by, offset: alpha, beta which corresponds to y = alpha*x + beta."
 
 		   (let ((new-buckets (loop for i fixnum upfrom 0
 					    for b in buckets
-					    nconc (let ((val (nth i use-split-vals)))
-						    (bucket-split b :dim best-dim :val val :x-orig x-orig)))))
+					    collect (let ((val (1d-mat-aref (nth i use-split-vals) 0)))
+						    (bucket-split b x :dim best-dim :val val :x-orig x-orig)))))
 		     
 		     ;(mapc #'destroy-bucket buckets)
 		     (setq buckets new-buckets))))))
@@ -547,7 +554,7 @@ scal-by, offset: alpha, beta which corresponds to y = alpha*x + beta."
 	    (error "Unimplemented")
 	    )
 	  (progn
-	    (values splits loss buckets))))))
+	    (values (reverse splits) loss buckets))))))
 
 
 (defun init-and-learn-mithral (X
@@ -570,9 +577,9 @@ y = [D M] (To be multiplied)"
 	  (matrix-shape x))
 
   (let* ((x-error (%copy X)) ;; Valid Dataset (DONT FORGET: memfree x-error)
-	 (x-orig x) ;; Training Dataset (minimize ||a-a'||)
-	 (N (car (matrix-shape X)))
-	 (D (second (matrix-shape X)))
+	 (x-orig x)          ;; Training Dataset (minimize ||a-a'||)
+	 (N (car (matrix-visible-shape X)))
+	 (D (second (matrix-visible-shape X)))
 	 (all-prototypes (matrix `(,C ,K ,D) :dtype (matrix-dtype X)))
 	 (all-splits nil) ;; The Result
 	 (all-buckets nil) ;; Tmp List
@@ -589,13 +596,14 @@ y = [D M] (To be multiplied)"
 	  
 	  (multiple-value-bind (msplits loss buckets)
 	      (learn-binary-tree-splits use-x-error use-x-orig N :need-prototypes nil)
-	    (declare (ignore loss))
+	    (format t "~%Loss :~a " loss)
 
 	    (loop for s in msplits
 		  do (setf (multisplit-split-dim s)
 			   (+ (first cth-idx)
 			      (multisplit-split-dim s))))
-
+	    
+	    
 	    (push msplits all-splits)
 	    (push buckets all-buckets)
 
