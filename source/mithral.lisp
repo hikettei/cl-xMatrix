@@ -18,6 +18,7 @@
   (ncodebooks :int)
   (out-pointer (:pointer :uint8)))
 
+;; TODO: OPTIMIZE
 
 ;; 4.2 Learning the Hash-Function Parameters
 ;; Bucket B(t, i) where t is the tree's depth and is in the index in the node.
@@ -44,15 +45,17 @@
 			       (n 0)           ;; the number of nodes the bucket has.
 			       (sumx nil)      ;; For compute losses
 			       (sumx2 nil)     ;; For compute losses
-			       (point-ids nil) ;;
+			       (point-ids nil) ;; 
 			       (bucket-id 0)   ;; The bucket's index.
 			       (adjustable nil);; allowed to modify? (maybe unused)
 			     &aux
 			       (dtype :float) ;;:tmp
-			       (point-ids (when (null point-ids)
-					    (unless (= N 0)
-					      (error "Assetion failed with N = 0"))
-					    nil))
+			       (point-ids (if (null point-ids)
+					      (progn
+						(unless (= N 0)
+						  (error "Assetion failed with N = 0"))
+						nil)
+					      point-ids))
 			       (n (length point-ids))
 			       (id bucket-id)
 			       (point-ids point-ids)
@@ -73,10 +76,10 @@
 					 d))))
 			       (sumx (if sumx
 					 sumx
-					 (matrix `(1  ,d) :dtype dtype)))
+					 (matrix `(1 ,d) :dtype dtype)))
 			       (sumx2 (if sumx2
 					  sumx2
-					  (matrix `(1 ,d) :dtype dtype))))))
+					 (matrix `(1 ,d) :dtype dtype))))))
   (point-ids point-ids :type list) ;; the list of indices that could be branch's destination.
   (n n :type index)
   (id id :type fixnum) ;; split-index j1 ... j4
@@ -92,6 +95,7 @@
     (free-mat sumx)
     (free-mat sumx2)))
 
+;; Not tested (maybe unused currently)
 (defmethod add-point ((bucket MSBucket) point &key (point-idx nil))
   "B(3, 1)  B(3, 2)  B(3, 3)  B(3, 4) ... <- add B(t, point-idx)
    It isn't evaluated until bucket-split is called."
@@ -128,8 +132,8 @@
   "Creates the clone of the bucket"
   ;; To fix: don't create copy! the toplevel matrix's view is enough.
   (make-bucket
-   :sumx  (bucket-sumx bucket)
-   :sumx2 (bucket-sumx2 bucket)
+   :sumx      (bucket-sumx bucket)
+   :sumx2     (bucket-sumx2 bucket)
    :point-ids (copy-list (bucket-point-ids bucket))
    :bucket-id bucket-id))
 
@@ -139,14 +143,16 @@
 			   (dim nil)
 			   (val nil)
 			   (x-orig nil))
-  ;; 書き直す！
   "Given val (threshold v?), splits the bucket, and increment: node-level t+=1.
 B(t, ?) -> B(t+1, ?), B(t+1, ??), ...
 
 Algorithm 2 Adding The Next Level to The Hashing Tree.
 
 Bucket-Split: B(A) -> B(id0), B(id1)"
+  (declare (ignore x-orig))
+  
   ;; それぞれの分割した行列は、オリジナルのView
+  ;; Viewどころか、Sumx/Sumx2は遅延評価で良くね？
   (let* ((id0 (* 2 (bucket-id bucket)))
  	 (id1 (+ id0 1)))
     (declare (type index id0 id1))
@@ -168,8 +174,6 @@ Bucket-Split: B(A) -> B(id0), B(id1)"
     
     (let ((transition-states (bucket-point-ids bucket)))
       (declare (type list transition-states))
-      
-      ;;%cmp %lognot
 
       ;; Create masks for point-idx rows
       ;; And Compares the row[dim] with val.
@@ -184,7 +188,7 @@ Bucket-Split: B(A) -> B(id0), B(id1)"
 				  (sumx2 (if ids
 					     (%sum (%square points) :axis 0))))
 		 (make-bucket :d (bucket-d bucket)
-			      :point-ids points ;; array?
+			      :point-ids points
 			      :sumx sumx
 			      :sumx2 sumx2
 			      :bucket-id bucket-id))
@@ -198,18 +202,17 @@ Bucket-Split: B(A) -> B(id0), B(id1)"
 		  matrix
 		  #'(lambda (view)
 		      (with-view-object (index view :absolute i)
-			(setf (nth i result) (if (> (1d-mat-aref matrix index) val)
+			(setf (nth i result) (if (> (1d-mat-aref matrix index) scalar)
 						 t
 						 nil)))))
 		 result))
 	(let* ((xd (view x `(:indices ,@transition-states dim) t))
-	       (mask (%cmp> (view xd t dim) val)) ; %cmp > val
+	       (mask (%cmp> (view xd t dim) (print val))) ; %cmp > val
 	       (not-mask mask) ;; %lognot??? 
 	       (x0 (%copy (view x not-mask t))) ;; :tflist
 	       (x1 (%copy (view x mask t))) ;; view: enhancement: :tfvalues t nil t ... -> :indices
-	       (ids0 (view transition-states not-mask)) ;; they're list.
+	       (ids0 (view transition-states not-mask)) ;; Fix:: they're list.
 	       (ids1 (view transition-states mask)))
-
 
 	  (prog1
 	      (values (create-buckets x0 ids0 id0)
@@ -217,13 +220,20 @@ Bucket-Split: B(A) -> B(id0), B(id1)"
 	    (free-mat x0)
 	    (free-mat x1)))))))
 
+(declaim (ftype (function (MSBucket matrix index) (values (or null matrix) (or null matrix))) optimal-split-val))
 (defmethod optimal-split-val ((bucket MSBucket) x dim)
-  "Returns the split vals j"
+  "Computes `optimal-split-threshold` (in 4.2 Hash Function Family).
+
+Input: x  - a view of X-orig
+      (bucket matrix index) 
+Return:
+      (values matrix matrix)
+Memo: Spelling Inconsistency -> threshold and val."
 
   (cond
     ((or (< (bucket-n bucket) 2)
 	 (null (bucket-point-ids bucket)))
-     (values 0 0))
+     (values nil nil))
     (T
      (let ((my-idx (bucket-point-ids bucket)))
        (compute-optimal-split-val
@@ -240,11 +250,7 @@ Bucket-Split: B(A) -> B(id0), B(id1)"
 	    (ex (%scalar-mul
 		 (%copy (bucket-sumx bucket))
 		 (/ (bucket-n bucket)))))
-	(%scalar-add
-	 ex2
-	 (%scalar-mul
-	  (%square ex)
-	  -1.0)))))
+	(%adds ex2 (%scalar-mul (%square ex) -1.0)))))
 
 (defmethod col-means ((bucket MSBucket))
   (%scalar-mul (%copy (bucket-sumx bucket))
@@ -281,8 +287,6 @@ Bucket-Split: B(A) -> B(id0), B(id1)"
 
 
 
-
-
 ;; Todo Benchmark
 (defun cumsse-cols (x
 		    &aux
@@ -306,7 +310,7 @@ Output: Cumsses [N D]"
 	(%move x* cxc)
 	(%move x* cxc2)
 	(%square cxc2)))
-
+    
     (let ((sqarea))
       (loop for i fixnum upfrom 0 below N
 	    do (let ((lr (/ (1+ i))))
@@ -327,12 +331,13 @@ Output: Cumsses [N D]"
 			    (mx (%scalar-mul mx -1.0)))
 		       (%move cxc2 cs)
 		       (%adds cs mx))))))
-      (free-mat cumX-cols)
-      (free-mat cumx2-cols)
+      ;;(free-mat cumX-cols) (Heap Corruption...) To Add: GCable CFFI Pointer?
+      ;;(free-mat cumx2-cols)
       (if sqarea
 	  (free-mat sqarea))
       cumsses)))
 
+(declaim (ftype (function (matrix index) (values matrix matrix)) compute-optimal-split-val))
 (defun compute-optimal-split-val (x dim)
   "Given x and dim, computes a optimal split-values.
 
@@ -365,6 +370,7 @@ x - One of prototypes. [num_idxs, D]"
       (free-mat sses-tail-reversed)
       (free-mat sses)
 
+      ;; matrix matrix
       (values best-col (view sses best-idx t)))))
 
 (defun create-codebook-idxs (D C &key (start-or-end :start))
@@ -422,7 +428,7 @@ x - One of prototypes. [num_idxs, D]"
 				 &key
 				   (nsplits 4) ;; Levels of resuting binary hash tree. (4 is the best).
 				   (need-prototypes nil)
-				   (learn-quantize-params t))
+				   (learn-quantize-params nil))
   "Training the given prototype, X and X-orig
   X, X-orig = [C, D]
 Algorithm 2. Adding The Next Levels to The Tree
@@ -431,7 +437,7 @@ learn-quantize-params : set t if X's dtype isn't uint_8. (restore 8bit aggregati
 scal-by, offset: alpha, beta which corresponds to y = alpha*x + beta."
 
   ;; Assert:: (> nsplits 4)
-  
+
   (let* ((D (second (matrix-visible-shape X)))
 	 (X-copy (%copy X)) ;; X-copy is shared by every buckets.
 	 (X-square (%square (%copy X)))
@@ -441,7 +447,7 @@ scal-by, offset: alpha, beta which corresponds to y = alpha*x + beta."
 		   ;; point-ids = 0~N because it has the original X.
 		   ;; Semantics: B(1, 0) -> B(2, 0), B(2, 1), ..., B(2, N)
 		   (make-bucket
-		    :sumx (%sum x-copy :axis 0)
+		    :sumx  (%sum x-copy :axis 0)
 		    :sumx2 (%sum x-square :axis 0)
 		    :point-ids (loop for i fixnum upfrom 0 below N
 				     collect i))))
@@ -454,6 +460,7 @@ scal-by, offset: alpha, beta which corresponds to y = alpha*x + beta."
 	 (scal-by 1.0)
 	 ;; X' = alpha*X + offset
 	 (x (%scalar-add (%scalar-mul X-copy scal-by) offset)))
+    (declare (type list splits))
 
     ;; Loop for splits times.
     (loop repeat nsplits
@@ -472,9 +479,13 @@ scal-by, offset: alpha, beta which corresponds to y = alpha*x + beta."
 		      (all-split-vals)
 		      (dim-size (length dim-order))
 		      (total-losses (matrix `(1 ,dim-size) :dtype (matrix-dtype X))))
+		 (declare (type matrix total-losses)
+			  (type list dim-order all-split-vals)
+			  (type index dim-size))
 
 		 (labels ((previous-min-losses (d)
 			    "Find out minimize value in the range of total-losses[:d]"
+			    (declare (type index d))
 			    (let ((idx  (car (argsort (convert-into-lisp-array
 						       (view total-losses t `(0 ,d))
 						       :freep nil)
@@ -485,19 +496,25 @@ scal-by, offset: alpha, beta which corresponds to y = alpha*x + beta."
 		   ;; Loop for (length dim-order) times.
 		   (loop for d fixnum upfrom 0
 			 for dim fixnum in dim-order
-			 do (let ((split-vals))
+			 do (let ((split-vals nil))
+			      (declare (type list split-vals))
 			      (loop
 				named bucket-training-iter
 				for b in buckets
 				do (multiple-value-bind (val loss) (optimal-split-val b X dim)
+				     (let ((val (or val 0.0))
+					   (loss (if loss
+						     (1d-mat-aref loss 0)
+						     0.0)))
 				     (%scalar-add (view total-losses t d) loss)
-				     (when (and (> d 0)
+				     (when (and (>= d 1)
 						(> (1d-mat-aref total-losses d)
-						    (previous-min-losses d)))
+						   (previous-min-losses d)))
 				       ;; Early Stopping
 				       (return-from bucket-training-iter))
-				     (push val split-vals)))
-			      (push (reverse split-vals) all-split-vals))))
+				     (push val split-vals))))
+			      (when (and split-vals buckets)
+				(push (reverse split-vals) all-split-vals)))))
 	       ;; The code below belongs to 1th iter.
 		 (let* ((best-trying-dim (car (argsort (convert-into-lisp-array total-losses :freep nil) :test #'<)))
 			(best-dim (nth best-trying-dim dim-order))
@@ -510,8 +527,7 @@ scal-by, offset: alpha, beta which corresponds to y = alpha*x + beta."
 
 		   (if learn-quantize-params
 		       (progn
-
-			 )
+			 (error "Unimplemented"))
 		       (with-slots ((alpha alpha) (beta beta)) split
 			 (setf alpha scal-by)
 			 (setf beta offset)))
@@ -522,14 +538,13 @@ scal-by, offset: alpha, beta which corresponds to y = alpha*x + beta."
 					    for b in buckets
 					    nconc (let ((val (nth i use-split-vals)))
 						    (bucket-split b :dim best-dim :val val :x-orig x-orig)))))
-
+		     
 		     ;(mapc #'destroy-bucket buckets)
 		     (setq buckets new-buckets))))))
-    (let ((loss (loop for b in buckets
-		      sum (bucket-loss b))))
+    (let ((loss (loop for b in buckets sum (bucket-loss b))))
       (if need-prototypes
 	  (progn
-
+	    (error "Unimplemented")
 	    )
 	  (progn
 	    (values splits loss buckets))))))
@@ -571,6 +586,7 @@ y = [D M] (To be multiplied)"
 		     (use-x-orig  x-orig  t `(,(first cth-idx)
 					      ,(second cth-idx))))
 	  ;; Iteraiton: [100, D] -> [0~4, D], [4~8, D] ...
+	  
 	  (multiple-value-bind (msplits loss buckets)
 	      (learn-binary-tree-splits use-x-error use-x-orig N :need-prototypes nil)
 	    (declare (ignore loss))
@@ -581,7 +597,7 @@ y = [D M] (To be multiplied)"
 			      (multisplit-split-dim s))))
 
 	    (push msplits all-splits)
-	    (push buckets all-buckets) ;; rev them
+	    (push buckets all-buckets)
 
 		    
             ;; update residuals and store prototypes
@@ -608,9 +624,78 @@ y = [D M] (To be multiplied)"
 			     (with-view (protos* all-prototypes cth b t)
 			       (%move c* protos*)))))
 	      ;; Todo: Ram Usage
-	      (free-mat centroids))
-	    (values x-error (reverse all-splits) all-prototypes (reverse all-buckets))))))))
+	      (free-mat centroids))))))
+    (values x-error (reverse all-splits) all-prototypes (reverse all-buckets))))
 
+;; Fix IT
+(defun apply-hash-function (X splits &aux (N (car (matrix-visible-shape X))))
+  "splits ... list, consisted of MultiSplits"
+  (declare (type matrix X)
+	   (type list splits))
+  (let ((nsplits (length splits)))
+    (unless (>= nsplits 1)
+      (error "Assertion Failed with (>= nsplits 1)"))
+    (labels ((%cmp> (matrix
+		     scalar
+		     &aux
+		       (N (car (matrix-visible-shape matrix)))
+		       (result (loop repeat N collect nil)))
+	       "matrix = [N, 1]"
+	       (call-with-visible-area
+		matrix
+		#'(lambda (view)
+		    (with-view-object (index view :absolute i)
+		      (setf (nth i result) (if (> (1d-mat-aref matrix index) scalar)
+					       t
+					       nil)))))
+	       result))
+      (let ((group-ids (loop repeat N collect 0)))
+	(loop for i upfrom 0 below nsplits
+	      do (let* ((split (nth i splits))
+			(vals (loop for i in group-ids
+				    collect (nth i (multisplit-threshold split))))
+			(indicators (preprocess-x
+				     split
+				     (%copy (view X t `(:indices ,@(multisplit-split-dim split))))))
+			(indicators (%cmp> indicators (car vals)))) ;; ??? Fixme: fix here.
+		   (loop for i upfrom 0 below (length group-ids)
+			 do (progn
+			      (setf (nth i group-ids)
+				    (+
+				     (* (nth i group-ids) 2)
+				     (nth i indicators)))))))
+	group-ids))))
+
+(defun mithral-encode ()
+  ;; call CFFI and SIMDlize
+  )
+
+(defun learn-proto-and-hash-function (X C
+				      &key
+					(K 16)
+					(verbose t)
+				      &aux
+					(X-copy (%copy X))
+					(size (apply #'* (matrix-visible-shape X)))
+					(delta 1e-7))
+  (multiple-value-bind (x-error all-splits all-prototypes _)
+      (init-and-learn-mithral X C 4 :K K)
+    (declare (ignore _))
+
+    (let ((msv-orig  (/ (%sumup (%square X-copy)) size))
+	  (mse-error (+ delta (/ (%sumup (%square X-error)) size))))
+      (when verbose
+	(format t "X-error-mse / X mean squared value: ~a"
+		(/ msv-orig mse-error)))
+
+
+      )))
+
+;; Note: Compute on INT8
+
+
+
+  
 ;; N x D @ D x M
 (defclass MithralAMM ()
   ((n :initarg :n :type fixnum :reader mithral-n)
@@ -668,27 +753,27 @@ y = [D M] (To be multiplied)"
 )))
 |#
 
-(defun test-mithral ()
+(defun test-mithral (&key
+		       (N 1024)
+		       (D 128)
+		       (C 4)
+		       (ncodebooks 4))
   ;; X N D where N, D = 32k and D is enough large.
-  (let ((x (quantize-matrix (matrix `(64 128))))
-	(nrows 64)
-	(ncols 128)
-	(ncodebooks 4)
-	;; splitdims <- 16 * ncodebooks
-	(splitdims (matrix `(64) :dtype :int))
-	(all-splitvals (quantize-matrix (matrix `(64 128))))
-	(out (quantize-matrix (matrix `(64 128)))))
-    (mithral-encode
-     (matrix-vec x)
-     nrows
-     ncols
-     (matrix-vec splitdims)
-     (matrix-vec all-splitvals)
-     shifts
-     offsets
-     ncodebooks
-     (matrix-vec out))
-    t))
+  (let ((a (matrix `(,N ,D)))
+	(alpha (quantize-matrix (matrix `(1,N))))
+	(beta  (quantize-matrix (matrix  `(1 ,N)))))
+    (%fill alpha 1)
+    (%fill beta 1)
+    
+    (multiple-value-bind (x-err all-splits all-prototypes buckets)      
+	(init-and-learn-mithral a 4 ncodebooks)
+      ;;(declare (ignore x-err all-prototypes))
+      (free-mat x-err)
+      (free-mat all-prototypes)
+      
+
+    
+    t)))
 
 (defun offline-learning ())
 (defmacro with-mithral-learning ())

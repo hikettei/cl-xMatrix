@@ -6,6 +6,10 @@
 ;  ())
 
 
+;; Todo:
+;; Add: Error Check and More Conditions
+;; Add: Optimize and Inline codes
+
 (defun print-view (view stream depth)
   (declare (ignore depth))
   (format stream "=ViewInstruction========~%  total_offset:    ~a~%  strides:       (~a ~a)~%  offsets:       (~a ~a)~%  visible_shape: (~a ~a)~%"

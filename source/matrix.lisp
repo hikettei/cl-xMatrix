@@ -1,6 +1,9 @@
 
 (in-package :cl-xmatrix)
 
+;; Memo: https://www.lispforum.com/viewtopic.php?t=4296
+;; Heap Corruptionなぜ起こる？？？
+
 (defparameter *available-dtypes*
   `(:uint16
     :float
@@ -45,8 +48,10 @@
 (defun free-mat (matrix)
   "Frees matrix"
   (declare (type matrix matrix))
-  ; Todo: check if matrix exists
-  (foreign-free (matrix-vec matrix)))
+  ;; Todo: check if matrix exists
+  ;; Todo: Count total-mem-usage not to forget memfree.
+  ;(foreign-free (matrix-vec matrix))
+  )
 
 
 (declaim (ftype (function (cons fixnum) cons) fill-with-d))
