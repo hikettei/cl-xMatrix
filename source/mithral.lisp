@@ -244,7 +244,7 @@ Memo: Spelling Inconsistency -> threshold and val."
     (T
      (let ((my-idx (bucket-point-ids bucket)))
        (compute-optimal-split-val
-	(view x my-idx t)
+	(view x `(:indices ,@my-idx) t)
 	dim)))))
 
 ;; Computes losses
@@ -357,12 +357,13 @@ x - One of prototypes. [num_idxs, D]"
 	 (sses-tail-reversed (cumsse-cols (view x `(:indices ,@sort-idxs) t)))
 	 (sses sses-head)
 	 (last-index  (car (matrix-visible-shape sses-head)))
-	 (indices (loop for i downfrom last-index to 0
-			collect i)))
+	 (indices (loop for i downfrom last-index to 0 collect i)))
 
     (%adds (view sses `(0 ,(1- last-index)) t)
 	   (view sses-tail-reversed `(:indices ,@indices) t))
 
+    (print dim)
+    (print x)
     (let* ((sses (%sum sses :axis 1))
 	   (best-idx (nth 0 (argsort (convert-into-lisp-array sses :freep nil) :test #'<)))
 	   (next-idx (min (1- N) (1+ best-idx)))
