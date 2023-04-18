@@ -309,7 +309,6 @@ Output: Cumsses [N D]"
 	(cumX-cols (matrix `(1 ,D) :dtype dtype))
 	(cumx2-cols (matrix `(1 ,D) :dtype dtype)))
 
-
     (dotimes (j D)
       (with-views ((cxc cumX-cols j t)
 		   (cxc2 cumX2-cols j t)
@@ -317,32 +316,27 @@ Output: Cumsses [N D]"
 	(%move x* cxc)
 	(%move x* cxc2)
 	(%square cxc2)))
-    
-    (let ((sqarea))
-      (loop for i fixnum upfrom 0 below N
-	    do (let ((lr (/ (1+ i))))
-		 (dotimes (j D)
-		   (with-views ((cs cumsses i j)
-				(cxc cumX-cols j t)
-				(cxc2 cumX2-cols j t)
-				(x* x i j))
-		     (%adds cxc x*)
-		     (%adds cxc2 (%square (if sqarea
-					      (progn
-						(%move x* sqarea))
-					      (progn
-						(setq sqarea (%copy x*))
-						sqarea))))
-		     (let* ((meanX (%scalar-mul cxc lr))
-			    (mx (%muls meanX cxc))
-			    (mx (%scalar-mul mx -1.0)))
-		       (%move cxc2 cs)
-		       (%adds cs mx))))))
-      ;;(free-mat cumX-cols) (Heap Corruption...) To Add: GCable CFFI Pointer?
-      ;;(free-mat cumx2-cols)
-      (if sqarea
-	  (free-mat sqarea))
-      cumsses)))
+
+    (dotimes (i N)
+      (let ((lr (/ (+ 2.0 i))))
+	(dotimes (j D)
+	  (with-views ((cs cumsses i j)
+		       (cxc cumX-cols j t)
+		       (cxc2 cumX2-cols j t)
+		       (x* x i j))
+	    (%scalar-add cxc (1d-mat-aref x* 0))
+	    (%scalar-add cxc2
+			 (locally (declare (optimize (speed 1)))
+			   (expt (1d-mat-aref x* 0) 2)))
+
+	    (let* ((meanX (%scalar-mul cxc lr))
+		   (mx (%muls meanX cxc)) ;; Amadur
+		   (mx (%scalar-mul mx -1.0)))
+	      (%move cxc2 cs)
+	      (%adds cs mx))))))
+    (free-mat cumX-cols) ;; (Heap Corruption...) To Add: GCable CFFI Pointer?
+    (free-mat cumx2-cols)
+      cumsses))
 
 ;; 6: fp=0x7f65648 pc=0x536a2e6b CL-XMATRIX::COMPUTE-OPTIMAL-SPLIT-VAL
 (declaim (ftype (function (matrix index) (values matrix matrix)) compute-optimal-split-val))
@@ -362,8 +356,6 @@ x - One of prototypes. [num_idxs, D]"
     (%adds (view sses `(0 ,(1- last-index)) t)
 	   (view sses-tail-reversed `(:indices ,@indices) t))
 
-    (print dim)
-    (print x)
     (let* ((sses (%sum sses :axis 1))
 	   (best-idx (nth 0 (argsort (convert-into-lisp-array sses :freep nil) :test #'<)))
 	   (next-idx (min (1- N) (1+ best-idx)))
@@ -516,8 +508,8 @@ scal-by, offset: alpha, beta which corresponds to y = alpha*x + beta."
 						     0.0)))
 				     (%scalar-add (view total-losses t d) loss)
 				     (when (and (>= d 1)
-						(> (1d-mat-aref total-losses d)
-						   (previous-min-losses d)))
+						(>= (1d-mat-aref total-losses d)
+						    (previous-min-losses d)))
 				       ;; Early Stopping
 				       (return-from bucket-training-iter))
 				     (push val split-vals))))
