@@ -8,7 +8,6 @@
 ;;         /              
 ;; View-Indexing-Error
 ;;
-;; Note Stride=0 ... Repeat
 
 
 (define-condition Indexing-Error (simple-error)
@@ -135,6 +134,11 @@ ViewInstruction is basically created only for 2d-matrix operation, functions mus
 (defmacro %* (&rest args)
   `(the fixnum (* ,@(map 'list #'(lambda (x)
 				  `(the fixnum ,x))
+			 args))))
+
+(defmacro %+ (&rest args)
+  `(the fixnum (+ ,@(map 'list #'(lambda (x)
+				  `(the fixnum ,x))
 			args))))
 
 (defmacro with-view-object ((index view &key (absolute (gensym)))
@@ -147,20 +151,22 @@ ViewInstruction is basically created only for 2d-matrix operation, functions mus
   `(dotimes (,mi (viewinstruction-lisp-m ,view))
      (dotimes (,ni (viewinstruction-lisp-n ,view))
        (declare (type index ,mi ,ni))
-       (let* ((,index (+ (viewinstruction-lisp-offset ,view)
-			 (%* (viewinstruction-lisp-stride2 ,view)
-			     (viewinstruction-lisp-broadcast-2 ,view)
-			     (+ ,mi (viewinstruction-lisp-offset2 ,view)))
-			 (%* (viewinstruction-lisp-stride1 ,view)
-			     (viewinstruction-lisp-broadcast-1 ,view)
-			     (+ ,ni (viewinstruction-lisp-offset1 ,view))))) ;; (2 3 4 ...)
-	      (,absolute (+ (viewinstruction-lisp-actual-offset ,view)
-			    (the index
-				 (%* (viewinstruction-lisp-stride2 ,view)
-				     ,mi))
-			    (the index
-				 (%* (viewinstruction-lisp-stride1 ,view)
-				     ,ni))))) ;; (0 1 2 ...)
+       (let* ((,index (%+ (viewinstruction-lisp-offset ,view)
+			  (%*
+			   (%*
+			    (viewinstruction-lisp-stride2 ,view)
+			    (viewinstruction-lisp-broadcast-2 ,view))
+			   (+ ,mi (viewinstruction-lisp-offset2 ,view)))
+			  (%*
+			   (%*
+			    (viewinstruction-lisp-stride1 ,view)
+			    (viewinstruction-lisp-broadcast-1 ,view))
+			   (%+ ,ni (viewinstruction-lisp-offset1 ,view))))) ;; (2 3 4 ...)
+	      (,absolute (%+ (viewinstruction-lisp-actual-offset ,view)
+			     (%* (viewinstruction-lisp-stride2 ,view)
+				 ,mi)
+			     (%* (viewinstruction-lisp-stride1 ,view)
+				 ,ni)))) ;; (0 1 2 ...)
 	 (declare (ignorable ,absolute))
 	 ,@body))))
 
@@ -186,21 +192,28 @@ ViewInstruction is basically created only for 2d-matrix operation, functions mus
 
      (dotimes (,mi (viewinstruction-lisp-m ,view1))
        (dotimes (,ni (viewinstruction-lisp-n ,view1))
-	 (declare (type index ,mi ,ni))
-         (let* ((,index1 (+ (viewinstruction-lisp-offset ,view1)
-			   (%* (viewinstruction-lisp-stride2 ,view1)
-			       (viewinstruction-lisp-broadcast-2 ,view1)
-			       (+ ,mi (viewinstruction-lisp-offset2 ,view1)))
-			   (%* (viewinstruction-lisp-stride1 ,view1)
-			       (viewinstruction-lisp-broadcast-1 ,view1)
-			       (+ ,ni (viewinstruction-lisp-offset1 ,view1)))))
-		(,index2 (+ (viewinstruction-lisp-offset ,view2)
-			   (%* (viewinstruction-lisp-stride2 ,view2)
-			       (viewinstruction-lisp-broadcast-2 ,view2)
-			       (+ ,mi (viewinstruction-lisp-offset2 ,view2)))
-			   (%* (viewinstruction-lisp-stride1 ,view2)
-			       (viewinstruction-lisp-broadcast-1 ,view2)
-			       (+ ,ni (viewinstruction-lisp-offset1 ,view2))))))
+	 (declare (type fixnum ,mi ,ni))
+         (let* ((,index1 (%+ (viewinstruction-lisp-offset ,view1)
+			     (%*
+			      (%* (viewinstruction-lisp-stride2 ,view1)
+				  (viewinstruction-lisp-broadcast-2 ,view1))
+			      (%+ ,mi (viewinstruction-lisp-offset2 ,view1)))
+			     (%* (%*
+				  (viewinstruction-lisp-stride1 ,view1)
+				  (viewinstruction-lisp-broadcast-1 ,view1))
+				 (+ ,ni (viewinstruction-lisp-offset1 ,view1)))))
+		(,index2 (%+ (viewinstruction-lisp-offset ,view2)
+			     (%*
+			      (%*
+			       (viewinstruction-lisp-stride2 ,view2)
+			       (viewinstruction-lisp-broadcast-2 ,view2))
+			      (+ ,mi (viewinstruction-lisp-offset2 ,view2)))
+			     (%*
+			      (%*
+			       (viewinstruction-lisp-stride1 ,view2)
+			       (viewinstruction-lisp-broadcast-1 ,view2))
+			      (+ ,ni (viewinstruction-lisp-offset1 ,view2))))))
+	   (declare (type fixnum ,index1 ,index2))
 	   ,@body)))))
 
 ;; Support Repeat -> More Conditions -> Optimize
@@ -240,7 +253,7 @@ Legal Subscript -> fixnum/list/t, (external-option ~)"
 			   ;; M[2:4].view(1)
 			   (+ (car view) sub))
 			  (T
-			   (error "Cant handle this subscript: ~a" view))))
+			   (view-indexing-error "Cant handle this subscript: ~a" view))))
 		       (t
 			;; M[T][0]
 			sub)))
@@ -248,7 +261,7 @@ Legal Subscript -> fixnum/list/t, (external-option ~)"
 		     (typecase view
 		       (index
 			;; M[1].view([2:4])
-			(error "view: out of range"))
+			(view-indexing-error "view: out of range"))
 		       (list
 			(typecase (car view)
 			  (keyword
@@ -263,13 +276,13 @@ Legal Subscript -> fixnum/list/t, (external-option ~)"
 			   `(,(+ (car view) (car sub))
 			     ,(+ (car view) (second sub))))
 			  (T
-			   (error "Cant handle this subscript: ~a" view))))
+			   (view-indexing-error "Cant handle this subscript: ~a" view))))
 		       (t sub)))
 		   (handle-ext-kw (view sub)
 		     (typecase view
 		       (index
 			;; M[0][:indices 1 2 3]
-			(error "view: out of range"))
+			(view-indexing-error "view: out of range"))
 		       (list
 			(typecase (car view)
 			  (keyword
@@ -291,7 +304,7 @@ Legal Subscript -> fixnum/list/t, (external-option ~)"
 					       (nth k ls))
 					   (cdr sub)))))
 			  (T
-			   (error "Cant handle this subscript: ~a" view))))
+			   (view-indexing-error "Cant handle this subscript: ~a" view))))
 		       ;; M[T][:indices 1 2 3]
 		       (t sub))))
 	    (map 'list #'(lambda (old-view-axis sub)
@@ -306,7 +319,7 @@ Legal Subscript -> fixnum/list/t, (external-option ~)"
 				 (handle-ext-kw old-view-axis sub))
 				(index
 				 (handle-ext-range old-view-axis sub))
-				(t (error "Cant handle this subscript: ~a" sub))))
+				(t (view-indexing-error "Cant handle this subscript: ~a" sub))))
 			     ;; M[:indices 1 2 3][t]
 			     (t old-view-axis)))
 		 old-view subscripts))))
@@ -559,7 +572,7 @@ Done: Straighten-up subscripts
 function - #'(lambda (lisp-structure) body)
 
 Returns - nil"
-  (declare (optimize (speed 3))
+  (declare (optimize (speed 3) (safety 0))
 	   (type matrix matrix)
 	   (type function function))
 

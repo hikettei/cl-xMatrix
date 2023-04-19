@@ -7,6 +7,7 @@
 	      (array (:pointer :float)))
 
 (defun %abs (m)
+  (declare (optimize (speed 3)))
   (call-with-visible-area m
 			  #'(lambda (view)
 			      (fp32-abs view (matrix-vec m)))))
