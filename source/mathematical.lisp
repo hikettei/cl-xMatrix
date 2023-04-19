@@ -40,13 +40,15 @@
   ;; tmp
   (declare (optimize (safety 0)))
   (call-with-visible-area
-   matrix #'(lambda (x)
-	      (with-view-object (index x)
-		(setf
-		 (mem-aref
-		  (matrix-vec matrix) (matrix-dtype matrix) index)
-		 (+ (mem-aref (matrix-vec matrix) (matrix-dtype matrix) index)
-		    (mem-aref (matrix-vec matrix) (matrix-dtype matrix1) index))))))
+   matrix
+   #'(lambda (x xp)
+       (with-two-of-views ((index1 x)
+			   (index2 xp))
+	 (setf
+	  (mem-aref (matrix-vec matrix) (matrix-dtype matrix) index1)
+	  (+ (mem-aref (matrix-vec matrix) (matrix-dtype matrix) index1)
+	     (mem-aref (matrix-vec matrix1) (matrix-dtype matrix1) index2)))))
+   :mat-operated-with matrix1)
   matrix)
 
 (defun %subs (matrix matrix1)
@@ -57,11 +59,12 @@ matrix-=matrix1"
   (call-with-visible-area
    matrix #'(lambda (x)
 	      (with-view-object (index x)
-		(setf
-		 (mem-aref
-		  (matrix-vec matrix) (matrix-dtype matrix) index)
-		 (- (mem-aref (matrix-vec matrix) (matrix-dtype matrix) index)
-		    (mem-aref (matrix-vec matrix) (matrix-dtype matrix1) index))))))
+		(with-from-view-object (index1 matrix1)
+		  (setf
+		   (mem-aref
+		    (matrix-vec matrix) (matrix-dtype matrix) index)
+		   (- (mem-aref (matrix-vec matrix) (matrix-dtype matrix) index)
+		      (mem-aref (matrix-vec matrix) (matrix-dtype matrix1) index)))))))
   matrix)
 
 (defun %muls (matrix matrix1)

@@ -132,28 +132,76 @@ ViewInstruction is basically created only for 2d-matrix operation, functions mus
      (declare (ignorable offset stride2 stride1 offset2 offset1 m n))
      ,@body))
 
+(defmacro %* (&rest args)
+  `(the fixnum (* ,@(map 'list #'(lambda (x)
+				  `(the fixnum ,x))
+			args))))
+
 (defmacro with-view-object ((index view &key (absolute (gensym)))
 			    &body body &aux
 					 (mi (gensym))
 					 (ni (gensym)))
+  ;; Todo: Optimize And Inline
   "Given view, iterates body with index.
   :absolute <- index based on the matrix but offset isn't considered."
   `(dotimes (,mi (viewinstruction-lisp-m ,view))
      (dotimes (,ni (viewinstruction-lisp-n ,view))
+       (declare (type index ,mi ,ni))
        (let* ((,index (+ (viewinstruction-lisp-offset ,view)
-			 (* (viewinstruction-lisp-stride2 ,view)
-			    (viewinstruction-lisp-broadcast-2 ,view)
-			    (+ ,mi (viewinstruction-lisp-offset2 ,view)))
-			 (* (viewinstruction-lisp-stride1 ,view)
-			    (viewinstruction-lisp-broadcast-1 ,view)
-			    (+ ,ni (viewinstruction-lisp-offset1 ,view))))) ;; (2 3 4 ...)
+			 (%* (viewinstruction-lisp-stride2 ,view)
+			     (viewinstruction-lisp-broadcast-2 ,view)
+			     (+ ,mi (viewinstruction-lisp-offset2 ,view)))
+			 (%* (viewinstruction-lisp-stride1 ,view)
+			     (viewinstruction-lisp-broadcast-1 ,view)
+			     (+ ,ni (viewinstruction-lisp-offset1 ,view))))) ;; (2 3 4 ...)
 	      (,absolute (+ (viewinstruction-lisp-actual-offset ,view)
-			    (* (viewinstruction-lisp-stride2 ,view)
-			       ,mi)
-			    (* (viewinstruction-lisp-stride1 ,view)
-			       ,ni)))) ;; (0 1 2 ...)
+			    (the index
+				 (%* (viewinstruction-lisp-stride2 ,view)
+				     ,mi))
+			    (the index
+				 (%* (viewinstruction-lisp-stride1 ,view)
+				     ,ni))))) ;; (0 1 2 ...)
 	 (declare (ignorable ,absolute))
 	 ,@body))))
+
+(defmacro with-two-of-views (((index1 view1) (index2 view2))
+			     &body
+			       body
+			     &aux
+			       (mi (gensym))
+			       (ni (gensym)))
+  ""
+  `(progn
+     (unless (= (viewinstruction-lisp-m ,view1)
+		(viewinstruction-lisp-m ,view2))
+       (view-indexing-error "two shapes doesn't match:. M1=~a and M2=~a"
+			    (viewinstruction-lisp-m ,view1)
+			    (viewinstruction-lisp-m ,view2)))
+     
+     (unless (= (viewinstruction-lisp-n ,view1)
+		(viewinstruction-lisp-n ,view2))
+       (view-indexing-error "two shapes doesn't match: N1=~a N2=~a"
+			    (viewinstruction-lisp-n ,view1)
+			    (viewinstruction-lisp-n ,view2)))
+
+     (dotimes (,mi (viewinstruction-lisp-m ,view1))
+       (dotimes (,ni (viewinstruction-lisp-n ,view1))
+	 (declare (type index ,mi ,ni))
+         (let* ((,index1 (+ (viewinstruction-lisp-offset ,view1)
+			   (%* (viewinstruction-lisp-stride2 ,view1)
+			       (viewinstruction-lisp-broadcast-2 ,view1)
+			       (+ ,mi (viewinstruction-lisp-offset2 ,view1)))
+			   (%* (viewinstruction-lisp-stride1 ,view1)
+			       (viewinstruction-lisp-broadcast-1 ,view1)
+			       (+ ,ni (viewinstruction-lisp-offset1 ,view1)))))
+		(,index2 (+ (viewinstruction-lisp-offset ,view2)
+			   (%* (viewinstruction-lisp-stride2 ,view2)
+			       (viewinstruction-lisp-broadcast-2 ,view2)
+			       (+ ,mi (viewinstruction-lisp-offset2 ,view2)))
+			   (%* (viewinstruction-lisp-stride1 ,view2)
+			       (viewinstruction-lisp-broadcast-1 ,view2)
+			       (+ ,ni (viewinstruction-lisp-offset1 ,view2))))))
+	   ,@body)))))
 
 ;; Support Repeat -> More Conditions -> Optimize
 
@@ -482,7 +530,7 @@ Done: Straighten-up subscripts
     (t
      (the index shape))))
 
-(defun call-with-visible-area-and-extope (matrix function)
+(defun call-with-visible-area-and-extope (matrix function &key (mat-operated-with nil))
   "Handles the external operation of matrix"
   (declare (optimize (speed 3))
 	   (type matrix matrix)
@@ -498,14 +546,14 @@ Done: Straighten-up subscripts
 	 (dolist (index indices)
 	   (setf (nth external-operation-dim view) index)
 	   (let ((matrix* (apply #'view-of-matrix matrix nil view)))
-	     (call-with-visible-area matrix* function))))
+	     (call-with-visible-area matrix* function :mat-operated-with mat-operated-with))))
        nil)
       (T
        (error "Can't handle with unknown ext-operation ~a" external-operation))))
   nil)
 
 
-(defun call-with-visible-area (matrix function)
+(defun call-with-visible-area (matrix function &key (mat-operated-with nil))
   "Under this macro, three or more dimensions matrix are expanded into 2d, and set index-variable ViewInstruction.
 
 function - #'(lambda (lisp-structure) body)
@@ -515,15 +563,26 @@ Returns - nil"
 	   (type matrix matrix)
 	   (type function function))
 
-  ;; complitaed ... do %copy
+  ;; If complitcaed ... do %copy
   (when (matrix-external-operation matrix)
-    (return-from call-with-visible-area
-      (call-with-visible-area-and-extope matrix function)))
+    (let ((mat (if (matrix-external-operation mat-operated-with)
+		   (progn
+		     (format t "Warning: call-with-visible-area copied mat-operated-with")
+		     (%copy mat-operated-with))
+		   mat-operated-with)))
+      (return-from call-with-visible-area
+	(call-with-visible-area-and-extope
+	 matrix
+	 function
+	 :mat-operated-with mat))))
   
   (let ((dims (matrix-shape matrix))
 	(views (matrix-view matrix))
 	(strides (matrix-strides matrix))
-	(broadcasts (matrix-broadcasts matrix)))
+	(broadcasts (matrix-broadcasts matrix))
+	(broadcasts1 (if mat-operated-with
+			 (matrix-broadcasts mat-operated-with)
+			 nil)))
     (labels ((explore-batch (total-offset  ;; Offsets considered broadcast
 			     actual-offset ;; No broadcast (for output)
 			     dim-indicator
@@ -541,15 +600,30 @@ Returns - nil"
 			 (repeat (if broadcasts
 				     (nth dim-indicator broadcasts)
 				     nil))
+			 (repeat-act (if broadcasts1
+					 (nth dim-indicator broadcasts1)
+					 nil))
 			 (stride1 (if repeat
 				      0
-				      stride)))
+				      stride))
+			 (stride (if repeat-act
+				     0
+				     stride)))
 		    (declare (type index start-with end-with stride 1+dims-indicator 1-rest-dims))
 		    
-		    (if (and repeat)
+		    (if (or repeat-act repeat)
 			(if (typep repeat 'index)
 			    (setq end-with (+ start-with repeat))
-			    (setq end-with (1+ start-with)))) ;; t
+			    (setq end-with (cond
+					     ((and broadcasts1
+						   (eql repeat t)
+						   (eql repeat-act t))
+					      (1+ start-with))
+					     ((and broadcasts1
+						   (eql repeat t))
+					      (the index (+ start-with (the index repeat-act))))
+					     (t
+					      (1+ start-with))))))
 		    
 		    (let ((offsets total-offset)
 			  (actual-offsets actual-offset))
@@ -605,15 +679,54 @@ Returns - nil"
 		      
 		      ;; (when (= 1+dim 1)
 		      ;;       transpose ~~~)
-		      ;; (M 1) -> (1 M)
+		      ;; (M 1) -> (1 M) (M 1 fails to SIMD)
 
-#|
-Note:
-		      (M 1) fails to be paralellized by SIMD.
-		      Reshaping (M 1) into (1 M) may work. (Needs to be Automatically do it)
-|#
-		
-		      (funcall function instruction))))
+		      (if mat-operated-with
+			  (let* ((t-views (matrix-view mat-operated-with))
+				 (t-dims (matrix-shape mat-operated-with))
+				 (tstrides (matrix-strides mat-operated-with))
+				 (t-view-point (nth dim-indicator t-views))
+				 (t-view-point+1 (nth (1+ dim-indicator) t-views))
+				 (t-dim (nth dim-indicator t-dims))
+				 (t-dim+1 (nth (1+ dim-indicator) t-dims))
+				 
+				 (t-offset2 (view-startindex t-view-point t-dim))
+				 (t-offset1 (view-startindex t-view-point t-dim+1))
+				 (t-offset2e (view-endindex t-view-point t-dim))
+				 (t-offset1e (view-endindex t-view-point+1 t-dim+1))
+				 (trepeat2 (if broadcasts1
+					       (nth dim-indicator broadcasts1)
+					       nil))
+				 (trepeat1 (if broadcasts1 
+					       (nth (1+ dim-indicator) broadcasts1)
+					       nil))
+				 (tstrides2 (nth dim-indicator tstrides))
+				 (tstrides1 (nth (1+ dim-indicator) tstrides))
+				 (tshape2 (the index (- t-offset2e t-offset2)))
+				 (tshape1 (the index (- t-offset1e t-offset1))))
+			    (if trepeat2
+				(setq tshape2 trepeat2))
+			    (if trepeat1
+				(setq tshape1 trepeat1))
+
+			    (let ((instruction1
+				    (view-instruction
+				     actual-offset
+				     actual-offset
+				     tshape2
+				     tshape1
+				     tstrides2
+				     tstrides1
+				     t-offset2
+				     t-offset1
+				     (if trepeat2
+					 0
+					 1)
+				     (if trepeat1
+					 0
+					 1))))
+			      (funcall function instruction instruction1)))
+			  (funcall function instruction)))))
 		 ((= rest-dims 1)
 		  ;; Reshaping `(M) into `(1 M) and regard it as 2d MAT
 		  (setq dims `(1 ,@dims))
