@@ -18,6 +18,7 @@
 		(view2 (:struct ViewInstruction))
 		(array1 (:pointer ,dtype))
 		(array2 (:pointer ,dtype)))))
+  
   (define-arithmetic-cfun "fp32_add" :float)
   (define-arithmetic-cfun "fp32_sub" :float)
   (define-arithmetic-cfun "fp32_mul" :float)
@@ -37,9 +38,21 @@
   (define-arithmetic-cfun "int_sub" :int)
   (define-arithmetic-cfun "int_mul" :int)
   (define-arithmetic-cfun "int_div" :int)
+  
+  (define-arithmetic-cfun "fp32_copy" :float)
+  (define-arithmetic-cfun "fp16_copy" :uint16)
+  (define-arithmetic-cfun "fp8_copy"  :uint8)
+  (define-arithmetic-cfun "int_copy"  :int)
+  )
 
-  (define-arithmetic-cfun "fp32_copy" :float))
 
+(declaim (ftype (function (matrix matrix) matrix)
+		%adds
+		%subs
+		%muls
+		%divs
+		%move))
+		
 (defun %adds (matrix matrix1)
   "Todo: DOC"
   (declare (optimize (speed 3))
@@ -52,13 +65,13 @@
    #'(lambda (x-view x1-view)
        (dtypecase matrix
 	 (:float
-	  )
+	  (fp32-add x-view x1-view (matrix-vec matrix) (matrix-vec matrix1)))
 	 (:uint16
-	  )
+	  (fp16-add x-view x1-view (matrix-vec matrix) (matrix-vec matrix1)))
 	 (:uint8
-	  )
+	  (fp8-add x-view x1-view (matrix-vec matrix) (matrix-vec matrix1)))
 	 (:int
-	  )))
+	  (int-add x-view x1-view (matrix-vec matrix) (matrix-vec matrix1)))))
    :mat-operated-with matrix1)
   matrix)
 
@@ -75,15 +88,16 @@
    #'(lambda (x-view x1-view)
        (dtypecase matrix
 	 (:float
-	  )
+	  (fp32-sub x-view x1-view (matrix-vec matrix) (matrix-vec matrix1)))
 	 (:uint16
-	  )
+	  (fp16-sub x-view x1-view (matrix-vec matrix) (matrix-vec matrix1)))
 	 (:uint8
-	  )
+	  (fp8-sub  x-view x1-view (matrix-vec matrix) (matrix-vec matrix1)))
 	 (:int
-	  )))
+	  (int-sub  x-view x1-view (matrix-vec matrix) (matrix-vec matrix1)))))
    :mat-operated-with matrix1)
   matrix)
+
 
 (defun %muls (matrix matrix1)
   "Todo: DOC"
@@ -91,21 +105,23 @@
 	   (type matrix matrix matrix1))
 
   (assert-dtype matrix matrix1)
+
   
   (call-with-visible-area
    matrix
    #'(lambda (x-view x1-view)
        (dtypecase matrix
 	 (:float
-	  )
+	  (fp32-mul x-view x1-view (matrix-vec matrix) (matrix-vec matrix1)))
 	 (:uint16
-	  )
+	  (fp16-mul x-view x1-view (matrix-vec matrix) (matrix-vec matrix1)))
 	 (:uint8
-	  )
+	  (fp8-mul  x-view x1-view (matrix-vec matrix) (matrix-vec matrix1)))
 	 (:int
-	  )))
+	  (int-mul  x-view x1-view (matrix-vec matrix) (matrix-vec matrix1)))))
    :mat-operated-with matrix1)
   matrix)
+
 
 (defun %divs (matrix matrix1)
   "Todo: DOCS"
@@ -119,22 +135,21 @@
    #'(lambda (x-view x1-view)
        (dtypecase matrix
 	 (:float
-	  )
+	  (fp32-div x-view x1-view (matrix-vec matrix) (matrix-vec matrix1)))
 	 (:uint16
-	  )
+	  (fp16-div x-view x1-view (matrix-vec matrix) (matrix-vec matrix1)))
 	 (:uint8
-	  )
+	  (fp8-div  x-view x1-view (matrix-vec matrix) (matrix-vec matrix1)))
 	 (:int
-	  )))
+	  (int-div  x-view x1-view (matrix-vec matrix) (matrix-vec matrix1)))))
    :mat-operated-with matrix1)
   matrix)
 
 
-
-(defun %copy (matrix matrix1)
-  "Write matrix -> matrix1"
+(defun %move (matrix matrix1)
+  "Copy matrix"
   (declare (optimize (speed 3))
-	   (type matrix matrix matrix1))
+	   (type matrix matrix))
 
   (assert-dtype matrix matrix1)
   
@@ -146,10 +161,21 @@
 	  (fp32-copy x-view x1-view (matrix-vec matrix) (matrix-vec matrix1))
 	  )
 	 (:uint16
+	  (fp16-copy x-view x1-view (matrix-vec matrix) (matrix-vec matrix1))
 	  )
 	 (:uint8
+	  (fp8-copy x-view x1-view (matrix-vec matrix) (matrix-vec matrix1))
 	  )
 	 (:int
-	  )))
+	  (int-copy x-view x1-view (matrix-vec matrix) (matrix-vec matrix1)))))
    :mat-operated-with matrix1)
   matrix)
+
+
+(defun %copy (matrix)
+  (declare (optimize (speed 3))
+	   (type matrix matrix))
+  (let ((new-matrix (matrix (matrix-visible-shape matrix)
+			    :dtype (matrix-dtype matrix))))
+    (%move matrix new-matrix)
+    new-matrix))

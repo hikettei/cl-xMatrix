@@ -159,8 +159,45 @@ void fp32_abs(const struct ViewInstruction view, single_float* vec) {
   } while(0)
 
 
-// Todo: FP16, SIMD
+// TODO: SIMD
 void fp32_copy(const struct ViewInstruction view, const struct ViewInstruction view1, single_float* vec1, single_float* vec2) {
   // Vec2 has no any offsets. So i must be absolute
   WITH_ELWISE_OPS(view, view1, k, m, vec2[m] = vec1[k]);
+}
+
+void fp16_copy(const struct ViewInstruction view, const struct ViewInstruction view1, fp16_t* vec1, fp16_t* vec2) {
+  // Vec2 has no any offsets. So i must be absolute
+  WITH_ELWISE_OPS(view, view1, k, m, vec2[m] = vec1[k]);
+}
+
+void fp8_copy(const struct ViewInstruction view, const struct ViewInstruction view1, fp8_t* vec1, fp8_t* vec2) {
+  // Vec2 has no any offsets. So i must be absolute
+  WITH_ELWISE_OPS(view, view1, k, m, vec2[m] = vec1[k]);
+}
+
+void int_copy(const struct ViewInstruction view, const struct ViewInstruction view1, int* vec1, int* vec2) {
+  // Vec2 has no any offsets. So i must be absolute
+  WITH_ELWISE_OPS(view, view1, k, m, vec2[m] = vec1[k]);
+}
+
+
+// TODO: SIMD
+void fp32_add(const struct ViewInstruction view, const struct ViewInstruction view1, single_float* vec1, single_float* vec2) {
+  // Vec2 has no any offsets. So i must be absolute
+  WITH_ELWISE_OPS(view, view1, k, m, vec1[m] += vec2[k]);
+}
+
+void fp16_add(const struct ViewInstruction view, const struct ViewInstruction view1, fp16_t* vec1, fp16_t* vec2) {
+  // Vec2 has no any offsets. So i must be absolute
+  WITH_ELWISE_OPS(view, view1, k, m, vec1[m] += vec2[k]);
+}
+
+void fp8_add(const struct ViewInstruction view, const struct ViewInstruction view1, fp8_t* vec1, fp8_t* vec2) {
+  // Vec2 has no any offsets. So i must be absolute
+  WITH_ELWISE_OPS(view, view1, k, m, vec1[m] += vec2[k]);
+}
+
+void int_add(const struct ViewInstruction view, const struct ViewInstruction view1, int* vec1, int* vec2) {
+  // Vec2 has no any offsets. So i must be absolute
+  WITH_ELWISE_OPS(view, view1, k, m, vec1[m] += vec2[k]);
 }

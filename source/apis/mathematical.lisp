@@ -5,9 +5,12 @@
 ;;
 ;;
 
-(defcfun "fp32_abs" :void
-	      (view (:struct ViewInstruction))
-	      (array (:pointer :float)))
+
+(macrolet ((define-elwise-cfun (name dtype)
+	     `(defcfun ,name :void
+		(view (:struct ViewInstruction))
+		(array (:pointer ,dtype)))))  
+  (define-elwise-cfun "fp32_abs" :float))
 
 (defun %abs (matrix)
   "Computes absolute values destructively."

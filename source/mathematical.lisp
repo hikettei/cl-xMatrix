@@ -26,52 +26,6 @@
 		 (+ (mem-aref (matrix-vec matrix) (matrix-dtype matrix) index) scalar)))))
   matrix)
 
-(defun %adds (matrix matrix1)
-  "matrix, matrix1 assumed not to have view."
-  ;; tmp
-  (declare (optimize (safety 0)))
-  (call-with-visible-area
-   matrix
-   #'(lambda (x xp)
-       (with-two-of-views ((index1 x)
-			   (index2 xp))
-	 (setf
-	  (mem-aref (matrix-vec matrix) (matrix-dtype matrix) index1)
-	  (+ (mem-aref (matrix-vec matrix) (matrix-dtype matrix) index1)
-	     (mem-aref (matrix-vec matrix1) (matrix-dtype matrix1) index2)))))
-   :mat-operated-with matrix1)
-  matrix)
-
-(defun %subs (matrix matrix1)
-  "matrix, matrix1 assumed not to have view.
-matrix-=matrix1"
-  ;; tmp
-  (declare (optimize (safety 0)))
-  (call-with-visible-area
-   matrix #'(lambda (x)
-	      (with-view-object (index x)
-		(with-from-view-object (index1 matrix1)
-		  (setf
-		   (mem-aref
-		    (matrix-vec matrix) (matrix-dtype matrix) index)
-		   (- (mem-aref (matrix-vec matrix) (matrix-dtype matrix) index)
-		      (mem-aref (matrix-vec matrix) (matrix-dtype matrix1) index)))))))
-  matrix)
-
-(defun %muls (matrix matrix1)
-  "matrix, matrix1 assumed not to have view."
-  ;; tmp
-  (declare (optimize (safety 0)))
-  (call-with-visible-area
-   matrix #'(lambda (x)
-	      (with-view-object (index x)
-		(setf
-		 (mem-aref
-		  (matrix-vec matrix) (matrix-dtype matrix) index)
-		 (* (mem-aref (matrix-vec matrix) (matrix-dtype matrix) index)
-		    (mem-aref (matrix-vec matrix) (matrix-dtype matrix1) index))))))
-  matrix)
-
 (defun %scalar-mul (matrix scalar)
   ;; tmp
   (declare (optimize (safety 0)))
@@ -116,16 +70,3 @@ matrix-=matrix1"
 					(mem-aref
 					 (matrix-vec matrix) :float index)
 					(random 1.0))))))
-
-(defun %move (matrix matrix1)
-  "Move matrix -> matrix1"
-  ;; tmp
-  (declare (optimize (safety 0)))
-  (call-with-visible-area
-   matrix1 #'(lambda (x)
-	      (with-view-object (index x :absolute i)
-		(setf
-		 (mem-aref (matrix-vec matrix1) (matrix-dtype matrix1) index)
-		 (mem-aref (matrix-vec matrix) (matrix-dtype matrix) i)
-		 ))))
-  matrix1)

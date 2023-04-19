@@ -15,6 +15,8 @@ typedef __fp16 fp16_t;
 typedef uint16_t fp16_t;
 #endif
 
+typedef uint8_t fp8_t;
+
 // 32bit float
 typedef float single_float;
 
@@ -44,9 +46,34 @@ void fp16_abs(const struct ViewInstruction, single_float*);
 
 
 void fp32_copy(const struct ViewInstruction, const struct ViewInstruction, single_float*, single_float*);
+void fp16_copy(const struct ViewInstruction, const struct ViewInstruction, fp16_t*, fp16_t*);
+void fp8_copy(const struct ViewInstruction, const struct ViewInstruction, fp8_t*, fp8_t*);
+void int_copy(const struct ViewInstruction, const struct ViewInstruction, int*, int*);
 
 
 void fp32_add(const struct ViewInstruction, const struct ViewInstruction, single_float*, single_float*);
+void fp16_add(const struct ViewInstruction, const struct ViewInstruction, fp16_t*, fp16_t*);
+void fp8_add(const struct ViewInstruction, const struct ViewInstruction, fp8_t*, fp8_t*);
+void int_add(const struct ViewInstruction, const struct ViewInstruction, int*, int*);
+
+
+
 void fp32_sub(const struct ViewInstruction, const struct ViewInstruction, single_float*, single_float*);
+void fp16_sub(const struct ViewInstruction, const struct ViewInstruction, fp16_t*, fp16_t*);
+void fp8_sub(const struct ViewInstruction, const struct ViewInstruction, fp8_t*, fp8_t*);
+void int_sub(const struct ViewInstruction, const struct ViewInstruction, int*, int*);
+
+
 void fp32_mul(const struct ViewInstruction, const struct ViewInstruction, single_float*, single_float*);
+void fp16_mul(const struct ViewInstruction, const struct ViewInstruction, fp16_t*, fp16_t*);
+void fp8_mul(const struct ViewInstruction, const struct ViewInstruction, fp8_t*, fp8_t*);
+void int_mul(const struct ViewInstruction, const struct ViewInstruction, int*, int*);
+
+
+
 void fp32_div(const struct ViewInstruction, const struct ViewInstruction, single_float*, single_float*);
+void fp16_div(const struct ViewInstruction, const struct ViewInstruction, fp16_t*, fp16_t*);
+void fp8_div(const struct ViewInstruction, const struct ViewInstruction, fp8_t*, fp8_t*);
+void int_div(const struct ViewInstruction, const struct ViewInstruction, int*, int*);
+
+
