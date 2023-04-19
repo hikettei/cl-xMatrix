@@ -42,4 +42,11 @@ struct ViewInstruction {
 void fp32_abs(const struct ViewInstruction, single_float*);
 void fp16_abs(const struct ViewInstruction, single_float*);
 
-void fp32_copy(const struct ViewInstruction, single_float*, single_float*);
+
+void fp32_copy(const struct ViewInstruction, const struct ViewInstruction, single_float*, single_float*);
+
+
+void fp32_add(const struct ViewInstruction, const struct ViewInstruction, single_float*, single_float*);
+void fp32_sub(const struct ViewInstruction, const struct ViewInstruction, single_float*, single_float*);
+void fp32_mul(const struct ViewInstruction, const struct ViewInstruction, single_float*, single_float*);
+void fp32_div(const struct ViewInstruction, const struct ViewInstruction, single_float*, single_float*);

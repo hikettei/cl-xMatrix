@@ -94,6 +94,26 @@ int cpu_has_avx512(void){
   } while(0)
 
 
+// A + B
+#define WITH_VIEW_OPS(view1, view2, index1, index2, stride, simd_operation, reminder) \
+  do {									\
+    int last_ni_index_for_rem = 0;					\
+    for (int mi = view1.offset2; mi < view1.m; mi++) {    		\
+      for (int ni = view1.offset1; ni < view1.n; ni+=stride) {		\
+	last_ni_index_for_rem = ni+stride;				\
+	int index1 = view1.offset + mi * view1.stride2 * view1.broadcast2 + ni * view1.stride1 * view1.broadcast1; \
+	int index2 = view2.offset + mi * view2.stride2 * view2.broadcast2 + ni * view2.stride1 * view2.broadcast1; \
+	(simd_operation);						\
+      }									\
+      for(int ni=last_ni_index_for_rem;ni<view1.n;ni++) {		\
+	int index1 = view1.offset + mi * view1.stride2 * view1.broadcast2 + ni * view1.stride1 * view1.broadcast1; \
+	int index2 view2.offset + mi * view2.stride2 * view2.broadcast2 + ni * view2.stride1 * view2.broadcast1; \
+	(reminder);							\
+      }									\
+    }									\
+  } while(0)
+
+
 static inline void fp32_abs_simd(single_float* x, __m256 sign_mask, int i) {
   XMAT_FP32_LOADU_PS(vec, &x[i]);
   __m256 abs_vec = _mm256_andnot_ps(sign_mask, vec);
@@ -127,9 +147,20 @@ void fp32_abs(const struct ViewInstruction view, single_float* vec) {
     }									\
   } while(0)
 
+#define WITH_ELWISE_OPS(view1, view2, index1, index2, element_wise_operation) \
+  do {									\
+    for (int mi = view1.offset2; mi < view1.m; mi++) {			\
+      for (int ni = view1.offset1; ni < view1.n; ni++) {		\
+        int index1 = view1.offset + mi * view1.stride2 * view1.broadcast2 + ni * view1.stride1 * view1.broadcast1; \
+	int index2 = view2.offset + mi * view2.stride2 * view2.broadcast2 + ni * view2.stride1 * view2.broadcast1; \
+	(element_wise_operation);					\
+      }									\
+    }									\
+  } while(0)
+
 
 // Todo: FP16, SIMD
-void fp32_copy(const struct ViewInstruction view, single_float* vec1, single_float* vec2) {
+void fp32_copy(const struct ViewInstruction view, const struct ViewInstruction view1, single_float* vec1, single_float* vec2) {
   // Vec2 has no any offsets. So i must be absolute
-  WITH_ELWISE_VIEW(view, i, k, vec2[k] = vec1[i]);
+  WITH_ELWISE_OPS(view, view1, k, m, vec2[m] = vec1[k]);
 }

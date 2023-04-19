@@ -10,6 +10,7 @@
 
 ;; Here's primitive operations (exported in another names)
 
+;; Copies vec1's visible area into vec2
 
 (macrolet ((define-arithmetic-cfun (name dtype)
 	     `(defcfun ,name :void
@@ -35,7 +36,9 @@
   (define-arithmetic-cfun "int_add" :int)
   (define-arithmetic-cfun "int_sub" :int)
   (define-arithmetic-cfun "int_mul" :int)
-  (define-arithmetic-cfun "int_div" :int))
+  (define-arithmetic-cfun "int_div" :int)
+
+  (define-arithmetic-cfun "fp32_copy" :float))
 
 (defun %adds (matrix matrix1)
   "Todo: DOC"
@@ -127,3 +130,26 @@
   matrix)
 
 
+
+(defun %copy (matrix matrix1)
+  "Write matrix -> matrix1"
+  (declare (optimize (speed 3))
+	   (type matrix matrix matrix1))
+
+  (assert-dtype matrix matrix1)
+  
+  (call-with-visible-area
+   matrix
+   #'(lambda (x-view x1-view)
+       (dtypecase matrix
+	 (:float
+	  (fp32-copy x-view x1-view (matrix-vec matrix) (matrix-vec matrix1))
+	  )
+	 (:uint16
+	  )
+	 (:uint8
+	  )
+	 (:int
+	  )))
+   :mat-operated-with matrix1)
+  matrix)

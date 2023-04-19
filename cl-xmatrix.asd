@@ -21,6 +21,7 @@
 	       (:file "mathematical")
 	       (:file "operations")
 
+	       (:file "apis/arithmetic")
 	       ;;(:file "mha")
 	       )
   :in-order-to ((test-op (test-op cl-xmatrix/test))))
