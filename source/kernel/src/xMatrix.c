@@ -83,11 +83,11 @@ int cpu_has_avx512(void){
     for (int mi = view.offset2; mi < view.m; mi++) {    		\
       for (int ni = view.offset1; ni < view.n; ni+=stride) {		\
 	last_ni_index_for_rem = ni+stride;				\
-	int index = view.offset + mi * view.stride2 + ni * view.stride1; \
+	int index = view.offset + mi * view.stride2 * view.broadcast2 + ni * view.stride1 * view.broadcast1; \
 	(simd_operation);						\
       }									\
       for(int ni=last_ni_index_for_rem;ni<view.n;ni++) {		\
-	int index = view.offset + mi * view.stride2 + ni * view.stride1; \
+	int index = view.offset + mi * view.stride2 * view.broadcast2 + ni * view.stride1 * view.broadcast1; \
 	(reminder);							\
       }									\
     }									\
@@ -120,8 +120,8 @@ void fp32_abs(const struct ViewInstruction view, single_float* vec) {
   do {									\
     for (int mi = view.offset2; mi < view.m; mi++) {			\
       for (int ni = view.offset1; ni < view.n; ni++) {			\
-        int index = view.offset + mi * view.stride2 + ni * view.stride1; \
-	int index1 = view.offset + (mi - view.offset2) * view.stride2 + (ni - view.offset1) * view.stride1; \
+        int index = view.offset + mi * view.stride2 * view.broadcast2 + ni * view.stride1 * view.broadcast1; \
+	int index1 = view.actualoffset + (mi - view.offset2) * view.stride2 + (ni - view.offset1) * view.stride1; \
 	(element_wise_operation);					\
       }									\
     }									\

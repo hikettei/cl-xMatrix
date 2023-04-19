@@ -8,6 +8,9 @@
    #:matrix
    #:free-mat)
 
+  (:export
+   #:%abs)
+  
   ;; View APIs
   (:export
    #:view

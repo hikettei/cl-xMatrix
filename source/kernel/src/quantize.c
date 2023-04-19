@@ -83,7 +83,7 @@ static inline fp16_t compute_fp32_to_fp16(float f) {
   do {									\
     for (int mi = view.offset2; mi < view.m; mi++) {			\
       for (int ni = view.offset1; ni < view.n; ni++) {			\
-        int index = view.offset + mi * view.stride2 + ni * view.stride1; \
+        int index = view.offset + mi * view.stride2 * view.broadcast2 + ni * view.stride1 * view.broadcast1; \
 	(element_wise_operation);					\
       }									\
     }									\

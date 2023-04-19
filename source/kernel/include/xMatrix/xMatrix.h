@@ -26,12 +26,15 @@ int cpu_has_avx512(void);
 
 struct ViewInstruction {
   int offset;
+  int actualoffset;
   int stride2;
   int stride1;
   int offset2;
   int offset1;
   int m;
   int n;
+  int broadcast2;
+  int broadcast1;
 };
 
 // element-wise mathematical functions

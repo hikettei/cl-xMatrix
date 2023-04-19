@@ -33,28 +33,28 @@ The result sequence MUST not over max-length.
 	   (format nil "~a" element)
 	   *matrix-element-displaying-size*)))
 
+(defun pprint-a-column (view-of-matrix)
 
-(defun pprint-columns (matrix dim dims &aux (half-pos
-					     (round (/
-						     *matrix-columns-displaying-length*
-						     2))))
-  (let ((views (map 'list #'(lambda (x)
-			      (if (< x *matrix-columns-displaying-length*)
-				  `(:indices ,@(loop for i upfrom 0 below x
-						     collect i))
-				  `(:indices ,@(loop for i upfrom 0 below half-pos
-						     collect i)
-					     ,@(loop for i upfrom (- x half-pos) below half-pos
-						     collect i))))
-		    dims)))
+  )
 
-    (let ((matrix (apply #'view matrix views)))
-      (call-with-visible-area
-       matrix
-       #'(lambda (view)
-	   (with-view-object (index view :absolute index1)
-	     
-	     ))))))
+;; 明日やること：
+;; pprint Broadcasting SIMD uint8
+;;
+
+(defun pprint-columns (matrix dim &aux
+				    (half-pos
+				     (round (/
+					     *matrix-columns-displaying-length*
+					     2)))
+				    (shape (matrix-visible-shape matrix)))
+  (assert (<= (length shape) 2)
+	  nil
+	  "pprint-columns: Assertion Failed with (length ~a) = 2" shape)
+
+  
+	  
+  
+  )
 
 (defun render-matrix (matrix)
   "Renders :vec parts"

@@ -1,14 +1,43 @@
 
 (in-package :cl-xmatrix)
 
-;(define-condition ViewIndexError (simple-error)
-;  ()
-;  ())
+
+;; Conditions Related To Indexing
+;;
+;;          Indexing-Error (Simple-error)
+;;         /              
+;; View-Indexing-Error
+;;
+;; Note Stride=0 ... Repeat
 
 
-;; Todo:
-;; Add: Error Check and More Conditions
-;; Add: Optimize and Inline codes
+(define-condition Indexing-Error (simple-error)
+  ((content :initarg :content))
+  (:documentation "")
+  (:report
+   (lambda (c s)
+     (format s "[cl-xmatrix] Indexing-Error: ~a" (slot-value c 'content)))))
+
+(defmacro indexing-error (content &rest args)
+  `(error (make-condition 'indexing-error
+			  :content (format nil ,content ,@args))))
+
+
+(define-condition View-Indexing-Error (indexing-error)
+  ((content :initarg :content))
+  (:documentation "")
+  (:report
+   (lambda (c s)
+     (format s "[cl-xmatrix] View-Indexing-Error: ~a" (slot-value c 'content)))))
+
+(defmacro indexing-error (content &rest args)
+  `(error (make-condition 'indexing-error
+			  :content (format nil ,content ,@args))))
+
+(defmacro view-indexing-error (content &rest args)
+  `(error (make-condition 'view-indexing-error
+			  :content (format nil ,content ,@args))))
+
 
 (defun print-view (view stream depth)
   (declare (ignore depth))
@@ -24,44 +53,54 @@
 (defstruct (ViewInstruction-Lisp
 	    (:print-function print-view)
 	    (:constructor
-		view-instruction (offset shape-2 shape-1 stride-2 stride-1 offset-2 offset-1)))
+		view-instruction (offset actual-offset shape-2 shape-1 stride-2 stride-1 offset-2 offset-1 broadcast-2 broadcast-1)))
   "A Common Instruction for xMatrix, which realise view-function.
 ViewInstruction is basically created only for 2d-matrix operation, functions must handle 3d-matrix with with-view macro, and as for 2d is this object.
 
 (m n)"
   (offset offset :type index) ; the nd-dimensional matrix begins with...
+  (actual-offset offset :type index)
   (stride2 stride-2 :type index)
   (stride1 stride-1 :type index)
   (offset2 offset-2 :type index) ; the start point
   (offset1 offset-1 :type index) ; the start point (2 3)
   (m shape-2 :type index)
-  (n shape-1 :type index))
+  (n shape-1 :type index)
+  (broadcast-2 broadcast-2 :type index)
+  (broadcast-1 broadcast-1 :type index))
 
 
 (defcstruct (ViewInstruction :class c-viewinstruction)
   (offset :int)
+  (actualoffset :int)
   (stride2 :int)
   (stride1 :int)
   (offset2 :int)
   (offset1 :int)
   (m :int)
-  (n :int))
+  (n :int)
+  (broadcast2 :int)
+  (broadcast1 :int))
 
 (defmethod translate-from-foreign (ptr (type viewinstruction-lisp))
-  (with-foreign-slots ((offset stride2 stride1 offset2 offset1 m n) ptr (:struct ViewInstruction))
-    (view-instruction offset m n stride2 stride1 offset2 offset1)))
+  (declare (optimize (speed 3)))
+  (with-foreign-slots ((offset actualoffset stride2 stride1 offset2 offset1 m n broadcast2 broadcast1) ptr (:struct ViewInstruction))
+    (view-instruction offset actualoffset m n stride2 stride1 offset2 offset1 broadcast2 broadcast1)))
 
 (defmethod expand-from-foreign (ptr (type c-ViewInstruction))
-  `(with-foreign-slots ((offset stride2 stride1 offset2 offset1 m n) ,ptr (:struct ViewInstruction))
-     (view-instruction offset m n stride2 stride1 offset2 offset1)))
+  `(with-foreign-slots ((offset actualoffset stride2 stride1 offset2 offset1 m n broadcast2 broadcast1) ,ptr (:struct ViewInstruction))
+     (view-instruction offset actualoffset m n stride2 stride1 offset2 offset1 broadcast2 broadcast1)))
 
 (defmethod translate-into-foreign-memory (value (type c-viewinstruction) ptr)
   (transcript-view value ptr))
 
 (defun transcript-view (value ptr)
-  (with-foreign-slots ((offset stride2 stride1 offset2 offset1 m n) ptr (:struct ViewInstruction))
+  (declare (optimize (speed 3)))
+  (with-foreign-slots ((offset actualoffset stride2 stride1 offset2 offset1 m n broadcast2 broadcast1) ptr (:struct ViewInstruction))
     (setf offset
 	  (viewinstruction-lisp-offset value)
+	  actualoffset
+	  (viewinstruction-lisp-actual-offset value)
 	  stride2
 	  (viewinstruction-lisp-stride2 value)
 	  stride1
@@ -73,7 +112,11 @@ ViewInstruction is basically created only for 2d-matrix operation, functions mus
 	  m
 	  (viewinstruction-lisp-m value)
 	  n
-	  (viewinstruction-lisp-n value))
+	  (viewinstruction-lisp-n value)
+	  broadcast2
+	  (viewinstruction-lisp-broadcast-2 value)
+	  broadcast1
+	  (viewinstruction-lisp-broadcast-1 value))
     ptr))
 
 (defmacro with-expanding-view-object (view &body body)
@@ -93,15 +136,18 @@ ViewInstruction is basically created only for 2d-matrix operation, functions mus
 			    &body body &aux
 					 (mi (gensym))
 					 (ni (gensym)))
-  "Given view, iterates body with index."
+  "Given view, iterates body with index.
+  :absolute <- index based on the matrix but offset isn't considered."
   `(dotimes (,mi (viewinstruction-lisp-m ,view))
      (dotimes (,ni (viewinstruction-lisp-n ,view))
        (let* ((,index (+ (viewinstruction-lisp-offset ,view)
 			 (* (viewinstruction-lisp-stride2 ,view)
+			    (viewinstruction-lisp-broadcast-2 ,view)
 			    (+ ,mi (viewinstruction-lisp-offset2 ,view)))
 			 (* (viewinstruction-lisp-stride1 ,view)
+			    (viewinstruction-lisp-broadcast-1 ,view)
 			    (+ ,ni (viewinstruction-lisp-offset1 ,view))))) ;; (2 3 4 ...)
-	      (,absolute (+ (viewinstruction-lisp-offset ,view)
+	      (,absolute (+ (viewinstruction-lisp-actual-offset ,view)
 			    (* (viewinstruction-lisp-stride2 ,view)
 			       ,mi)
 			    (* (viewinstruction-lisp-stride1 ,view)
@@ -109,6 +155,7 @@ ViewInstruction is basically created only for 2d-matrix operation, functions mus
 	 (declare (ignorable ,absolute))
 	 ,@body))))
 
+;; Support Repeat -> More Conditions -> Optimize
 
 (defun subscript-p (subscript)
   "Returns t if the format of subscripts are correct.
@@ -248,13 +295,70 @@ Legal Subscript -> fixnum/list/t, (external-option ~)"
 
       subscripts))
 
+(defun parse-broadcast-subscripts (matrix subscripts)
+  "(:broadcast 10) or `(:broadcast t)"
+  (declare (optimize (speed 3) (safety 0))
+	   (type matrix matrix)
+	   (type list subscripts))
+	   
+  (let ((broadcasts)
+	(newsubs))
+    (loop for i fixnum upfrom 0
+	  for sub in subscripts
+	  do (if (and (typep sub 'cons)
+		      (eql (car sub) :broadcast))
+		 (progn
+		   (unless (= (length sub) 2)
+		     (view-indexing-error "Invaild Operation ~a. :broadcast is given in this format:~% `(:broadcast num) num = t or positive fixnum" sub))
+		   (unless (= (the index (nth i (matrix-visible-shape matrix))) 1)
+		     (view-indexing-error "Can't Broadcast the matrix~%because the axis to be broadcasted is not 1: ~a at axis=~a" (matrix-visible-shape matrix) i))
+		   (push (second sub) broadcasts)
+		   (push t newsubs))
+		 (progn
+		   (push nil broadcasts)
+		   (push sub newsubs))))
+    (values
+     (reverse broadcasts)
+     (reverse newsubs))))
+
+(defun straighten-up-subscripts (matrix
+				 subscripts
+				 &aux (result (loop for i fixnum upfrom 0 below (dims matrix)
+						    collect t))
+				   (shapes (matrix-visible-shape matrix)))
+  "Straighten up subscripts and parse relative-position of matrix.
+Example:
+  Matrix=(10 10) view=(1)     -> view = (1 t)
+  Matrix=(10 10) view=(1 1)   -> view = (1 1)
+  Matrix=(10 10) view=(1 1 1) -> Indexing-Error"
+  (declare (optimize (speed 3) (safety 0))
+	   (type matrix matrix)
+	   (type list subscripts))
+  (unless (>= (dims matrix) (length subscripts))
+    (view-indexing-error "The length of subscripts is too large for the given matrix.~%Matrix:     ~a~%Subscripts: ~a" (matrix-visible-shape matrix) subscripts))
+
+  (labels ((parse-relative-position (dim sub)
+	     (typecase sub
+	       (fixnum
+		(if (>= sub 0)
+		    sub
+		    (let ((pos (the fixnum (+ (the fixnum (nth dim shapes)) sub))))
+		      (if (>= pos 0)
+			  pos
+			  (view-indexing-error "The relative-index ~a beyonds the corresponding axis ~a.~% Matrix: ~a Subscripts: ~a at axis=~a" sub (nth dim shapes) shapes subscripts dim)))))
+	       (list
+		(map 'list #'(lambda (x)
+			       (parse-relative-position dim x))
+		     sub))
+	       (T sub))))
+    (loop for i fixnum upfrom 0
+	  for s in subscripts
+	  do (setf (nth i result) (parse-relative-position i s)))
+    result))
+
 (defun view (matrix &rest subscripts
 	     &aux
-	       ;; todo: support -1 -2...
-	       ;; (subscripts (normalize-subscripts ))
-	       ;; Replace :tflist -> :indices
-	       (subscripts (parse-and-replace-tflist-subscripts matrix subscripts))
-	       (subscripts (compute-absolute-subscripts matrix subscripts)))
+	       (subscripts (straighten-up-subscripts matrix subscripts)))
   "Creates a view-object
 subscript is following:
 
@@ -285,38 +389,48 @@ External Operations: (Speed is not my concern, and it works like macro).
 ;; So, view-object -> (view) -> view-object is treated as:
 ;; view-object -> matrix -> (view-with-nested) -> view-object.
 
-Memo: define-external-operation or something would be fun."
+Possibly throws: view-indexing-error
+
+Done: Straighten-up subscripts
+      Relative-Indexing
+     :tflist"
   
-  (declare (type (satisfies subscript-p) subscripts)
+  (declare (optimize (speed 3))
+	   (type (satisfies subscript-p) subscripts)
 	   (type matrix matrix))
-  ;; TODO: complement the lack of dims.
 
-  (labels ((external-operations-p (sub)
-	     (when (and (typep sub 'list)
-			(typep (car sub) 'keyword))
-	       (if (eql (car sub) :indices)
-		   t
-		   (error "Unknown External Operation: ~a. Only :indices keyword is available" sub)))))
+  (multiple-value-bind (broadcasts subscripts) (parse-broadcast-subscripts matrix subscripts)
+    (declare (type list broadcasts subscripts))
+    (let* ((subscripts (parse-and-replace-tflist-subscripts matrix subscripts))
+	   (subscripts (compute-absolute-subscripts matrix subscripts)))
+      (declare (type list subscripts))
 
-    (unless (= (length (matrix-shape matrix))
-	       (length subscripts))
-      (error "view, dimensions doesn't match (auto complement is to do)"))
-    
-    (let ((external-operations (find-if #'external-operations-p subscripts)))
-      (if external-operations
-	  (let ((external-operation-dim
-		  (position-if #'external-operations-p subscripts)))
-	    (unless (= (count-if #'external-operations-p subscripts) 1)
-	      (error "External options can be used at once in one view-obj."))
-	    
-	    (let ((view-to-return (apply #'view-of-matrix matrix subscripts)))
-	      (setf (matrix-external-operation view-to-return)
-		    external-operations)
-	      (setf (matrix-external-operation-dim view-to-return)
-		    external-operation-dim)
-	      view-to-return))
-	  ;; Otherwise creates view-object normally.
-	  (apply #'view-of-matrix matrix subscripts)))))
+      (labels ((external-operations-p (sub)
+		 (when (and (typep sub 'list)
+			    (typep (car sub) 'keyword))
+		   (if (eql (car sub) :indices)
+		       t
+		       (view-indexing-error "Unknown External Operation: ~a. Only :indices :broadcast :tflist are available" sub)))))
+
+	(unless (= (length (matrix-visible-shape matrix))
+		   (length subscripts))
+	  (error "Assertion Failed with (length matrix.dim) == subscripts (perhaps internal bug)"))
+	
+	(let ((external-operations (find-if #'external-operations-p subscripts)))
+	  (if external-operations
+	      (let ((external-operation-dim
+		      (position-if #'external-operations-p subscripts)))
+		(unless (= (count-if #'external-operations-p subscripts) 1)
+		  (view-indexing-error "keyword :indices only appears at once in subscriptions."))
+		
+		(let ((view-to-return (apply #'view-of-matrix matrix broadcasts subscripts)))
+		  (setf (matrix-external-operation view-to-return)
+			external-operations)
+		  (setf (matrix-external-operation-dim view-to-return)
+			external-operation-dim)
+		  view-to-return))
+	      ;; Otherwise creates view-object normally.
+	      (apply #'view-of-matrix matrix broadcasts subscripts)))))))
 
 (defmacro with-view ((var matrix &rest subscripts) &body body)
   `(let ((,var (view ,matrix ,@subscripts)))
@@ -383,7 +497,7 @@ Memo: define-external-operation or something would be fun."
 	     (view   (copy-list (matrix-view matrix))))
 	 (dolist (index indices)
 	   (setf (nth external-operation-dim view) index)
-	   (let ((matrix* (apply #'view-of-matrix matrix view)))
+	   (let ((matrix* (apply #'view-of-matrix matrix nil view)))
 	     (call-with-visible-area matrix* function))))
        nil)
       (T
@@ -401,34 +515,53 @@ Returns - nil"
 	   (type matrix matrix)
 	   (type function function))
 
+  ;; complitaed ... do %copy
   (when (matrix-external-operation matrix)
     (return-from call-with-visible-area
       (call-with-visible-area-and-extope matrix function)))
   
   (let ((dims (matrix-shape matrix))
 	(views (matrix-view matrix))
-	(strides (matrix-strides matrix)))
-    (labels ((explore-batch (total-offset
+	(strides (matrix-strides matrix))
+	(broadcasts (matrix-broadcasts matrix)))
+    (labels ((explore-batch (total-offset  ;; Offsets considered broadcast
+			     actual-offset ;; No broadcast (for output)
 			     dim-indicator
 			     rest-dims)
-	       (declare (type index total-offset dim-indicator rest-dims))
+	       (declare (type index total-offset actual-offset dim-indicator rest-dims))
 	       (cond
 		 ((> rest-dims 2)
 		  (let* ((view-point (nth dim-indicator views))
 			 (start-with (view-startindex view-point 0))
 			 (end-with   (view-endindex view-point (nth dim-indicator dims)))
 			 (incn 1) ; increment
-			 (stride (nth dim-indicator strides))
+			 (stride (the index (nth dim-indicator strides)))
 			 (1+dims-indicator (1+ dim-indicator))
-			 (1-rest-dims (1- rest-dims)))
+			 (1-rest-dims (1- rest-dims))
+			 (repeat (if broadcasts
+				     (nth dim-indicator broadcasts)
+				     nil))
+			 (stride1 (if repeat
+				      0
+				      stride)))
 		    (declare (type index start-with end-with stride 1+dims-indicator 1-rest-dims))
-		    (let ((offsets total-offset))
+		    
+		    (if (and repeat)
+			(if (typep repeat 'index)
+			    (setq end-with (+ start-with repeat))
+			    (setq end-with (1+ start-with)))) ;; t
+		    
+		    (let ((offsets total-offset)
+			  (actual-offsets actual-offset))
 		      (loop for i fixnum upfrom start-with below end-with by incn
 			    do (progn
 				 (explore-batch offsets
+						actual-offsets
 						1+dims-indicator
 						1-rest-dims)
-				 (incf offsets stride))))))
+				 (incf offsets stride1)
+				 ;; ActualOffsets incrementing forcibly.
+				 (incf actual-offsets stride))))))
 		 ((= rest-dims 2)
 		  (let* ((dim (nth dim-indicator dims))
 			 (1+dim (nth (1+ dim-indicator) dims))
@@ -436,41 +569,66 @@ Returns - nil"
 			 (1+view-point (nth (1+ dim-indicator) views))
 			 (offset2 (view-startindex view-point 0))
 			 (offset1 (view-startindex 1+view-point 1+dim))
-
 			 (offset2e (view-endindex view-point dim))
-			 (offset1e (view-endindex 1+view-point 1+dim)))
+			 (offset1e (view-endindex 1+view-point 1+dim))
+			 (repeat2 (if broadcasts
+				      (nth dim-indicator broadcasts)
+				      nil))
+			 (repeat1 (if broadcasts
+				      (nth (1+ dim-indicator) broadcasts)
+				      nil))
+			 (stride2 (nth dim-indicator strides))
+			 (stride1 (nth (1+ dim-indicator) strides))
+			 (shape2 (the index (- offset2e offset2)))
+			 (shape1 (the index (- offset1e offset1))))
+
+		    (if repeat2
+			(setq shape2 repeat2))
+		    (if repeat1
+			(setq shape1 repeat1))
+		    
 		    (let ((instruction (view-instruction
 					total-offset
-					(the index (- offset2e offset2))
-					(the index (- offset1e offset1))
-					(nth dim-indicator strides)
-					(nth (1+ dim-indicator) strides)
+					actual-offset
+					shape2
+					shape1
+					stride2
+					stride1
 					offset2
-					offset1)))
+					offset1
+					(if repeat2
+					    0
+					    1)
+					(if repeat1
+					    0
+					    1))))
+		      
+		      ;; (when (= 1+dim 1)
+		      ;;       transpose ~~~)
+		      ;; (M 1) -> (1 M)
 
 #|
 Note:
 		      (M 1) fails to be paralellized by SIMD.
-		      Reshaping (M 1) into (1 M) may work. (TODO for performance)
+		      Reshaping (M 1) into (1 M) may work. (Needs to be Automatically do it)
 |#
 		
 		      (funcall function instruction))))
 		 ((= rest-dims 1)
-		  ; (M) regard as (M 1)
-
-		  (format t "Warning: CALL_WITH_VISIBLE_AREA currently doesn't support for 1d mat (plz reshape it into (1 M))")
-		  ; fixme
-		  (setq dims `(,@dims 1))
-		  (setq views `(,@views 1))
-		  (setq strides `(,@strides 1))
+		  ;; Reshaping `(M) into `(1 M) and regard it as 2d MAT
+		  (setq dims `(1 ,@dims))
+		  (setq views `(t ,@views))
+		  (setq strides (calc-strides dims))
 		  (explore-batch
 		   0
-		   1
+		   0
+		   0
 		   2))
 		 (T (error "Scalar value fell through.")))
 	       nil))
 
       (explore-batch
+       0
        0
        0
        (length dims))
@@ -491,15 +649,14 @@ Note:
     total))
 
 (defmacro within-2d-view ()
-
+  "Cacheに指定された次元数の行列をAlloc. gemm!など二次元でまとめてIterationして欲しい時に使う（予定）"
   )
 
 (defmacro with-broadcasting ((index1 matrix1) (index2 matrix2) &body body)
-
+  "ViewにBroadcasting属性を付与する。"
   )
 
-;; Print関数を綺麗にする (cl-waffeのrender-tensor関数の移植+小数点全部表示+最適化)
-;; Jama nanode dokka ugokase
+
 (defun convert-into-lisp-array (matrix &key (freep nil))
   "Convert matrix's visible area into common lisp's simple array"
   (let ((returning-array (make-array
@@ -524,3 +681,4 @@ Note:
 						       (matrix-dtype matrix)
 						       index)
 					     (aref lisp-array index1))))))
+

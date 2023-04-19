@@ -1,6 +1,7 @@
 
 (in-package :cl-xmatrix)
 
+;; Todo: Refactor
 ;; Memo: https://www.lispforum.com/viewtopic.php?t=4296
 ;; Heap Corruptionなぜ起こる？？？
 ;; or: Add with-mem-barricades
@@ -90,13 +91,32 @@
 				  (nth i orig-shape))
 		   (view-startindex (nth i view) (nth i orig-shape)))))
 
+(defun compute-visible-and-broadcasted-shape (shape broadcasts &key (for-print nil))
+  (if broadcasts
+      (loop for s in shape
+	    for b in broadcasts
+	    collect (if b
+			(if (eql b t)
+			    (if for-print
+				t
+				s)
+			    (if for-print
+				s
+				(* b s)))
+			s))
+      shape))
+
 (defun print-matrix (matrix stream depth)
   (declare (ignore depth))
+  ;; Considering Broadcasts: (1 10) (10 nil) -> (10 10)
   (format stream "<Matrix :~(~a~) :shape ~a :view ~a :visible-shape ~a ~% :vec ~a>"
 	  (matrix-dtype matrix)
 	  (matrix-shape matrix)
 	  (matrix-view matrix)
-	  (matrix-visible-shape matrix)
+	  (compute-visible-and-broadcasted-shape
+	   (matrix-visible-shape matrix)
+	   (matrix-broadcasts matrix)
+	   :for-print t)
 	  (convert-into-lisp-array matrix))) ; TODO: more infos
 
 ;; Note: view-of-matrix is NOT ALLOWED to use the view-object's information
@@ -109,15 +129,21 @@
 			&aux (view (loop repeat (length (the list shape))
 					 collect t))
 			  (matrix-vec (allocate-mat (apply #'* shape) :dtype dtype))
+			  (broadcasts nil)
 			  (projected-p nil)))
 	    (:constructor
 		view-of-matrix (matrix
+				broadcasts
 				&rest view
 				&aux
 				  (shape (matrix-shape matrix))
 				  (dtype (matrix-dtype matrix))
 				  (matrix-vec (matrix-vec matrix))
-				  (projected-p t)))
+				  (projected-p t)
+				  (broadcasts
+				   (if broadcasts
+				       broadcasts
+				       (matrix-broadcasts matrix)))))
 	    (:constructor
 		;; Todo: Debug (for view ga ayasii)
 		quantize-matrix (matrix
@@ -131,6 +157,7 @@
 				   (shape (matrix-shape matrix))
 				   (view (loop repeat (length (the list shape))
 					       collect t))
+				   (broadcasts nil)
 				   (projected-p
 				    (matrix-projected-p matrix)))))
   (projected-p projected-p :type boolean) ;; Is view-object?
@@ -140,6 +167,16 @@
   (view view :type cons) ;; view instruction
   (external-operation nil)
   (external-operation-dim nil)
-  (visible-shape (visible-shape shape view) :type cons) ;; visible area's shape following viewinstruction
-  (strides (calc-strides (visible-shape shape view)) :type cons))
+  (visible-shape (compute-visible-and-broadcasted-shape (visible-shape shape view) broadcasts) :type cons) ;; visible area's shape following viewinstruction
+  (broadcasts broadcasts :type list)
+  (strides (calc-strides (compute-visible-and-broadcasted-shape (visible-shape shape view) broadcasts)) :type cons))
 
+;; Accessors
+
+(declaim (ftype (function (matrix) index) dims))
+(defun dims (matrix)
+  "Returns the length of matrix's dimensions."
+  (declare (type matrix matrix)
+	   (optimize (speed 3)))
+  (length (the list (matrix-visible-shape matrix))))
+  
