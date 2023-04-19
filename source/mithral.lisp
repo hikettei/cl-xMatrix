@@ -224,8 +224,9 @@ Bucket-Split: B(A) -> B(id0), B(id1)"
 	  (prog1
 	      (values (create-buckets x0 ids0 id0)
 		      (create-buckets x1 ids1 id1))
-	    (free-mat x0)
-	    (free-mat x1)))))))
+	    ;(free-mat x0)
+	    ;(free-mat x1)
+	    ))))))
 
 (declaim (ftype (function (MSBucket matrix index) (values (or null matrix) (or null matrix))) optimal-split-val))
 (defmethod optimal-split-val ((bucket MSBucket) x dim)
@@ -334,8 +335,8 @@ Output: Cumsses [N D]"
 		   (mx (%scalar-mul mx -1.0)))
 	      (%move cxc2 cs)
 	      (%adds cs mx))))))
-    (free-mat cumX-cols) ;; (Heap Corruption...) To Add: GCable CFFI Pointer?
-    (free-mat cumx2-cols)
+    ;(free-mat cumX-cols) ;; (Heap Corruption...) To Add: GCable CFFI Pointer?
+    ;(free-mat cumx2-cols)
       cumsses))
 
 ;; 6: fp=0x7f65648 pc=0x536a2e6b CL-XMATRIX::COMPUTE-OPTIMAL-SPLIT-VAL
@@ -366,9 +367,9 @@ x - One of prototypes. [num_idxs, D]"
       (%adds best-col next-col)
       (%scalar-mul best-col 0.5)
       
-      (free-mat next-col)
-      (free-mat sses-head)
-      (free-mat sses-tail-reversed)
+      ;(free-mat next-col)
+      ;(free-mat sses-head)
+      ;(free-mat sses-tail-reversed)
 
       ;; matrix matrix
       (values best-col (view sses best-idx t)))))
@@ -472,7 +473,8 @@ scal-by, offset: alpha, beta which corresponds to y = alpha*x + beta."
 	       (dolist (buck buckets)
 		 (let ((loss (col-sum-sqs buck)))
 		   (%adds col-losses loss)
-		   (free-mat loss)))
+		   ;(free-mat loss)
+		   ))
 
 	       ;; dim-order -> [Largest Loss ... Smallest Loss]
 	       (let* ((dim-order (the list (argsort (convert-into-lisp-array col-losses :freep nil))))
@@ -625,7 +627,8 @@ y = [D M] (To be multiplied)"
 			     (with-view (protos* all-prototypes cth b t)
 			       (%move c* protos*)))))
 	      ;; Todo: Ram Usage
-	      (free-mat centroids))))))
+	      ;; (free-mat centroids)
+	      )))))
     (values x-error (reverse all-splits) all-prototypes (reverse all-buckets))))
 
 ;; Fix IT

@@ -5,10 +5,18 @@
 ;; Memo: https://www.lispforum.com/viewtopic.php?t=4296
 ;; Heap Corruptionなぜ起こる？？？
 ;; or: Add with-mem-barricades
+
+;; (define-mat-dtype
+;;        :uint8
+;;        available-transfer :retained-by ~~)
+
 (defparameter *available-dtypes*
-  `(:uint16
+  `(:uint8
+    :uint16
     :float
     :int))
+
+(defparameter *pinned-matrices* nil "A list of matrices, created in with-pointer-barricade")
 
 (defun dtype-p (x)
   (if (find x *available-dtypes*)
@@ -20,6 +28,8 @@
     (:float
      'single-float)
     (:int 'fixnum)
+    (:uint8 'fixnum)  ;;'(integer -256 256))
+    (:uint16 'fixnum) ;;'(integer -65536 65536))
     (T (error "Unknown type ~a" dtype))))
 
 (defun coerce-to-dtype (element dtype)
@@ -41,18 +51,24 @@
 (defun allocate-mat (size &key (dtype :float))
   (declare (type matrix-dtype dtype)
 	   (type index size))
-  (foreign-alloc
-   dtype
-   :count size
-   :initial-element (coerce-to-dtype 0 dtype)))
+  (let ((result
+	  (foreign-alloc
+	   dtype
+	   :count size
+	   :initial-element (coerce-to-dtype 0 dtype))))
+    (when *pinned-matrices*
+      (push result *pinned-matrices*))
+    result))
 
 (defun free-mat (matrix)
   "Frees matrix"
   (declare (type matrix matrix))
   ;; Todo: check if matrix exists
   ;; Todo: Count total-mem-usage not to forget memfree.
-  ;(foreign-free (matrix-vec matrix))
-  )
+  (unless (matrix-freep matrix)
+    (foreign-free (matrix-vec matrix)))
+  (setf (matrix-freep matrix) t)
+  nil)
 
 
 (declaim (ftype (function (cons fixnum) cons) fill-with-d))
@@ -71,7 +87,11 @@
 		   (T 0)))
 	 shape)))
 
+(declaim (ftype (function (list fixnum) fixnum) get-stride))
 (defun get-stride (shape dim)
+  (declare (optimize (speed 3) (safety 0))
+	   (type list shape)
+	   (type fixnum dim))
   (let ((subscripts (fill-with-d shape dim)))
     (apply #'+ (maplist #'(lambda (x y)
 			    (the fixnum
@@ -80,18 +100,25 @@
 			subscripts
 			shape))))
 
+(declaim (ftype (function (list) list) calc-strides))
 (defun calc-strides (shapes)
+  (declare (optimize (speed 3))
+	   (type list shapes))
   (loop for i fixnum upfrom 0 below (length shapes)
 	collect (get-stride shapes i)))
 
+(declaim (ftype (function (list t) list) visible-shape))
 (defun visible-shape (orig-shape view)
   "Computes the shape of visible area."
+  (declare (optimize (speed 3))
+	   (type list orig-shape))
   (loop for i fixnum upfrom 0 below (length (the list orig-shape))
-	collect (- (view-endindex (nth i view)
-				  (nth i orig-shape))
-		   (view-startindex (nth i view) (nth i orig-shape)))))
+	collect (the index (- (view-endindex (nth i view)
+					     (nth i orig-shape))
+			      (view-startindex (nth i view) (nth i orig-shape))))))
 
 (defun compute-visible-and-broadcasted-shape (shape broadcasts &key (for-print nil))
+  (declare (optimize (speed 3)))
   (if broadcasts
       (loop for s in shape
 	    for b in broadcasts
@@ -102,7 +129,7 @@
 				s)
 			    (if for-print
 				s
-				(* b s)))
+				(the fixnum (* (the fixnum b) (the fixnum s)))))
 			s))
       shape))
 
@@ -160,6 +187,7 @@
 				   (broadcasts nil)
 				   (projected-p
 				    (matrix-projected-p matrix)))))
+  (freep nil :type boolean)
   (projected-p projected-p :type boolean) ;; Is view-object?
   (vec matrix-vec) ;; The ORIGINAL Matrix's CFFI Pointer
   (dtype dtype :type matrix-dtype)
@@ -180,3 +208,27 @@
 	   (optimize (speed 3)))
   (length (the list (matrix-visible-shape matrix))))
   
+(defmacro dtypecase (matrix &body body)
+  `(case (matrix-dtype ,matrix)
+     ,@body
+     (t
+      (error "The operation doesn't support ~a" (matrix-dtype ,matrix)))))
+
+(defmacro assert-dtype (matrix1 matrix2)
+  `(assert (eql (matrix-dtype ,matrix1) (matrix-dtype ,matrix2))
+	   nil
+	   "The dtype of matrices doesn't match. ~a and ~a"
+	   (matrix-dtype ,matrix1)
+	   (matrix-dtype ,matrix2)))
+
+(defmacro with-pointer-barricade (&body body)
+  "All matrices created in this form, are automatically freed."
+  `(let ((*pinned-matrices* `(t)))
+     (prog1
+	 (progn
+	   ,@body)
+       (mapc
+	#'(lambda (m)
+	    (if (typep m 'matrix)
+		(free-mat m)))
+	*pinned-matrices*))))
