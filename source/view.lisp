@@ -787,8 +787,16 @@ Returns - nil"
   "Cacheに指定された次元数の行列をAlloc. gemm!など二次元でまとめてIterationして欲しい時に使う（予定）"
   )
 
-(defmacro with-broadcasting ((index1 matrix1) (index2 matrix2) &body body)
-  "ViewにBroadcasting属性を付与する。"
+(defmacro with-broadcasting (out-shape (index1 matrix1) (index2 matrix2) &body body)
+  "
+Usage:
+
+(with-broadcasting out-dim (mat1* mat1) (mat2* mat2)
+     (let ((result (matrix out-dim)))
+        (%adds result mat1*)
+        (%adds result mat2*)))
+
+"
   )
 
 

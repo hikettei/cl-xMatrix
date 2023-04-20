@@ -120,11 +120,17 @@ static inline void fp32_abs_simd(single_float* x, __m256 sign_mask, int i) {
   _mm256_storeu_ps(&x[i], abs_vec);
 }
 
-static inline void fp32_abs_scalarwise(single_float* x, int i) {
-  if (x[i] < 0) {
-    x[i] = -x[i];
-  }
-}
+#define DEFINE_ABS_ELEMENTWISE(name, dtype)	\
+  static inline void name(dtype* x, int i) {	\
+    if (x[i] < 0) {				\
+      x[i] = -x[i];				\
+    }						\
+  }						\
+    
+DEFINE_ABS_ELEMENTWISE(fp32_abs_scalarwise, single_float);
+DEFINE_ABS_ELEMENTWISE(fp16_abs_scalarwise, fp16_t);
+DEFINE_ABS_ELEMENTWISE(fp8_abs_scalarwise,  fp8_t);
+DEFINE_ABS_ELEMENTWISE(int_abs_scalarwise,  int);
 
 // To Add: RELU, SIGMOID, TANH etc...
 void fp32_abs(const struct ViewInstruction view, single_float* vec) {
@@ -133,8 +139,6 @@ void fp32_abs(const struct ViewInstruction view, single_float* vec) {
 		 fp32_abs_simd(vec, sign_mask, i),
 		 fp32_abs_scalarwise(vec, i));
 }
-
-
 
 #define WITH_ELWISE_VIEW(view, index, element_wise_operation)		\
   do {									\
@@ -156,7 +160,6 @@ void fp32_abs(const struct ViewInstruction view, single_float* vec) {
       }									\
     }									\
   } while(0)
-
 
 // TODO: Current Operations are temporary, make them SIMD.
 void fp32_copy(const struct ViewInstruction view, const struct ViewInstruction view1, single_float* vec1, single_float* vec2) {
