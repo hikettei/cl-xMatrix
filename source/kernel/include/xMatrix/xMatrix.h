@@ -103,3 +103,10 @@ void fp32_scalar_mul(const struct ViewInstruction, single_float*, single_float);
 void fp16_scalar_mul(const struct ViewInstruction, fp16_t*, fp16_t);
 void fp8_scalar_mul(const struct ViewInstruction, fp8_t*, fp8_t);
 void int_scalar_mul(const struct ViewInstruction, int*, int);
+
+void fp32_fill(const struct ViewInstruction, single_float*, single_float);
+void fp16_fill(const struct ViewInstruction, fp16_t*, fp16_t);
+void fp8_fill(const struct ViewInstruction, fp8_t*, fp8_t);
+void int_fill(const struct ViewInstruction, int*, int);
+
+

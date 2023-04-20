@@ -136,12 +136,11 @@ void fp32_abs(const struct ViewInstruction view, single_float* vec) {
 
 
 
-#define WITH_ELWISE_VIEW(view, index, index1, element_wise_operation)	\
+#define WITH_ELWISE_VIEW(view, index, element_wise_operation)		\
   do {									\
     for (int mi = view.offset2; mi < view.m; mi++) {			\
       for (int ni = view.offset1; ni < view.n; ni++) {			\
         int index = view.offset + mi * view.stride2 * view.broadcast2 + ni * view.stride1 * view.broadcast1; \
-	int index1 = view.actualoffset + (mi - view.offset2) * view.stride2 + (ni - view.offset1) * view.stride1; \
 	(element_wise_operation);					\
       }									\
     }									\
@@ -161,106 +160,144 @@ void fp32_abs(const struct ViewInstruction view, single_float* vec) {
 
 // TODO: Current Operations are temporary, make them SIMD.
 void fp32_copy(const struct ViewInstruction view, const struct ViewInstruction view1, single_float* vec1, single_float* vec2) {
-  // Vec2 has no any offsets. So i must be absolute
   WITH_ELWISE_OPS(view, view1, k, m, vec2[m] = vec1[k]);
 }
 
 void fp16_copy(const struct ViewInstruction view, const struct ViewInstruction view1, fp16_t* vec1, fp16_t* vec2) {
-  // Vec2 has no any offsets. So i must be absolute
   WITH_ELWISE_OPS(view, view1, k, m, vec2[m] = vec1[k]);
 }
 
 void fp8_copy(const struct ViewInstruction view, const struct ViewInstruction view1, fp8_t* vec1, fp8_t* vec2) {
-  // Vec2 has no any offsets. So i must be absolute
   WITH_ELWISE_OPS(view, view1, k, m, vec2[m] = vec1[k]);
 }
 
 void int_copy(const struct ViewInstruction view, const struct ViewInstruction view1, int* vec1, int* vec2) {
-  // Vec2 has no any offsets. So i must be absolute
   WITH_ELWISE_OPS(view, view1, k, m, vec2[m] = vec1[k]);
 }
 
 
 // TODO: SIMD
 void fp32_add(const struct ViewInstruction view, const struct ViewInstruction view1, single_float* vec1, single_float* vec2) {
-  // Vec2 has no any offsets. So i must be absolute
-  WITH_ELWISE_OPS(view, view1, k, m, vec1[m] += vec2[k]);
+  WITH_ELWISE_OPS(view, view1, k, m, vec1[k] += vec2[m]);
 }
 
 void fp16_add(const struct ViewInstruction view, const struct ViewInstruction view1, fp16_t* vec1, fp16_t* vec2) {
-  // Vec2 has no any offsets. So i must be absolute
-  WITH_ELWISE_OPS(view, view1, k, m, vec1[m] += vec2[k]);
+  WITH_ELWISE_OPS(view, view1, k, m, vec1[k] += vec2[m]);
 }
 
 void fp8_add(const struct ViewInstruction view, const struct ViewInstruction view1, fp8_t* vec1, fp8_t* vec2) {
-  // Vec2 has no any offsets. So i must be absolute
-  WITH_ELWISE_OPS(view, view1, k, m, vec1[m] += vec2[k]);
+  WITH_ELWISE_OPS(view, view1, k, m, vec1[k] += vec2[m]);
 }
 
 void int_add(const struct ViewInstruction view, const struct ViewInstruction view1, int* vec1, int* vec2) {
-  // Vec2 has no any offsets. So i must be absolute
-  WITH_ELWISE_OPS(view, view1, k, m, vec1[m] += vec2[k]);
+  WITH_ELWISE_OPS(view, view1, k, m, vec1[k] += vec2[m]);
 }
 
 
 void fp32_sub(const struct ViewInstruction view, const struct ViewInstruction view1, single_float* vec1, single_float* vec2) {
-  // Vec2 has no any offsets. So i must be absolute
-  WITH_ELWISE_OPS(view, view1, k, m, vec1[m] -= vec2[k]);
+  WITH_ELWISE_OPS(view, view1, k, m, vec1[k] -= vec2[m]);
 }
 
 void fp16_sub(const struct ViewInstruction view, const struct ViewInstruction view1, fp16_t* vec1, fp16_t* vec2) {
-  // Vec2 has no any offsets. So i must be absolute
-  WITH_ELWISE_OPS(view, view1, k, m, vec1[m] -= vec2[k]);
+  WITH_ELWISE_OPS(view, view1, k, m, vec1[k] -= vec2[m]);
 }
 
 void fp8_sub(const struct ViewInstruction view, const struct ViewInstruction view1, fp8_t* vec1, fp8_t* vec2) {
-  // Vec2 has no any offsets. So i must be absolute
-  WITH_ELWISE_OPS(view, view1, k, m, vec1[m] -= vec2[k]);
+  WITH_ELWISE_OPS(view, view1, k, m, vec1[k] -= vec2[m]);
 }
 
 void int_sub(const struct ViewInstruction view, const struct ViewInstruction view1, int* vec1, int* vec2) {
-  // Vec2 has no any offsets. So i must be absolute
-  WITH_ELWISE_OPS(view, view1, k, m, vec1[m] -= vec2[k]);
+  WITH_ELWISE_OPS(view, view1, k, m, vec1[k] -= vec2[m]);
 }
 
 
 void fp32_mul(const struct ViewInstruction view, const struct ViewInstruction view1, single_float* vec1, single_float* vec2) {
-  // Vec2 has no any offsets. So i must be absolute
-  WITH_ELWISE_OPS(view, view1, k, m, vec1[m] *= vec2[k]);
+  WITH_ELWISE_OPS(view, view1, k, m, vec1[k] *= vec2[m]);
 }
 
 void fp16_mul(const struct ViewInstruction view, const struct ViewInstruction view1, fp16_t* vec1, fp16_t* vec2) {
-  // Vec2 has no any offsets. So i must be absolute
-  WITH_ELWISE_OPS(view, view1, k, m, vec1[m] *= vec2[k]);
+  WITH_ELWISE_OPS(view, view1, k, m, vec1[k] *= vec2[m]);
 }
 
 void fp8_mul(const struct ViewInstruction view, const struct ViewInstruction view1, fp8_t* vec1, fp8_t* vec2) {
-  // Vec2 has no any offsets. So i must be absolute
-  WITH_ELWISE_OPS(view, view1, k, m, vec1[m] *= vec2[k]);
+  WITH_ELWISE_OPS(view, view1, k, m, vec1[k] *= vec2[m]);
 }
 
 void int_mul(const struct ViewInstruction view, const struct ViewInstruction view1, int* vec1, int* vec2) {
-  // Vec2 has no any offsets. So i must be absolute
-  WITH_ELWISE_OPS(view, view1, k, m, vec1[m] *= vec2[k]);
+  WITH_ELWISE_OPS(view, view1, k, m, vec1[k] *= vec2[m]);
 }
+
 
 // I guess they're dangerous
 void fp32_div(const struct ViewInstruction view, const struct ViewInstruction view1, single_float* vec1, single_float* vec2) {
   // Vec2 has no any offsets. So i must be absolute
-  WITH_ELWISE_OPS(view, view1, k, m, vec1[m] /= vec2[k]);
+  WITH_ELWISE_OPS(view, view1, k, m, vec1[k] /= vec2[m]);
 }
 
 void fp16_div(const struct ViewInstruction view, const struct ViewInstruction view1, fp16_t* vec1, fp16_t* vec2) {
-  // Vec2 has no any offsets. So i must be absolute
-  WITH_ELWISE_OPS(view, view1, k, m, vec1[m] /= vec2[k]);
+  WITH_ELWISE_OPS(view, view1, k, m, vec1[k] /= vec2[m]);
 }
 
 void fp8_div(const struct ViewInstruction view, const struct ViewInstruction view1, fp8_t* vec1, fp8_t* vec2) {
-  // Vec2 has no any offsets. So i must be absolute
-  WITH_ELWISE_OPS(view, view1, k, m, vec1[m] /= vec2[k]);
+  WITH_ELWISE_OPS(view, view1, k, m, vec1[k] /= vec2[m]);
 }
 
 void int_div(const struct ViewInstruction view, const struct ViewInstruction view1, int* vec1, int* vec2) {
-  // Vec2 has no any offsets. So i must be absolute
-  WITH_ELWISE_OPS(view, view1, k, m, vec1[m] /= vec2[k]);
+  WITH_ELWISE_OPS(view, view1, k, m, vec1[k] /= vec2[m]);
 }
+
+
+
+
+void fp32_scalar_add(const struct ViewInstruction view, single_float* vec1, single_float scal) {
+  WITH_ELWISE_VIEW(view, k, vec1[k] += scal);
+}
+
+void fp16_scalar_add(const struct ViewInstruction view, fp16_t* vec1, fp16_t scal) {
+  WITH_ELWISE_VIEW(view, k, vec1[k] += scal);
+}
+
+void fp8_scalar_add(const struct ViewInstruction view, fp8_t* vec1, fp8_t scal) {
+  WITH_ELWISE_VIEW(view, k, vec1[k] += scal);
+}
+
+void int_scalar_add(const struct ViewInstruction view, int* vec1, int scal) {
+  WITH_ELWISE_VIEW(view, k, vec1[k] += scal);
+}
+
+
+void fp32_scalar_mul(const struct ViewInstruction view, single_float* vec1, single_float scal) {
+  WITH_ELWISE_VIEW(view, k, vec1[k] *= scal);
+}
+
+void fp16_scalar_mul(const struct ViewInstruction view, fp16_t* vec1, fp16_t scal) {
+  WITH_ELWISE_VIEW(view, k, vec1[k] *= scal);
+}
+
+void fp8_scalar_mul(const struct ViewInstruction view, fp8_t* vec1, fp8_t scal) {
+  WITH_ELWISE_VIEW(view, k, vec1[k] *= scal);
+}
+
+void int_scalar_mul(const struct ViewInstruction view, int* vec1, int scal) {
+  WITH_ELWISE_VIEW(view, k, vec1[k] *= scal);
+}
+
+
+void fp32_fill(const struct ViewInstruction view, single_float* vec1, single_float scal) {
+  WITH_ELWISE_VIEW(view, k, vec1[k] = scal);
+}
+
+void fp16_fill(const struct ViewInstruction view, fp16_t* vec1, fp16_t scal) {
+  WITH_ELWISE_VIEW(view, k, vec1[k] = scal);
+}
+
+void fp8_fill(const struct ViewInstruction view, fp8_t* vec1, fp8_t scal) {
+  WITH_ELWISE_VIEW(view, k, vec1[k] = scal);
+}
+
+void int_fill(const struct ViewInstruction view, int* vec1, int scal) {
+  WITH_ELWISE_VIEW(view, k, vec1[k] = scal);
+}
+
+
+

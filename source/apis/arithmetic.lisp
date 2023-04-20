@@ -156,14 +156,11 @@
    #'(lambda (x-view x1-view)
        (dtypecase matrix
 	 (:float
-	  (fp32-copy x-view x1-view (matrix-vec matrix) (matrix-vec matrix1))
-	  )
+	  (fp32-copy x-view x1-view (matrix-vec matrix) (matrix-vec matrix1)))
 	 (:uint16
-	  (fp16-copy x-view x1-view (matrix-vec matrix) (matrix-vec matrix1))
-	  )
+	  (fp16-copy x-view x1-view (matrix-vec matrix) (matrix-vec matrix1)))
 	 (:uint8
-	  (fp8-copy x-view x1-view (matrix-vec matrix) (matrix-vec matrix1))
-	  )
+	  (fp8-copy x-view x1-view (matrix-vec matrix) (matrix-vec matrix1)))
 	 (:int
 	  (int-copy x-view x1-view (matrix-vec matrix) (matrix-vec matrix1)))))
    :mat-operated-with matrix1)
@@ -192,8 +189,12 @@
   (define-scalar-mat-cfun "fp32_scalar_mul" :float)
   (define-scalar-mat-cfun "fp16_scalar_mul" :uint16)
   (define-scalar-mat-cfun "fp8_scalar_mul" :uint8)
-  (define-scalar-mat-cfun "int_scalar_mul" :int))
+  (define-scalar-mat-cfun "int_scalar_mul" :int)
 
+  (define-scalar-mat-cfun "fp32_fill" :float)
+  (define-scalar-mat-cfun "fp16_fill" :uint16)
+  (define-scalar-mat-cfun "fp8_fill" :uint8)
+  (define-scalar-mat-cfun "int_fill" :int))
 
 (defun %scalar-add (matrix scalar)
   "Todo :Docs"
@@ -236,17 +237,19 @@
 (defun %scalar-div (matrix scalar)
   (%scalar-mul matrix (/ scalar)))
 
-
 (defun %fill (matrix scalar)
-  ;; tmp
-  (declare (optimize (safety 0) (speed 3)))
+  "Todo :Docs"
+  (declare (optimize (speed 3)))
   (call-with-visible-area
    matrix #'(lambda (x)
-	      (with-view-object (index x)
-		(setf
-		 (mem-aref
-		  (matrix-vec matrix)
-		  (matrix-dtype matrix)
-		  index)
-		 scalar))))
+	      (dtypecase matrix
+		(:float
+		 (fp32-fill x matrix scalar))
+		(:uint16
+		 (fp16-fill x matrix scalar))
+		(:uint8
+		 (fp8-fill x matrix scalar))
+		(:int
+		 (int-fill x matrix scalar)))))
   matrix)
+
