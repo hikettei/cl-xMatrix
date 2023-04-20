@@ -14,7 +14,10 @@
 ;;      (Halutmatmul) https://github.com/joennlae/halutmatmul
 
 ;; Wrappers for Mithral's C++ API
-(defcfun ("mithral_encode_int16_t" mithral-encode) :void
+
+
+
+#|(defcfun ("mithral_encode_int16_t" mithral-encode) :void
   (X-pointer (:pointer :uint16))
   (nrows :int64)
   (ncols :int)
@@ -24,6 +27,8 @@
   (offsets (:pointer :int16))
   (ncodebooks :int)
   (out-pointer (:pointer :uint8)))
+|#
+
 
 ;; TODO: OPTIMIZE
 
