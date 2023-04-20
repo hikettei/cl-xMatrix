@@ -613,6 +613,8 @@ Returns - nil"
 			 (stride (the index (nth dim-indicator strides)))
 			 (1+dims-indicator (1+ dim-indicator))
 			 (1-rest-dims (1- rest-dims))
+			 (start-with1 (if mat-operated-with
+					  (view-startindex (nth dim-indicator (matrix-view mat-operated-with)) 0)))
 			 (repeat (if broadcasts
 				     (nth dim-indicator broadcasts)
 				     nil))
@@ -640,11 +642,11 @@ Returns - nil"
 					      (the index (+ start-with (the index repeat-act))))
 					     (t
 					      (1+ start-with))))))
-		    
+
 		    (let ((offsets (+ total-offset (the index (* start-with stride1))))
 			  (actual-offsets
 			    (if mat-operated-with
-				(+ actual-offset (the index (* start-with stride)))
+				(+ actual-offset (the index (* start-with1 stride)))
 				actual-offset)))
 		      
 		      (loop for i fixnum upfrom start-with below end-with by incn
