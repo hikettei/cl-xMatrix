@@ -42,8 +42,7 @@
   (define-arithmetic-cfun "fp32_copy" :float)
   (define-arithmetic-cfun "fp16_copy" :uint16)
   (define-arithmetic-cfun "fp8_copy"  :uint8)
-  (define-arithmetic-cfun "int_copy"  :int)
-  )
+  (define-arithmetic-cfun "int_copy"  :int))
 
 
 (declaim (ftype (function (matrix matrix) matrix)
@@ -51,8 +50,7 @@
 		%subs
 		%muls
 		%divs
-		%move))
-		
+		%move))		
 (defun %adds (matrix matrix1)
   "Todo: DOC"
   (declare (optimize (speed 3))
@@ -173,9 +171,82 @@
 
 
 (defun %copy (matrix)
+  "Todo: Docs"
   (declare (optimize (speed 3))
 	   (type matrix matrix))
   (let ((new-matrix (matrix (matrix-visible-shape matrix)
 			    :dtype (matrix-dtype matrix))))
     (%move matrix new-matrix)
     new-matrix))
+
+(macrolet ((define-scalar-mat-cfun (name dtype)
+	     `(defcfun ,name :void
+		(view (:struct ViewInstruction))
+		(array (:pointer ,dtype))
+		(scalar ,dtype))))
+  (define-scalar-mat-cfun "fp32_scalar_add" :float)
+  (define-scalar-mat-cfun "fp16_scalar_add" :uint16)
+  (define-scalar-mat-cfun "fp8_scalar_add" :uint8)
+  (define-scalar-mat-cfun "int_scalar_add" :int)
+
+  (define-scalar-mat-cfun "fp32_scalar_mul" :float)
+  (define-scalar-mat-cfun "fp16_scalar_mul" :uint16)
+  (define-scalar-mat-cfun "fp8_scalar_mul" :uint8)
+  (define-scalar-mat-cfun "int_scalar_mul" :int))
+
+
+(defun %scalar-add (matrix scalar)
+  "Todo :Docs"
+  ;; tmp
+  (declare (optimize (safety 0)))
+  (call-with-visible-area
+   matrix #'(lambda (x)
+	      (dtypecase matrix
+		(:float
+		 (fp32-scalar-add x matrix scalar))
+		(:uint16
+		 (fp16-scalar-add x matrix scalar))
+		(:uint8
+		 (fp8-scalar-add x matrix scalar))
+		(:int
+		 (int-scalar-add x matrix scalar)))))
+  matrix)
+
+(defun %scalar-sub (matrix scalar)
+  (%scalar-add matrix (- scalar)))
+
+
+(defun %scalar-mul (matrix scalar)
+  "Todo :Docs"
+  ;; tmp
+  (declare (optimize (safety 0)))
+  (call-with-visible-area
+   matrix #'(lambda (x)
+	      (dtypecase matrix
+		(:float
+		 (fp32-scalar-mul x matrix scalar))
+		(:uint16
+		 (fp16-scalar-mul x matrix scalar))
+		(:uint8
+		 (fp8-scalar-mul x matrix scalar))
+		(:int
+		 (int-scalar-mul x matrix scalar)))))
+  matrix)
+
+(defun %scalar-div (matrix scalar)
+  (%scalar-mul matrix (/ scalar)))
+
+
+(defun %fill (matrix scalar)
+  ;; tmp
+  (declare (optimize (safety 0) (speed 3)))
+  (call-with-visible-area
+   matrix #'(lambda (x)
+	      (with-view-object (index x)
+		(setf
+		 (mem-aref
+		  (matrix-vec matrix)
+		  (matrix-dtype matrix)
+		  index)
+		 scalar))))
+  matrix)

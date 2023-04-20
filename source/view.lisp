@@ -571,12 +571,15 @@ Done: Straighten-up subscripts
 
 function - #'(lambda (lisp-structure) body)
 
+matrix shouldn't possess broadcasted axis while mat-operated-with is ok.
+
 Returns - nil"
   (declare (optimize (speed 3) (safety 0))
 	   (type matrix matrix)
 	   (type function function))
 
-  ;; If complitcaed ... do %copy
+  ;; Assert matrix doesn't have broadcast
+  
   (when (matrix-external-operation matrix)
     (let ((mat (if (matrix-external-operation mat-operated-with)
 		   (progn
