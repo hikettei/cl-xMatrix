@@ -641,8 +641,12 @@ Returns - nil"
 					     (t
 					      (1+ start-with))))))
 		    
-		    (let ((offsets total-offset)
-			  (actual-offsets actual-offset))
+		    (let ((offsets (+ total-offset (the index (* start-with stride1))))
+			  (actual-offsets
+			    (if mat-operated-with
+				(+ actual-offset (the index (* start-with stride)))
+				actual-offset)))
+		      
 		      (loop for i fixnum upfrom start-with below end-with by incn
 			    do (progn
 				 (explore-batch offsets
@@ -676,7 +680,7 @@ Returns - nil"
 			(setq shape2 repeat2))
 		    (if repeat1
 			(setq shape1 repeat1))
-		    
+
 		    (let ((instruction (view-instruction
 					total-offset
 					actual-offset
@@ -692,7 +696,6 @@ Returns - nil"
 					(if repeat1
 					    0
 					    1))))
-		      
 		      ;; (when (= 1+dim 1)
 		      ;;       transpose ~~~)
 		      ;; (M 1) -> (1 M) (M 1 fails to SIMD)
@@ -756,6 +759,7 @@ Returns - nil"
 		 (T (error "Scalar value fell through.")))
 	       nil))
 
+      ;; getting ugly ><
       (explore-batch
        0
        0
