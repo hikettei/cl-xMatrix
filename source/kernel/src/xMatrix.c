@@ -22,6 +22,7 @@
 +----------------+------------------------------------------------------------------------------------------+
  */
 
+#include <math.h>
 #include <stdio.h>
 #include <stdint.h>
 
@@ -304,3 +305,35 @@ void int_fill(const struct ViewInstruction view, int* vec1, int scal) {
 
 
 
+void fp32_sin(const struct ViewInstruction view, single_float* vec) {
+  WITH_ELWISE_VIEW(view, k, vec[k] = sin(vec[k]));
+}
+
+void fp16_sin(const struct ViewInstruction view, fp16_t* vec) {
+  WITH_ELWISE_VIEW(view, k, vec[k] = sin(vec[k]));
+}
+
+void fp8_sin(const struct ViewInstruction view, fp8_t* vec) {
+  WITH_ELWISE_VIEW(view, k, vec[k] = sin(vec[k]));
+}
+
+void int_sin(const struct ViewInstruction view, int* vec) {
+  WITH_ELWISE_VIEW(view, k, vec[k] = sin(vec[k]));
+}
+
+
+void fp32_cos(const struct ViewInstruction view, single_float* vec) {
+  WITH_ELWISE_VIEW(view, k, vec[k] = cos(vec[k]));
+}
+
+void fp16_cos(const struct ViewInstruction view, fp16_t* vec) {
+  WITH_ELWISE_VIEW(view, k, vec[k] = cos(vec[k]));
+}
+
+void fp8_cos(const struct ViewInstruction view, fp8_t* vec) {
+  WITH_ELWISE_VIEW(view, k, vec[k] = cos(vec[k]));
+}
+
+void int_cos(const struct ViewInstruction view, int* vec) {
+  WITH_ELWISE_VIEW(view, k, vec[k] = cos(vec[k]));
+}
