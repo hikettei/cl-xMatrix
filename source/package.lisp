@@ -3,15 +3,18 @@
 
 
 (defpackage :cl-xmatrix
-  (:use :cl :cffi) ;; To Add: GC by trivial-garbage or something
-  (:export :load-xmatrix)
+  (:use :cl :cffi)
+
+  ;; Utils for shared library
+  (:export
+   :load-xmatrix)
+
+  ;; Matrix APIs
   (:export
    #:matrix
    #:free-mat)
 
-  (:export
-   #:%abs)
-
+  ;; Mat Pointer API
   (:export
    #:with-pointer-barricade)
   
@@ -20,9 +23,68 @@
    #:view
    #:with-view
    #:with-views
+   
    #:call-with-visible-area
    #:with-view-object
-   ))
+   #:with-broadcasting
+
+   #:Indexing-Error
+   #:View-Indexing-Error)
+
+  ;; Arithmetic
+  (:export
+   #:%adds
+   #:%subs
+   #:%muls
+   #:%divs
+
+   #:%scalar-add
+   #:%scalar-sub
+   #:%scalar-mul
+   #:%scalar-div
+
+   #:%fill
+
+   #:%move
+   #:%copy)
+
+
+  ;; Mathematical
+  (:export
+   #:%abs
+
+   #:%log
+   #:%exp
+   #:%power
+   #:%expt
+
+   ;; More will be added...
+   )
+
+  ;; Reductions
+  (:export
+   #:%sum
+   #:%sumup)
+
+  ;; Trigonometic
+  (:export
+   #:%sin
+   #:%cos
+   #:%tan
+
+   #:%asin
+   #:%acos
+   #:%atan
+
+   #:%sinh
+   #:%cosh
+   #:%tanh
+
+   #:%asinh
+   #:%acosh
+   #:%atanh)
+
+  )
 
 ;; Memo
 ;; :shadowing-import-from ,and then cl-xmatrix::+

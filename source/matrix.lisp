@@ -222,12 +222,14 @@
 	   (matrix-dtype ,matrix1)
 	   (matrix-dtype ,matrix2)))
 
-(defmacro with-pointer-barricade (&body body)
+(defmacro with-pointer-barricade (&body body &aux (id (gensym)))
   "All matrices created in this form, are automatically freed."
-  `(let ((*pinned-matrices* `(t)))
+  `(let ((*pinned-matrices* `(t))
+	 (,id (gensym ',(gensym "B"))))
      (prog1
 	 (progn
 	   ,@body)
+       ;; Add: Display-Report and display mem-usage
        (mapc
 	#'(lambda (m)
 	    (if (typep m 'matrix)

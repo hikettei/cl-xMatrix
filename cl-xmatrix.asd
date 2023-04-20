@@ -18,13 +18,13 @@
 	       (:file "render")
 	       (:file "view")
 	       (:file "quantize")
-	       (:file "mithral")
 
 	       (:file "apis/arithmetic")
 	       (:file "apis/mathematical")
 	       (:file "apis/operations")
 
 	       (:file "distribution/random")
+	       
 	       (:file "amm/package")
 	       (:file "amm/mithral")
 	       ;;(:file "mha")

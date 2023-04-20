@@ -41,7 +41,7 @@
 		%subs
 		%muls
 		%divs
-		%move))		
+		%move))
 (defun %adds (matrix matrix1)
   "Todo: DOC"
   (declare (optimize (speed 3))
