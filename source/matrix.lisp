@@ -3,8 +3,6 @@
 
 ;; Todo: Refactor
 ;; Memo: https://www.lispforum.com/viewtopic.php?t=4296
-;; Heap Corruptionなぜ起こる？？？
-;; or: Add with-mem-barricades
 
 ;; (define-mat-dtype
 ;;        :uint8
@@ -144,7 +142,7 @@
 	   (matrix-visible-shape matrix)
 	   (matrix-broadcasts matrix)
 	   :for-print t)
-	  (convert-into-lisp-array matrix))) ; TODO: more infos
+	  (render-matrix matrix :indent 6))) ; TODO: more infos
 
 ;; Note: view-of-matrix is NOT ALLOWED to use the view-object's information
 ;; Use the original matrix's SHAPE, strides and so on...

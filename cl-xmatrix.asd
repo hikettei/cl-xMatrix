@@ -15,6 +15,7 @@
   :depends-on (:cffi :cffi-libffi)
   :components ((:file "package")
 	       (:file "matrix")
+	       (:file "render")
 	       (:file "view")
 	       (:file "quantize")
 	       (:file "mithral")
