@@ -1,16 +1,7 @@
 
 (in-package :cl-xmatrix)
 
-;; Broadcasting
-
-;; Todo: Dtypes
-;;       SIMD
-;;       Operators
-;;       Barricades
-
 ;; Here's primitive operations (exported in another names)
-
-;; Copies vec1's visible area into vec2
 
 (macrolet ((define-arithmetic-cfun (name dtype)
 	     `(defcfun ,name :void
@@ -204,13 +195,13 @@
    matrix #'(lambda (x)
 	      (dtypecase matrix
 		(:float
-		 (fp32-scalar-add x matrix scalar))
+		 (fp32-scalar-add x (matrix-vec matrix) scalar))
 		(:uint16
-		 (fp16-scalar-add x matrix scalar))
+		 (fp16-scalar-add x (matrix-vec matrix) scalar))
 		(:uint8
-		 (fp8-scalar-add x matrix scalar))
+		 (fp8-scalar-add x (matrix-vec matrix) scalar))
 		(:int
-		 (int-scalar-add x matrix scalar)))))
+		 (int-scalar-add x (matrix-vec matrix) scalar)))))
   matrix)
 
 (defun %scalar-sub (matrix scalar)
@@ -225,17 +216,18 @@
    matrix #'(lambda (x)
 	      (dtypecase matrix
 		(:float
-		 (fp32-scalar-mul x matrix scalar))
+		 (fp32-scalar-mul x (matrix-vec matrix) scalar))
 		(:uint16
-		 (fp16-scalar-mul x matrix scalar))
+		 (fp16-scalar-mul x (matrix-vec matrix) scalar))
 		(:uint8
-		 (fp8-scalar-mul x matrix scalar))
+		 (fp8-scalar-mul x (matrix-vec matrix) scalar))
 		(:int
-		 (int-scalar-mul x matrix scalar)))))
+		 (int-scalar-mul x (matrix-vec matrix) scalar)))))
   matrix)
 
 (defun %scalar-div (matrix scalar)
   (%scalar-mul matrix (/ scalar)))
+
 
 (defun %fill (matrix scalar)
   "Todo :Docs"
@@ -244,12 +236,12 @@
    matrix #'(lambda (x)
 	      (dtypecase matrix
 		(:float
-		 (fp32-fill x matrix scalar))
+		 (fp32-fill x (matrix-vec matrix) scalar))
 		(:uint16
-		 (fp16-fill x matrix scalar))
+		 (fp16-fill x (matrix-vec matrix) scalar))
 		(:uint8
-		 (fp8-fill x matrix scalar))
+		 (fp8-fill x (matrix-vec matrix) scalar))
 		(:int
-		 (int-fill x matrix scalar)))))
+		 (int-fill x (matrix-vec matrix) scalar)))))
   matrix)
 

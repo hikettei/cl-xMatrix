@@ -10,7 +10,12 @@
 	     `(defcfun ,name :void
 		(view (:struct ViewInstruction))
 		(array (:pointer ,dtype)))))  
-  (define-elwise-cfun "fp32_abs" :float))
+  (define-elwise-cfun "fp32_abs" :float)
+  (define-elwise-cfun "fp16_abs" :uint16)
+  (define-elwise-cfun "fp8_abs" :uint8)
+  (define-elwise-cfun "int_abs" :int)
+
+  )
 
 (defun %abs (matrix)
   "Computes absolute values destructively."

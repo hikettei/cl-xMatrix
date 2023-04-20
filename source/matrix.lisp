@@ -205,6 +205,9 @@
   (declare (type matrix matrix)
 	   (optimize (speed 3)))
   (length (the list (matrix-visible-shape matrix))))
+
+(defun shape (matrix)
+  (matrix-visible-shape matrix))
   
 (defmacro dtypecase (matrix &body body)
   `(case (matrix-dtype ,matrix)
@@ -230,3 +233,4 @@
 	    (if (typep m 'matrix)
 		(free-mat m)))
 	*pinned-matrices*))))
+
