@@ -237,12 +237,14 @@ Legal Subscript -> fixnum/list/t, (external-option ~)"
 		(if (< (the fixnum sub) (the fixnum dim))
 		    t
 		    (push
-		     (format nil "[Axis=~a] Failed with (< subscript[~a] shape[~a]). index=~a axis=~a~%"
+		     (format nil "[Axis=~a] Failed with (< subscript[~a] shape[~a]). subscript[~a]=~a shape[~a]=~a~%"
+			     i
+			     i
+			     i
 			     i
 			     sub
 			     i
-			     dim
-			     i)
+			     dim)
 		     reports)))
 	       (list
 		(typecase (car sub)
@@ -316,13 +318,10 @@ Legal Subscript -> fixnum/list/t, (external-option ~)"
 	 (with-output-to-string (str)
 	   (write-string "Couldn't parse subscripts correctly:" str)
 	   (write-char #\Newline str)
+	   (write-string (format nil "Shape=~a Subscripts=~a~%" shape subscripts) str)
 	   (dolist (r (reverse reports))
 	     (write-string r str))))
 	t)))
-
-(defun subscript-compatiable (matrix subscripts)
-  "Returns t if the subscripts are compatiable to matrix."
-  t)
 
 (defun compute-absolute-subscripts (orig-mat subscripts)
   "Translate view-subscription into the format which is compatiable with orig-mat"

@@ -8,7 +8,6 @@
 ;; with-copying
 
 (defun %sumup (matrix)
-  ;; tmp
   (let ((total 0.0))
     (declare (optimize (safety 0)))
     (call-with-visible-area
@@ -22,45 +21,20 @@
 (defun %sum (matrix &key (axis 0))
   "Sum for tmp definition (TODO: USE SIMD IN C)"
   (declare (type matrix matrix)
-	   (type index axis))
-;	   (optimize (speed 3)))
-  (let ((shape (copy-list (matrix-visible-shape matrix))))
+	   (type index axis)
+	   (optimize (speed 3)))
+  (let* ((shape (copy-list (matrix-visible-shape matrix)))
+ 	 (reduction-size (nth axis shape)))
     (setf (nth axis shape) 1)
-    (let ((matrix1 (matrix shape :dtype (matrix-dtype matrix))))
-      (call-with-visible-area
-       matrix
-       #'(lambda (view)
-	   (case axis
-	     (0 ;; (M N) -> (M 1)
-	      (with-slots ((offsets offsets)
-			   (stride2 stride2)
-			   (stride1 stride1)
-			   (offset2 offset2)
-			   (offset1 offset1)
-			   (m m)
-			   (n n))
-		  view
-		(dotimes (row m)
-		  (with-views ((m* matrix row t)
-			       (m1* matrix1 row t))
-		    (setf (mem-aref (matrix-vec m1*) (matrix-dtype matrix) row)
-			  (%sumup m*))))))
-	     (1
-	      (with-slots ((offsets offsets)
-			   (stride2 stride2)
-			   (stride1 stride1)
-			   (offset2 offset2)
-			   (offset1 offset1)
-			   (m m)
-			   (n n))
-		  view
-		(dotimes (cols n)
-		  (with-views ((m* matrix t cols)
-			       (m1* matrix1 t cols))
-		    (setf (mem-aref (matrix-vec m1*) (matrix-dtype matrix) cols)
-			  (%sumup m*))))))
-	     (T (error "no impl")))))
-      matrix1)))
+    (let ((result (matrix shape :dtype (matrix-dtype matrix)))
+	  (view (loop for i fixnum upfrom 0 below (1+ axis)
+		      if (= i axis)
+			collect `(:broadcast ,reduction-size)
+		      else
+			collect t)))
+      (let ((result* (apply #'view result view)))
+	(%adds result* matrix)
+	result))))
 
 (defun 1d-mat-aref (matrix index)
   ""
@@ -123,7 +97,12 @@
     result))
 
 (defun %all? (tf-matrix)
-  (= (%sumup tf-matrix) (apply #'* (shape tf-matrix))))
+  (declare ;;(optimize (speed 3))
+	   (type matrix tf-matrix))
+  (= (%sumup tf-matrix)
+     (apply #'* (shape tf-matrix))))
 
 (defun %or? (tf-matrix)
+  (declare ;;(optimize (speed 3))
+	   (type matrix tf-matrix))
   (>= (%sumup tf-matrix) 1))

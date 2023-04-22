@@ -3,6 +3,8 @@
 
 ;; Here's primitive operations (exported in another names)
 
+;; To Add: arange a[i] = alpha*i + beta. i = (k, m)
+
 (macrolet ((define-arithmetic-cfun (name dtype)
 	     `(defcfun ,name :void
 		(view1 (:struct ViewInstruction))
