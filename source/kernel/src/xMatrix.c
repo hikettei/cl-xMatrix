@@ -81,6 +81,7 @@ int cpu_has_avx512(void){
 
 // Macros for STORING AND LOADING
 
+// f(x)
 // simd_operation -> SIMD Operation, reminder = element_wise_operation
 #define WITH_VIEW_ITER(view, index, stride, simd_operation, reminder)	\
   do {									\
@@ -99,7 +100,7 @@ int cpu_has_avx512(void){
   } while(0)
 
 
-// A + B
+// f(a, b) but SIMD.
 #define WITH_VIEW_OPS(view1, view2, index1, index2, stride, simd_operation, reminder) \
   do {									\
     int last_ni_index_for_rem = 0;					\
@@ -145,6 +146,7 @@ void fp32_abs(const struct ViewInstruction view, single_float* vec) {
 		 fp32_abs_scalarwise(vec, i));
 }
 
+// f(x)
 #define WITH_ELWISE_VIEW(view, index, element_wise_operation)		\
   do {									\
     for (int mi = view.offset2; mi < view.m; mi++) {			\
@@ -155,12 +157,20 @@ void fp32_abs(const struct ViewInstruction view, single_float* vec) {
     }									\
   } while(0)
 
+
+// f(x, y)
+// Assertion: view1.m, view1.n = view2.m, view1.n
+// Index = view.offset + (mi + view.offset2) * view.stride2 * view.broadcast
 #define WITH_ELWISE_OPS(view1, view2, index1, index2, element_wise_operation) \
   do {									\
-    for (int mi = view1.offset2; mi < view1.m; mi++) {			\
-      for (int ni = view1.offset1; ni < view1.n; ni++) {		\
-        int index1 = view1.offset + mi * view1.stride2 * view1.broadcast2 + ni * view1.stride1 * view1.broadcast1; \
-	int index2 = view2.offset + mi * view2.stride2 * view2.broadcast2 + ni * view2.stride1 * view2.broadcast1; \
+    for (int mi = 0; mi < view1.m; mi++) {				\
+      for (int ni = 0; ni < view1.n; ni++) {				\
+        int mi1 = mi + view1.offset2;					\
+	int ni1 = ni + view1.offset1;					\
+	int mi2 = mi + view2.offset2;					\
+	int ni2 = ni + view2.offset1;					\
+        int index1 = view1.offset + mi1 * view1.stride2 * view1.broadcast2 + ni1 * view1.stride1 * view1.broadcast1; \
+	int index2 = view2.offset + mi2 * view2.stride2 * view2.broadcast2 + ni2 * view2.stride1 * view2.broadcast1; \
 	(element_wise_operation);					\
       }									\
     }									\

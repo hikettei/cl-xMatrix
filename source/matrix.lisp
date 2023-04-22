@@ -33,6 +33,9 @@
 (defun coerce-to-dtype (element dtype)
   (coerce element (dtype->lisp-type dtype)))
 
+(defun coerce-to-mat-dtype (element matrix)
+  (coerce-to-dtype element (matrix-dtype matrix)))
+
 (deftype matrix-dtype ()
   "The type of available dtypes."
   `(and keyword
@@ -240,3 +243,4 @@
 	    (if (typep m 'matrix)
 		(free-mat m)))
 	*pinned-matrices*))))
+

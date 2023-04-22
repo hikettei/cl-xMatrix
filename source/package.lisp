@@ -91,6 +91,7 @@
   (:export
    #:%filter
    #:%satisfies
+   #:%compare
    #:%all?
    #:%or?
    )
