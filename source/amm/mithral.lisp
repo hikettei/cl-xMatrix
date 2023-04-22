@@ -323,15 +323,14 @@ Output: Cumsses [N D]"
 	(cumX-cols (matrix `(1 ,D) :dtype dtype))
 	(cumx2-cols (matrix `(1 ,D) :dtype dtype)))
 
-    ;; Ex: Let N and D be 128 and 8
-    ;;
+    ;; cumsses ... each N's Loss
     ;;
     ;;
 
-    ;; First step as Initialize
+    ;; First Step (n=0), (for initializing)
     (dotimes (j D)
-      (with-views ((cxc cumX-cols t j)
-		   (cxc2 cumX2-cols t j)
+      (with-views ((cxc cumX-cols 0 j)
+		   (cxc2 cumX2-cols 0 j)
 		   (x* x 0 j))
 	(%move x* cxc)
 	(%move x* cxc2)
@@ -341,23 +340,22 @@ Output: Cumsses [N D]"
       (let ((lr (/ (+ 2.0 i))))
 	(dotimes (j D)
 	  (with-views ((cs cumsses i j)
-		       (cxc cumX-cols t j)
-		       (cxc2 cumX2-cols t j)
+		       (cxc cumX-cols 0 j)
+		       (cxc2 cumX2-cols 0 j)
 		       (x* x i j))
-	    ;; Fix Here::::::::
-	    (%scalar-add cxc (1d-mat-aref x* 0))
+	    (%scalar-add cxc (%sumup x*))
 	    (%scalar-add cxc2
 			 (locally (declare (optimize (speed 1)))
-			   (expt (1d-mat-aref x* 0) 2)))
+			   (expt (%sumup x*) 2)))
 
 	    (let* ((meanX (%scalar-mul cxc lr))
-		   (mx (%muls meanX cxc)) ;; Amadur
-		   (mx (%scalar-mul mx -1.0)))
-	      (%move cxc2 cs)
+		   (mx    (%muls meanX cxc)) ;; Amadur
+		   (mx    (%scalar-mul mx -1.0)))
+	      (%move cxc2 cs) ;; cs = cxc2
 	      (%adds cs mx))))))
     ;(free-mat cumX-cols) ;; (Heap Corruption...) To Add: GCable CFFI Pointer?
     ;(free-mat cumx2-cols)
-      cumsses))
+    cumsses))
 
 ;; 6: fp=0x7f65648 pc=0x536a2e6b CL-XMATRIX::COMPUTE-OPTIMAL-SPLIT-VAL
 (declaim (ftype (function (matrix index) (values matrix matrix)) compute-optimal-split-val))
