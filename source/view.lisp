@@ -227,13 +227,14 @@ ViewInstruction is basically created only for 2d-matrix operation, functions mus
 (defun subscript-p (subscripts matrix &aux (shape (shape matrix)))
   "Returns t if the format of subscripts are correct.
 Legal Subscript -> fixnum/list/t, (external-option ~)"
+  (declare (optimize (speed 3)))
   (let ((reports))
     (loop for i fixnum upfrom 0
 	  for dim in shape
 	  for sub in subscripts
 	  do (typecase sub
-	       (index
-		(if (< sub dim)
+	       (fixnum
+		(if (< (the fixnum sub) (the fixnum dim))
 		    t
 		    (push
 		     (format nil "[Axis=~a] Failed with (< subscript[~a] shape[~a]). index=~a axis=~a~%"
@@ -244,11 +245,11 @@ Legal Subscript -> fixnum/list/t, (external-option ~)"
 			     i)
 		     reports)))
 	       (list
-		(case (car sub)
-		  (index
+		(typecase (car sub)
+		  (fixnum
 		   (cond
 		     ;; (5 3) is invaild (>= 5 3)
-		     ((>= (car sub) (cdr sub))
+		     ((>= (the fixnum (car sub)) (the fixnum (second sub)))
 		      (push
 		       (format nil "[Axis=~a] Failed with (< subscript[~a][0] subscript[~a][1]). subscript=~a~%"
 			       i
@@ -257,7 +258,7 @@ Legal Subscript -> fixnum/list/t, (external-option ~)"
 			       sub)
 		       reports))
 		     ;; (n 10) but axis=3
-		     ((>= (cdr sub) dim)
+		     ((>= (the fixnum (second sub)) dim)
 		      (push
 		       (format nil "[Axis=~a] Failed with (< subscript[~a][1] shape[~a]) subscript=~a, shape[~a]=~a~%"
 			       i
@@ -278,7 +279,7 @@ Legal Subscript -> fixnum/list/t, (external-option ~)"
 		  (keyword
 		   (case (car sub)
 		     (:indices
-		      (let ((ov (find-if #'(lambda (x) (>= x dim)) sub)))
+		      (let ((ov (find-if #'(lambda (x) (>= (the fixnum x) dim)) (the list (cdr sub)))))
 			(if ov
 			    (push
 			     (format nil "[Axis=~a] Each index mustn't exceed ~a, but found: ~a.~%"
@@ -295,7 +296,7 @@ Legal Subscript -> fixnum/list/t, (external-option ~)"
 				  i
 				  sub)
 			  reports))
-			((not (= dim 1))
+			((not (= (the fixnum dim) 1))
 			 (push
 			  (format nil "[Axis=~a] The axis to be broadcasted, must be 1 but got ~a.~%" i dim)
 			  reports))))
@@ -311,6 +312,7 @@ Legal Subscript -> fixnum/list/t, (external-option ~)"
 		     reports)))))
     (if reports
 	(view-indexing-error
+	 "~a"
 	 (with-output-to-string (str)
 	   (write-string "Couldn't parse subscripts correctly:" str)
 	   (write-char #\Newline str)
