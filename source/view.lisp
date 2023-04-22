@@ -610,10 +610,9 @@ Done: Straighten-up subscripts
       (labels ((external-operations-p (sub)
 		 (when (and (typep sub 'list)
 			    (typep (car sub) 'keyword))
-		   (if (or (eql (car sub) :indices)
-			   (eql (car sub) :broadcast))
+		   (if (eql (car sub) :indices)
 		       t
-		       (view-indexing-error "Unknown External Operation: ~a. Only :indices :broadcast :tflist are available" sub)))))
+		       nil))))
 
 	(unless (= (length (matrix-visible-shape matrix))
 		   (length subscripts))
