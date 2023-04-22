@@ -163,13 +163,12 @@ B(t, ?) -> B(t+1, ?), B(t+1, ??), ...
 Algorithm 2 Adding The Next Level to The Hashing Tree.
 
 Bucket-Split: B(A) -> B(id0), B(id1)"
-  (declare (ignore x-orig)
+  (declare ;;(optimize (speed 3))
+	   (ignore x-orig)
 	   (type number val))
-  
-  ;; それぞれの分割した行列は、オリジナルのView
-  ;; Viewどころか、Sumx/Sumx2は遅延評価にすべき？固定のHeapを使いたい
-  ;; Is it more clever way to lazy-evaluate SumX/SumX2? since i wanna use static-heap area.
 
+  ;; X = [N, C]
+  
   ;; Algorithm 1. MaddnessHash
   (let* ((id0 (* 2 (bucket-id bucket)))
  	 (id1 (+ id0 1)))
@@ -218,7 +217,7 @@ Bucket-Split: B(A) -> B(id0), B(id1)"
 		  matrix
 		  #'(lambda (view)
 		      (with-view-object (index view :absolute i)
-			(setf (nth i result) (if (> (cl-xmatrix::1d-mat-aref matrix index) scalar)
+			(setf (nth i result) (if (> (1d-mat-aref matrix index) scalar)
 						 t
 						 nil)))))
 		 result)
@@ -232,7 +231,8 @@ Bucket-Split: B(A) -> B(id0), B(id1)"
 	       (not-mask (map 'list #'not mask)) ;; Python impls uses lognot but why?
 	       (x0 (%copy (view x `(:tflist ,@not-mask) t)))
 	       (x1 (%copy (view x `(:tflist ,@mask) t)))
-	       (ids0 (list-tf-map transition-states not-mask)) ;; Fix:: they're list.
+	       
+	       (ids0 (list-tf-map transition-states not-mask))
 	       (ids1 (list-tf-map transition-states mask)))
 	  
 	  (prog1
@@ -370,9 +370,9 @@ x - One of prototypes. [num_idxs, D]"
 	 (sses-tail-reversed (cumsse-cols (view x `(:indices ,@sort-idxs) t)))
 	 (sses sses-head)
 	 (last-index  (car (shape sses-head)))
-	 (indices (loop for i downfrom last-index to 0 collect i)))
+	 (indices (loop for i downfrom (1- last-index) to 0 collect i)))
 
-    (%adds (view sses `(0 ,(1- last-index)) t)
+    (%adds (view sses `(0 ,last-index) t)
 	   (view sses-tail-reversed `(:indices ,@indices) t))
 
     (let* ((sses (%sum sses :axis 1))
@@ -629,7 +629,7 @@ y = [D M] (To be multiplied)"
             ;; remove centroid from all the points that lie in a certain codebook
             ;; set prototype value
 
-	    (let ((centroids (matrix `(1 ,D) :dtype (cl-xmatrix::matrix-dtype X)))
+	    (let ((centroids (matrix `(1 ,D) :dtype (dtype X)))
 		  (idxs (loop for i fixnum
 			      upfrom (first cth-idx)
 				below (second cth-idx)
@@ -637,13 +637,27 @@ y = [D M] (To be multiplied)"
 	      (loop for b fixnum upfrom 0
 		    for bucket in buckets
 		    if (bucket-point-ids bucket)
-		      do (progn
+		      do (let ((centroid (col-means bucket))
+			       (bids (bucket-point-ids bucket)))
 			   (%fill centroids 0.0)
-			   (with-views ((c* centroids t `(:indices ,@idxs))
-					(xerr* X-error `(:indices ,@(bucket-point-ids bucket)) t))
-			     (%subs xerr* c*)
+			   ;; Centroids = [1 D]
+			   ;; X-error   = [N D]
+			   (with-views ((c* centroids 0 `(:indices ,@idxs))
+					(xerr* use-X-error `(:indices ,@bids) t))
+			     (%move centroid c*)
+			     
+			     (dotimes (m (nth 0 (shape xerr*)))
+			       (with-view (e* xerr* m)
+				 (%subs e* c*)))
+
 			     (with-view (protos* all-prototypes cth b t)
-			       (%move c* protos*)))))
+			       ;; Reshape Centroids
+			       ;; Fixme: Copying
+			       (let ((centroids (cl-xmatrix::reshape
+						 (%copy centroids)
+						 `(1 ,@(shape centroids)))))
+				 (%move centroids protos*))))))
+	      
 	      ;; Todo: Ram Usage
 	      ;; (free-mat centroids)
 	      )))))

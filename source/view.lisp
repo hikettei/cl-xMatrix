@@ -80,6 +80,7 @@ ViewInstruction is basically created only for 2d-matrix operation, functions mus
   (broadcast-2 broadcast-2 :type index)
   (broadcast-1 broadcast-1 :type index))
 
+(declaim (inline view-instruction))
 
 (defcstruct (ViewInstruction :class c-viewinstruction)
   (offset :int)
@@ -314,6 +315,9 @@ Legal Subscript -> fixnum/list/t, (external-option ~)"
 			 (push
 			  (format nil "[Axis=~a] The axis to be broadcasted, must be 1 but got ~a.~%" i dim)
 			  reports))))
+		     (:tflist
+		      ;; add type checks
+		      t)
 		     (T
 		      (push
 		       (format nil "[Axis=~a] Unknown keyword: ~a~%" i sub)
@@ -409,7 +413,7 @@ Legal Subscript -> fixnum/list/t, (external-option ~)"
 			   ;; M[:indices 1 2 3][:indices 0 1]
 			   (case (car view)
 			     (:broadcast
-			      `(:indices ,@(loop for i in (cdr sub) collect 0)))
+			      `(:indices ,@(loop for i upfrom 0 below (second sub) collect 0)))
 			     (:indices
 			      `(:indices ,@(map
 					    'list
@@ -569,6 +573,8 @@ Example:
 	  do (setf (nth i result) (parse-relative-position i s)))
     result))
 
+
+;; Fixme: x = A[10, 3][:indices 1 2 3, t] + B[1, 3][:indices 1 2 3, t]
 (defun view (matrix &rest subscripts
 	     &aux
 	       (subscripts (straighten-up-subscripts matrix subscripts)))

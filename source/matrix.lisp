@@ -42,6 +42,8 @@
 	(satisfies dtype-p)))
 
 (defun index-p (x)
+  (declare (type fixnum x)
+	   (optimize (speed 3) (safety 0)))
   (>= x 0))
 
 (deftype index ()
@@ -161,6 +163,17 @@
 			  (projected-p nil)
 			  (strides (calc-strides shape))))
 	    (:constructor
+		reshape (matrix shape
+			 &aux
+			   (dtype (dtype matrix))
+			   (strides (calc-strides shape))
+			   (matrix-vec (matrix-vec matrix))
+			   (projected-p nil)
+			   (broadcasts nil)
+			   (view (loop repeat (length (the list shape))
+				       collect t))))
+			 
+	    (:constructor
 		view-of-matrix (matrix
 				broadcasts
 				&rest view
@@ -246,3 +259,4 @@
 	    (if (typep m 'matrix)
 		(free-mat m)))
 	*pinned-matrices*))))
+
