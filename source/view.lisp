@@ -700,7 +700,8 @@ Done: Straighten-up subscripts
        (let ((indices (cdr external-operation))
 	     ;; copy-list: avoid side effects.
 	     (view   (copy-list (matrix-view matrix)))
-	     (stride (nth external-operation-dim (matrix-strides matrix))))
+	     ;; Note: Should broadcast's dim considered?
+	     (stride (nth external-operation-dim (calc-strides (shape matrix)))))
 	 (loop for index in indices
 	       for ith fixnum upfrom 0
 	       do (let ((view (copy-list view)))
