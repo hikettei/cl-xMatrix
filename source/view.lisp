@@ -224,10 +224,99 @@ ViewInstruction is basically created only for 2d-matrix operation, functions mus
 
 ;; Support Repeat -> More Conditions -> Optimize
 
-(defun subscript-p (subscript)
+(defun subscript-p (subscripts matrix &aux (shape (shape matrix)))
   "Returns t if the format of subscripts are correct.
 Legal Subscript -> fixnum/list/t, (external-option ~)"
-  t)
+  (let ((reports))
+    (loop for i fixnum upfrom 0
+	  for dim in shape
+	  for sub in subscripts
+	  do (typecase sub
+	       (index
+		(if (< sub dim)
+		    t
+		    (push
+		     (format nil "[Axis=~a] Failed with (< subscript[~a] shape[~a]). index=~a axis=~a~%"
+			     i
+			     sub
+			     i
+			     dim
+			     i)
+		     reports)))
+	       (list
+		(case (car sub)
+		  (index
+		   (cond
+		     ;; (5 3) is invaild (>= 5 3)
+		     ((>= (car sub) (cdr sub))
+		      (push
+		       (format nil "[Axis=~a] Failed with (< subscript[~a][0] subscript[~a][1]). subscript=~a~%"
+			       i
+			       i
+			       i
+			       sub)
+		       reports))
+		     ;; (n 10) but axis=3
+		     ((>= (cdr sub) dim)
+		      (push
+		       (format nil "[Axis=~a] Failed with (< subscript[~a][1] shape[~a]) subscript=~a, shape[~a]=~a~%"
+			       i
+			       i
+			       i
+			       sub
+			       i
+			       dim)
+		       reports))
+		     ((not (= (length sub) 2))
+		      (push
+		       (format nil "[Axis=~a] Failed with (= (length subscript[~a]) 2). subscript=~a.~%"
+			       i
+			       i
+			       sub)
+		       reports))
+		     (t t)))
+		  (keyword
+		   (case (car sub)
+		     (:indices
+		      (let ((ov (find-if #'(lambda (x) (>= x dim)) sub)))
+			(if ov
+			    (push
+			     (format nil "[Axis=~a] Each index mustn't exceed ~a, but found: ~a.~%"
+				     i
+				     dim
+				     ov)
+			     reports)
+			    t)))
+		     (:broadcast
+		      (cond
+			((not (= (length sub) 2))
+			 (push
+			  (format nil "[Axis=~a] :broadcast keyword is given the following format: `(:broadcast n) but got ~a~%"
+				  i
+				  sub)
+			  reports))
+			((not (= dim 1))
+			 (push
+			  (format nil "[Axis=~a] The axis to be broadcasted, must be 1 but got ~a.~%" i dim)
+			  reports))))
+		     (T
+		      (push
+		       (format nil "[Axis=~a] Unknown keyword: ~a~%" i sub)
+		       reports))))))
+	       (t
+		(if (eql sub t)
+		    t
+		    (push
+		     (format nil "[Axis=~a] Invaild argument ~a~%" i sub)
+		     reports)))))
+    (if reports
+	(view-indexing-error
+	 (with-output-to-string (str)
+	   (write-string "Couldn't parse subscripts correctly:" str)
+	   (write-char #\Newline str)
+	   (dolist (r (reverse reports))
+	     (write-string r str))))
+	t)))
 
 (defun subscript-compatiable (matrix subscripts)
   "Returns t if the subscripts are compatiable to matrix."
@@ -263,7 +352,7 @@ Legal Subscript -> fixnum/list/t, (external-option ~)"
 			   ;; M[2:4].view(1)
 			   (+ (car view) sub))
 			  (T
-			   (view-indexing-error "Cant handle this subscript: ~a" view))))
+			   (view-indexing-error "Can't handle with this instruction: ~a" view))))
 		       (t
 			;; M[T][0]
 			sub)))
@@ -271,7 +360,7 @@ Legal Subscript -> fixnum/list/t, (external-option ~)"
 		     (typecase view
 		       (index
 			;; M[1].view([2:4])
-			(view-indexing-error "view: out of range"))
+			(view-indexing-error "Attempted to comptute Matrix[~a][~a] but this is out of range." view sub))
 		       (list
 			(typecase (car view)
 			  (keyword
@@ -299,7 +388,7 @@ Legal Subscript -> fixnum/list/t, (external-option ~)"
 		     (typecase view
 		       (index
 			;; M[0][:indices 1 2 3]
-			(view-indexing-error "view: out of range"))
+			(view-indexing-error "Attempted to compute M[~a][~a] but it is out of range." view sub))
 		       (list
 			(typecase (car view)
 			  (keyword
@@ -343,12 +432,12 @@ Legal Subscript -> fixnum/list/t, (external-option ~)"
 				    (eql (car view) :indices))
 			       ;; Only after [:indices m]
 			       sub
-			       (view-indexing-error "Can't broadcasting with a...")))
+			       (view-indexing-error "view: ~a and ~a couldn't broadcasted together. The axis to be broadcasted, must be 1. Also, M[:broadcast 1][:broadcast 1] is prohibited. (Make a copy of matrix and try it again plz.)" view sub)))
 			  (index
 			   ;; M[0:10][:broadcast 10]
 			   (if (= (- (second view) (car view)) 1)
 			       sub
-			       (view-indexing-error "Can't Broadcasting with a...")))
+			       (view-indexing-error "view: ~a and ~a couldn't broadcasted together. The axis to be broadcasted, must be 1." view sub)))
 			  (T
 			   (view-indexing-error "Cant handle this subscript: ~a" view))))
 		       ;; M[T][:indices 1 2 3]
@@ -439,7 +528,9 @@ Legal Subscript -> fixnum/list/t, (external-option ~)"
 Example:
   Matrix=(10 10) view=(1)     -> view = (1 t)
   Matrix=(10 10) view=(1 1)   -> view = (1 1)
-  Matrix=(10 10) view=(1 1 1) -> Indexing-Error"
+  Matrix=(10 10) view=(1 1 1) -> Indexing-Error
+
+-1 -> 10 for example."
   (declare (optimize (speed 3) (safety 0))
 	   (type matrix matrix)
 	   (type list subscripts))
@@ -505,8 +596,9 @@ Done: Straighten-up subscripts
      :tflist"
   
   (declare (optimize (speed 3))
-	   (type (satisfies subscript-p) subscripts)
 	   (type matrix matrix))
+
+  (subscript-p subscripts matrix)
 
   (multiple-value-bind (broadcasts subscripts) (parse-broadcast-subscripts matrix subscripts)
     (declare (type list broadcasts subscripts))
