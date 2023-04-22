@@ -14,7 +14,9 @@
    #:matrix
    #:shape
    #:convert-into-lisp-array
-   #:free-mat)
+   #:free-mat
+   #:dtype
+   #:1d-mat-aref)
 
   ;; Mat Pointer API
   (:export

@@ -4,7 +4,7 @@
 (defpackage :cl-xmatrix.amm.maddness
   (:use :cl :cl-xmatrix)
   (:export
-   ))
+   #:init-and-learn-mithral))
 
 (in-package :cl-xmatrix.amm.maddness)
 
@@ -313,7 +313,7 @@ Memo: Spelling Inconsistency -> threshold and val."
 		    &aux
 		      (N (car (shape x)))
 		      (D (second (shape x)))
-		      (dtype (cl-xmatrix::matrix-dtype x)))
+		      (dtype (dtype x)))
   "Computes SSE (Sum of Square Errors) column-wise.
 Input: X [N D]
 Output: Cumsses [N D]"
@@ -323,9 +323,15 @@ Output: Cumsses [N D]"
 	(cumX-cols (matrix `(1 ,D) :dtype dtype))
 	(cumx2-cols (matrix `(1 ,D) :dtype dtype)))
 
+    ;; Ex: Let N and D be 128 and 8
+    ;;
+    ;;
+    ;;
+
+    ;; First step as Initialize
     (dotimes (j D)
-      (with-views ((cxc cumX-cols j t)
-		   (cxc2 cumX2-cols j t)
+      (with-views ((cxc cumX-cols t j)
+		   (cxc2 cumX2-cols t j)
 		   (x* x 0 j))
 	(%move x* cxc)
 	(%move x* cxc2)
@@ -335,13 +341,14 @@ Output: Cumsses [N D]"
       (let ((lr (/ (+ 2.0 i))))
 	(dotimes (j D)
 	  (with-views ((cs cumsses i j)
-		       (cxc cumX-cols j t)
-		       (cxc2 cumX2-cols j t)
+		       (cxc cumX-cols t j)
+		       (cxc2 cumX2-cols t j)
 		       (x* x i j))
-	    (%scalar-add cxc (cl-xmatrix::1d-mat-aref x* 0))
+	    ;; Fix Here::::::::
+	    (%scalar-add cxc (1d-mat-aref x* 0))
 	    (%scalar-add cxc2
 			 (locally (declare (optimize (speed 1)))
-			   (expt (cl-xmatrix::1d-mat-aref x* 0) 2)))
+			   (expt (1d-mat-aref x* 0) 2)))
 
 	    (let* ((meanX (%scalar-mul cxc lr))
 		   (mx (%muls meanX cxc)) ;; Amadur
@@ -359,7 +366,7 @@ Output: Cumsses [N D]"
 
 x - One of prototypes. [num_idxs, D]"
   (let* ((N (car (shape X)))
- 	 (sort-idxs (argsort (convert-into-lisp-array (view x t dim) :freep nil)))
+ 	 (sort-idxs (argsort (convert-into-lisp-array (view x t dim))))
 	 (sort-idxs-rev      (reverse sort-idxs))
 	 (sses-head          (cumsse-cols (view x `(:indices ,@sort-idxs-rev) t)))
 	 (sses-tail-reversed (cumsse-cols (view x `(:indices ,@sort-idxs) t)))

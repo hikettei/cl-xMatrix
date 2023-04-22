@@ -20,6 +20,7 @@
 
 (defun %sum (matrix &key (axis 0))
   "Sum up matrix (write docs)"
+  ;; Todo: for multiple axis (I've confirmed it works)
   (declare (type matrix matrix)
 	   (type index axis)
 	   (optimize (speed 3)))
