@@ -19,7 +19,7 @@
     total))
 
 (defun %sum (matrix &key (axis 0))
-  "Sum for tmp definition (TODO: USE SIMD IN C)"
+  "Sum up matrix (write docs)"
   (declare (type matrix matrix)
 	   (type index axis)
 	   (optimize (speed 3)))

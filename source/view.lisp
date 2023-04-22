@@ -5,8 +5,8 @@
 ;; Conditions Related To Indexing
 ;;
 ;;          Indexing-Error (Simple-error)
-;;         /              
-;; View-Indexing-Error
+;;         /                |    
+;; View-Indexing-Error Shaping-Error
 ;;
 
 
@@ -29,14 +29,26 @@
    (lambda (c s)
      (format s "[cl-xmatrix] View-Indexing-Error: ~a" (slot-value c 'content)))))
 
-(defmacro indexing-error (content &rest args)
-  `(error (make-condition 'indexing-error
-			  :content (format nil ,content ,@args))))
-
 (defmacro view-indexing-error (content &rest args)
   `(error (make-condition 'view-indexing-error
 			  :content (format nil ,content ,@args))))
 
+(define-condition Shaping-Error (indexing-error)
+  ((content :initarg :content))
+  (:documentation "")
+  (:report
+   (lambda (c s)
+     (format s "[cl-xmatrix] Shaping-Error: ~a" (slot-value c 'content)))))
+
+(defmacro shaping-error (content &rest args)
+  `(error (make-condition 'Shaping-error
+			  :content (format nil ,content ,@args))))
+
+(defmacro assure-dimensions (mat1 mat2)
+  "Do nothing if mat1 and mat2 are the same shape, otherwise throw shaping-error"
+  `(if (equal (the list (shape ,mat1)) (the list (shape ,mat2)))
+       t
+       (shaping-error "Two matrices: ~a and ~a couldn't operated together." (shape ,mat1) (shape ,mat2))))
 
 (defun print-view (view stream depth)
   (declare (ignore depth))
@@ -731,17 +743,20 @@ matrix shouldn't possess broadcasted axis while mat-operated-with is ok.
 Returns - nil"
   (declare (optimize (speed 3) (safety 0))
 	   (type matrix matrix)
-	   (type function function))
+	   (type function function)
+	   (type fixnum first-offset))
 
   ;; Assert matrix doesn't have broadcast
-  
+
+  ;; check if matrix's subscript include :indices
   (when (let ((op (matrix-external-operation matrix)))
 	  (and
 	   op
 	   (not (eql (car op) :broadcast))))
-    (let ((mat (if (matrix-external-operation mat-operated-with)
+    (let ((mat (if (and mat-operated-with
+			(matrix-external-operation mat-operated-with))
 		   (progn
-		     (format t "Warning: call-with-visible-area copied mat-operated-with")
+		     (format t "Warning: call-with-visible-area copied mat-operated-with~%")
 		     (%copy mat-operated-with))
 		   mat-operated-with)))
       (return-from call-with-visible-area
@@ -772,7 +787,8 @@ Returns - nil"
 			 (1+dims-indicator (1+ dim-indicator))
 			 (1-rest-dims (1- rest-dims))
 			 (start-with1 (if mat-operated-with
-					  (view-startindex (nth dim-indicator (matrix-view mat-operated-with)) 0)))
+					  (view-startindex (nth dim-indicator (matrix-view mat-operated-with)) 0)
+					  nil))
 			 (repeat (if broadcasts
 				     (nth dim-indicator broadcasts)
 				     nil))
@@ -961,7 +977,7 @@ Usage:
 (defun convert-into-lisp-array (matrix &key (freep nil))
   "Convert matrix's visible area into common lisp's simple array"
   (let ((returning-array (make-array
-			  (apply #'* (matrix-visible-shape matrix))
+			  (apply #'* (shape matrix))
 			  :element-type t ;; FixMe
 			  )))
     (call-with-visible-area matrix #'(lambda (x)

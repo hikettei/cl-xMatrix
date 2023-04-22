@@ -50,6 +50,7 @@
 	   (type matrix matrix matrix1))
 
   (assert-dtype matrix matrix1)
+  (assure-dimensions matrix matrix1)
   
   (call-with-visible-area
    matrix
@@ -73,7 +74,7 @@
 	   (type matrix matrix matrix1))
 
   (assert-dtype matrix matrix1)
-  
+  (assure-dimensions matrix matrix1)
   (call-with-visible-area
    matrix
    #'(lambda (x-view x1-view)
@@ -96,7 +97,7 @@
 	   (type matrix matrix matrix1))
 
   (assert-dtype matrix matrix1)
-
+  (assure-dimensions matrix matrix1)
   
   (call-with-visible-area
    matrix
@@ -120,6 +121,7 @@
 	   (type matrix matrix matrix1))
 
   (assert-dtype matrix matrix1)
+  (assure-dimensions matrix matrix1)
   
   (call-with-visible-area
    matrix
@@ -140,9 +142,10 @@
 (defun %move (matrix matrix1)
   "Copy matrix"
   (declare (optimize (speed 3))
-	   (type matrix matrix))
+	   (type matrix matrix matrix1))
 
   (assert-dtype matrix matrix1)
+  (assure-dimensions matrix matrix1)
   
   (call-with-visible-area
    matrix
