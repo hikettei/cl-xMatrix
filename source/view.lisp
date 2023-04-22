@@ -272,7 +272,7 @@ Legal Subscript -> fixnum/list/t, (external-option ~)"
 			       sub)
 		       reports))
 		     ;; (n 10) but axis=3
-		     ((>= (the fixnum (second sub)) dim)
+		     ((> (the fixnum (second sub)) (the fixnum dim))
 		      (push
 		       (format nil "[Axis=~a] Failed with (< subscript[~a][1] shape[~a]) subscript=~a, shape[~a]=~a~%"
 			       i
@@ -885,8 +885,8 @@ Returns - nil"
 				 (t-dim (nth dim-indicator t-dims))
 				 (t-dim+1 (nth (1+ dim-indicator) t-dims))
 				 
-				 (t-offset2 (view-startindex t-view-point t-dim))
-				 (t-offset1 (view-startindex t-view-point t-dim+1))
+				 (t-offset2 (view-startindex t-view-point 0))
+				 (t-offset1 (view-startindex t-view-point+1 t-dim+1))
 				 (t-offset2e (view-endindex t-view-point t-dim))
 				 (t-offset1e (view-endindex t-view-point+1 t-dim+1))
 				 (trepeat2 (if broadcasts1
@@ -899,6 +899,7 @@ Returns - nil"
 				 (tstrides1 (nth (1+ dim-indicator) tstrides))
 				 (tshape2 (the index (- t-offset2e t-offset2)))
 				 (tshape1 (the index (- t-offset1e t-offset1))))
+			    
 			    (if trepeat2
 				(setq tshape2 trepeat2))
 			    (if trepeat1
