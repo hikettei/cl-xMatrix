@@ -49,6 +49,8 @@
 ;; Note: B(1, 1) is the special case that the vector is the equivalent to the original. (that is why often I've compared (< d 1))
 ;; Todo: perhaps I can give the more faster implementation of traning.
 
+(deftype index () `(or fixnum))
+
 (defstruct (MSBucket ;; Bucket
 	    (:conc-name bucket-)
 	    (:constructor
@@ -76,12 +78,12 @@
 					      (< d 1)) 
 					  (not (null sumx)))
 				     ;; => Bucket posses the original X.
-				     (apply #'* (matrix-shape sumx)))
+				     (apply #'* (shape sumx)))
 				    ((and (or (null d) ;; is bucket a top?
 					      (< d 1))
 					  (not (null sumx2)))
 				     ;; => Bucket possess the original X.
-				     (apply #'* (matrix-shape sumx2)))
+				     (apply #'* (shape sumx2)))
 				    (t
 				     (if (null d)
 					 (error "Assertion Failed because d is nil")
@@ -209,14 +211,14 @@ Bucket-Split: B(A) -> B(id0), B(id1)"
 	       (%cmp> (matrix
 		       scalar
 		       &aux
-			 (N (car (matrix-visible-shape matrix)))
+			 (N (car (shape matrix)))
 			 (result (loop repeat N collect nil)))
 		 "matrix = [N, 1]. Result=List"
 		 (call-with-visible-area
 		  matrix
 		  #'(lambda (view)
 		      (with-view-object (index view :absolute i)
-			(setf (nth i result) (if (> (1d-mat-aref matrix index) scalar)
+			(setf (nth i result) (if (> (cl-xmatrix::1d-mat-aref matrix index) scalar)
 						 t
 						 nil)))))
 		 result)
@@ -264,12 +266,12 @@ Memo: Spelling Inconsistency -> threshold and val."
 (defmethod col-variances ((bucket MSBucket))
   (if (< (bucket-n bucket) 1)
       (matrix `(1 ,(bucket-d bucket)) :dtype :float)
-      (let ((ex2 (%scalar-mul
+      (let ((ex2 (%scalar-div
 		  (%copy (bucket-sumx2 bucket))
-		  (/ (bucket-n bucket))))
-	    (ex (%scalar-mul
+		  (bucket-n bucket)))
+	    (ex (%scalar-div
 		 (%copy (bucket-sumx bucket))
-		 (/ (bucket-n bucket)))))
+		 (bucket-n bucket))))
 	(%adds ex2 (%scalar-mul (%square ex) -1.0)))))
 
 (defmethod col-means ((bucket MSBucket))
@@ -306,13 +308,12 @@ Memo: Spelling Inconsistency -> threshold and val."
     x))
 
 
-
 ;; Todo Benchmark
 (defun cumsse-cols (x
 		    &aux
-		      (N (car (matrix-visible-shape x)))
-		      (D (second (matrix-visible-shape x)))
-		      (dtype (matrix-dtype x)))
+		      (N (car (shape x)))
+		      (D (second (shape x)))
+		      (dtype (cl-xmatrix::matrix-dtype x)))
   "Computes SSE (Sum of Square Errors) column-wise.
 Input: X [N D]
 Output: Cumsses [N D]"
@@ -337,10 +338,10 @@ Output: Cumsses [N D]"
 		       (cxc cumX-cols j t)
 		       (cxc2 cumX2-cols j t)
 		       (x* x i j))
-	    (%scalar-add cxc (1d-mat-aref x* 0))
+	    (%scalar-add cxc (cl-xmatrix::1d-mat-aref x* 0))
 	    (%scalar-add cxc2
 			 (locally (declare (optimize (speed 1)))
-			   (expt (1d-mat-aref x* 0) 2)))
+			   (expt (cl-xmatrix::1d-mat-aref x* 0) 2)))
 
 	    (let* ((meanX (%scalar-mul cxc lr))
 		   (mx (%muls meanX cxc)) ;; Amadur
@@ -357,13 +358,13 @@ Output: Cumsses [N D]"
   "Given x and dim, computes a optimal split-values.
 
 x - One of prototypes. [num_idxs, D]"
-  (let* ((N (car (matrix-visible-shape X)))
+  (let* ((N (car (shape X)))
  	 (sort-idxs (argsort (convert-into-lisp-array (view x t dim) :freep nil)))
 	 (sort-idxs-rev      (reverse sort-idxs))
 	 (sses-head          (cumsse-cols (view x `(:indices ,@sort-idxs-rev) t)))
 	 (sses-tail-reversed (cumsse-cols (view x `(:indices ,@sort-idxs) t)))
 	 (sses sses-head)
-	 (last-index  (car (matrix-visible-shape sses-head)))
+	 (last-index  (car (shape sses-head)))
 	 (indices (loop for i downfrom last-index to 0 collect i)))
 
     (%adds (view sses `(0 ,(1- last-index)) t)
@@ -451,7 +452,7 @@ scal-by, offset: alpha, beta which corresponds to y = alpha*x + beta."
 
   ;; Assert:: (> nsplits 4)
 
-  (let* ((D (second (matrix-visible-shape X)))
+  (let* ((D (second (shape X)))
 	 (X-copy (%copy X)) ;; X-copy is shared by every buckets.
 	 (X-square (%square (%copy X)))
 	 (X-orig (%copy x-orig)) ;; X-copy is shared too?
@@ -492,7 +493,7 @@ scal-by, offset: alpha, beta which corresponds to y = alpha*x + beta."
 	       (let* ((dim-order (the list (argsort (convert-into-lisp-array col-losses :freep nil))))
 		      (all-split-vals)
 		      (dim-size (length dim-order))
-		      (total-losses (matrix `(1 ,dim-size) :dtype (matrix-dtype X))))
+		      (total-losses (matrix `(1 ,dim-size) :dtype (cl-xmatrix::matrix-dtype X))))
 		 (declare (type matrix total-losses)
 			  (type list dim-order all-split-vals)
 			  (type index dim-size))
@@ -504,7 +505,7 @@ scal-by, offset: alpha, beta which corresponds to y = alpha*x + beta."
 						       (view total-losses t `(0 ,d))
 						       :freep nil)
 						      :test #'<))))
-			      (1d-mat-aref total-losses idx))))
+			      (cl-xmatrix::1d-mat-aref total-losses idx))))
 
 		   ;; Todo: Refactor...
 		   ;; Loop for (length dim-order) times.
@@ -518,11 +519,11 @@ scal-by, offset: alpha, beta which corresponds to y = alpha*x + beta."
 				do (multiple-value-bind (val loss) (optimal-split-val b X dim)
 				     (let ((val (or val 0.0))
 					   (loss (if loss
-						     (1d-mat-aref loss 0)
+						     (cl-xmatrix::1d-mat-aref loss 0)
 						     0.0)))
 				     (%scalar-add (view total-losses t d) loss)
 				     (when (and (>= d 1)
-						(>= (1d-mat-aref total-losses d)
+						(>= (cl-xmatrix::1d-mat-aref total-losses d)
 						    (previous-min-losses d)))
 				       ;; Early Stopping
 				       (return-from bucket-training-iter))
@@ -550,7 +551,7 @@ scal-by, offset: alpha, beta which corresponds to y = alpha*x + beta."
 
 		   (let ((new-buckets (loop for i fixnum upfrom 0
 					    for b in buckets
-					    collect (let ((val (1d-mat-aref (nth i use-split-vals) 0)))
+					    collect (let ((val (cl-xmatrix::1d-mat-aref (nth i use-split-vals) 0)))
 						    (bucket-split b x :dim best-dim :val val :x-orig x-orig)))))
 		     
 		     ;(mapc #'destroy-bucket buckets)
@@ -578,16 +579,16 @@ y = [D M] (To be multiplied)"
 	   (type index C ncodebooks)
 	   (ignore ncodebooks)) ;; X.dtype = :uint16_t
 
-  (assert (= 2 (length (the list (matrix-shape X))))
+  (assert (= 2 (length (the list (shape X))))
 	  (x)
 	  "Assertion Failed with X.dims == 2 ~a"
-	  (matrix-shape x))
+	  (shape x))
 
   (let* ((x-error (%copy X)) ;; Valid Dataset (DONT FORGET: memfree x-error)
 	 (x-orig x)          ;; Training Dataset (minimize ||a-a'||)
-	 (N (car (matrix-visible-shape X)))
-	 (D (second (matrix-visible-shape X)))
-	 (all-prototypes (matrix `(,C ,K ,D) :dtype (matrix-dtype X)))
+	 (N (car (shape X)))
+	 (D (second (shape X)))
+	 (all-prototypes (matrix `(,C ,K ,D) :dtype (cl-xmatrix::matrix-dtype X)))
 	 (all-splits nil) ;; The Result
 	 (all-buckets nil) ;; Tmp List
 	 ;; indices of disjoints based on C are needed when training KMeans. (j)
@@ -623,7 +624,7 @@ y = [D M] (To be multiplied)"
             ;; remove centroid from all the points that lie in a certain codebook
             ;; set prototype value
 
-	    (let ((centroids (matrix `(1 ,D) :dtype (matrix-dtype X)))
+	    (let ((centroids (matrix `(1 ,D) :dtype (cl-xmatrix::matrix-dtype X)))
 		  (idxs (loop for i fixnum
 			      upfrom (first cth-idx)
 				below (second cth-idx)

@@ -15,6 +15,7 @@
     "interns the mkstr output/returns as symbol"
     (values (intern (apply #'mkstr args)))))
 
+;; Maximize/Minimize
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (macrolet ((define-elwise-cfun (name dtype)
 	       `(defcfun ,name :void

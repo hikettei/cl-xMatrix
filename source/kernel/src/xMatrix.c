@@ -67,7 +67,11 @@ int cpu_has_avx512(void){
 #if defined(__AVX2__)
 
 #define FP32_SIMD_STEP 8
+#define FP16_SIMD_STEP 16
+#define FP8_SIMD_STEP 32
+
 #define XMAT_FP32_LOADU_PS(var, pointer) __m256 var = _mm256_loadu_ps(pointer);
+#define XMAT_FP16_LOADU_PS(var, pointer) __m256 var = _mm256_loadu_ps((__m256i *)pointer);
 
 #elif defined(__AVX__)
 
@@ -302,7 +306,6 @@ void fp8_fill(const struct ViewInstruction view, fp8_t* vec1, fp8_t scal) {
 void int_fill(const struct ViewInstruction view, int* vec1, int scal) {
   WITH_ELWISE_VIEW(view, k, vec1[k] = scal);
 }
-
 
 
 void fp32_sin(const struct ViewInstruction view, single_float* vec) {

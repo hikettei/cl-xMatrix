@@ -12,6 +12,8 @@
   ;; Matrix APIs
   (:export
    #:matrix
+   #:shape
+   #:convert-into-lisp-array
    #:free-mat)
 
   ;; Mat Pointer API
@@ -53,6 +55,7 @@
   (:export
    #:%abs
 
+   #:%square
    #:%log
    #:%exp
    #:%power
@@ -83,6 +86,14 @@
    #:%asinh
    #:%acosh
    #:%atanh)
+
+  ;; Compares
+  (:export
+   #:%filter
+   #:%satisfies
+   #:%all?
+   #:%or?
+   )
 
   )
 

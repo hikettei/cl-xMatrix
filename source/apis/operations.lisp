@@ -1,9 +1,11 @@
 
 (in-package :cl-xmatrix)
 
-
-(defmacro with-copy ())
-(defmacro with-copies ())
+;; Filter
+;; Satisfies
+;; Where
+;; SumUp in SIMD
+;; with-copying
 
 (defun %sumup (matrix)
   ;; tmp
@@ -64,6 +66,64 @@
   ""
   (mem-aref (matrix-vec matrix) (matrix-dtype matrix) index))
 
+(defun (setf 1d-mat-aref) (value matrix index)
+  "To Add: TypeCheck"
+  (setf (mem-aref (matrix-vec matrix) (matrix-dtype matrix) index) value))
+
 ;; (defun add (), alias for %scalar-add %broadcast-add %adds, +
 ;; m+= instead of add is more intuitive naming?
 
+(defun %filter (matrix function)
+  ""
+  (declare (optimize (speed 3) (safety 0))
+	   (type matrix matrix)
+	   (type function function))
+  (call-with-visible-area
+   matrix
+   #'(lambda (view)
+       (with-view-object (i view)
+	 (setf (1d-mat-aref matrix i) (funcall function (1d-mat-aref matrix i))))))
+  matrix)
+
+(defun %satisfies (matrix function)
+  ""
+  (declare (optimize (speed 3) (safety 0))
+	   (type matrix matrix)
+	   (type function function))
+  (let ((result (matrix (shape matrix) :dtype (dtype matrix)))
+	(true-i  (coerce-to-mat-dtype 1 matrix))
+	(false-i (coerce-to-mat-dtype 0 matrix)))
+    (call-with-visible-area
+     matrix
+     #'(lambda (view)
+	 (with-view-object (i view :absolute ri)
+	   (setf (1d-mat-aref result ri)
+		 (if (funcall function (1d-mat-aref matrix i))
+		     true-i
+		     false-i)))))
+    result))
+
+(defun %compare (matrix matrix1 function)
+  "ex: (%compare a b #'<)"
+  (declare (optimize (speed 3) (safety 0))
+	   (type matrix matrix matrix1)
+	   (type function function))
+  (let ((result (matrix (shape matrix) :dtype (dtype matrix)))
+	(true-i  (coerce-to-mat-dtype 1 matrix))
+	(false-i (coerce-to-mat-dtype 0 matrix)))
+    (call-with-visible-area
+     matrix
+     #'(lambda (view1 view2)
+	 (with-two-of-views ((i view1) (k view2) :absolute ri)
+	   (setf (1d-mat-aref result ri)
+		 (if (funcall function (1d-mat-aref matrix i) (1d-mat-aref matrix1 k))
+		     true-i
+		     false-i))))
+     :mat-operated-with matrix1)
+    result))
+
+(defun %all? (tf-matrix)
+  (= (%sumup tf-matrix) (apply #'* (shape tf-matrix))))
+
+(defun %or? (tf-matrix)
+  (>= (%sumup tf-matrix) 1))

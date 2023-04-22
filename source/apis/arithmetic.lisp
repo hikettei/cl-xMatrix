@@ -187,10 +187,10 @@
   (define-scalar-mat-cfun "fp8_fill" :uint8)
   (define-scalar-mat-cfun "int_fill" :int))
 
-(defun %scalar-add (matrix scalar)
+(defun %scalar-add (matrix scalar
+		    &aux (scalar (coerce scalar (dtype->lisp-type (matrix-dtype matrix)))))
   "Todo :Docs"
-  ;; tmp
-  (declare (optimize (safety 0)))
+  (declare (optimize (speed 3) (safety 0)))
   (call-with-visible-area
    matrix #'(lambda (x)
 	      (dtypecase matrix
@@ -204,14 +204,14 @@
 		 (int-scalar-add x (matrix-vec matrix) scalar)))))
   matrix)
 
-(defun %scalar-sub (matrix scalar)
+(defun %scalar-sub (matrix scalar &aux (scalar (coerce scalar (dtype->lisp-type (matrix-dtype matrix)))))
   (%scalar-add matrix (- scalar)))
 
 
-(defun %scalar-mul (matrix scalar)
+(defun %scalar-mul (matrix scalar &aux (scalar (coerce scalar (dtype->lisp-type (matrix-dtype matrix)))))
   "Todo :Docs"
   ;; tmp
-  (declare (optimize (safety 0)))
+  (declare (optimize (speed 3) (safety 0)))
   (call-with-visible-area
    matrix #'(lambda (x)
 	      (dtypecase matrix
@@ -226,7 +226,7 @@
   matrix)
 
 (defun %scalar-div (matrix scalar)
-  (%scalar-mul matrix (/ scalar)))
+  (%scalar-mul matrix (coerce (/ scalar) (dtype->lisp-type (matrix-dtype matrix)))))
 
 
 (defun %fill (matrix scalar)

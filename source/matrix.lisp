@@ -208,6 +208,12 @@
 
 (defun shape (matrix)
   (matrix-visible-shape matrix))
+
+(defun dtype (matrix)
+  (matrix-dtype matrix))
+
+(defun dtype-as-lisp (matrix)
+  (dtype->lisp-type (dtype matrix)))
   
 (defmacro dtypecase (matrix &body body)
   `(case (matrix-dtype ,matrix)
@@ -234,4 +240,3 @@
 	    (if (typep m 'matrix)
 		(free-mat m)))
 	*pinned-matrices*))))
-

@@ -170,7 +170,7 @@ ViewInstruction is basically created only for 2d-matrix operation, functions mus
 	 (declare (ignorable ,absolute))
 	 ,@body))))
 
-(defmacro with-two-of-views (((index1 view1) (index2 view2))
+(defmacro with-two-of-views (((index1 view1) (index2 view2) &key (absolute (gensym)))
 			     &body
 			       body
 			     &aux
@@ -212,8 +212,14 @@ ViewInstruction is basically created only for 2d-matrix operation, functions mus
 			      (%*
 			       (viewinstruction-lisp-stride1 ,view2)
 			       (viewinstruction-lisp-broadcast-1 ,view2))
-			      (+ ,ni (viewinstruction-lisp-offset1 ,view2))))))
-	   (declare (type fixnum ,index1 ,index2))
+			      (+ ,ni (viewinstruction-lisp-offset1 ,view2)))))
+		(,absolute (%+ (viewinstruction-lisp-actual-offset ,view1)
+			     (%* (viewinstruction-lisp-stride2 ,view1)
+				 ,mi)
+			     (%* (viewinstruction-lisp-stride1 ,view1)
+				 ,ni))))
+	 (declare (type fixnum ,index1 ,index2 ,absolute)
+		  (ignorable ,absolute))
 	   ,@body)))))
 
 ;; Support Repeat -> More Conditions -> Optimize
