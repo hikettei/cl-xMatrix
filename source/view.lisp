@@ -234,7 +234,7 @@ Legal Subscript -> fixnum/list/t, (external-option ~)"
   t)
 
 (defun compute-absolute-subscripts (orig-mat subscripts)
-  ""
+  "Translate view-subscription into the format which is compatiable with orig-mat"
   (if (matrix-projected-p orig-mat)
       ;; View-Object -> (view) -> View-Object
       (progn
@@ -253,8 +253,12 @@ Legal Subscript -> fixnum/list/t, (external-option ~)"
 		       (list
 			(typecase (car view)
 			  (keyword
+			   ;; M[:broadcast 10][1]
 			   ;; M[:indices 1 2 3 4][1]
-			   (nth sub (cdr view)))
+			   (case (car view)
+			     (:indices
+			      (nth sub (cdr view)))
+			     (:broadcast 0)))
 			  (index
 			   ;; M[2:4].view(1)
 			   (+ (car view) sub))
@@ -271,11 +275,18 @@ Legal Subscript -> fixnum/list/t, (external-option ~)"
 		       (list
 			(typecase (car view)
 			  (keyword
+			   ;; M[:broadcast 10][0:2]
 			   ;; M[:indices 1 2 3 4][0:2]
 			   ;; Todo: Detect out of range
-			   `(:indices
-			     ,@(loop for i fixnum upfrom (car sub) below (second sub)
-				     collect (nth i (cdr view)))))
+			   (case (car view)
+			     (:broadcast
+			      `(:indices
+				,@(loop for i fixnum upfrom (car sub) below (second sub)
+					collect 0)))
+			     (:indices
+			      `(:indices
+				,@(loop for i fixnum upfrom (car sub) below (second sub)
+					collect (nth i (cdr view)))))))
 			  (index
 			   ;; M[2:10][1:2] -> M[3:5]
 			   ;; Todo: Detect out of range.
@@ -292,12 +303,17 @@ Legal Subscript -> fixnum/list/t, (external-option ~)"
 		       (list
 			(typecase (car view)
 			  (keyword
+			   ;; M[:broadcast 10][:indices 0 1]
 			   ;; M[:indices 1 2 3][:indices 0 1]
-			   `(:indices ,@(map
-					 'list
-					 #'(lambda (k)
-					     (nth k (cdr view)))
-					 (cdr sub))))
+			   (case (car view)
+			     (:broadcast
+			      `(:indices ,@(loop for i in (cdr sub) collect 0)))
+			     (:indices
+			      `(:indices ,@(map
+					    'list
+					    #'(lambda (k)
+						(nth k (cdr view)))
+					    (cdr sub))))))
 			  (index
 			   ;; M[2:6][:indices 1 2]
 			   (let ((ls (loop for i fixnum
@@ -312,6 +328,30 @@ Legal Subscript -> fixnum/list/t, (external-option ~)"
 			  (T
 			   (view-indexing-error "Cant handle this subscript: ~a" view))))
 		       ;; M[T][:indices 1 2 3]
+		       (t sub)))
+		   (handle-ext-kw-broadcast (view sub)
+		     (typecase view
+		       (index
+			;; M[0][:broadcast 10]
+			sub)
+		       (list
+			(typecase (car view)
+			  (keyword
+			   ;; M[:indices 0 1 2 3][:broadcast 10]
+			   ;; M[:broadcast 10][:broadcast 10]
+			   (if (and (= (length (car view)) 1)
+				    (eql (car view) :indices))
+			       ;; Only after [:indices m]
+			       sub
+			       (view-indexing-error "Can't broadcasting with a...")))
+			  (index
+			   ;; M[0:10][:broadcast 10]
+			   (if (= (- (second view) (car view)) 1)
+			       sub
+			       (view-indexing-error "Can't Broadcasting with a...")))
+			  (T
+			   (view-indexing-error "Cant handle this subscript: ~a" view))))
+		       ;; M[T][:indices 1 2 3]
 		       (t sub))))
 	    (map 'list #'(lambda (old-view-axis sub)
 			   ;; sub = view(orig-axis, old-view)
@@ -322,7 +362,9 @@ Legal Subscript -> fixnum/list/t, (external-option ~)"
 			     (list
 			      (typecase (car sub)
 				(keyword
-				 (handle-ext-kw old-view-axis sub))
+				 (case (car sub)
+				   (:broadcast (handle-ext-kw-broadcast old-view-axis sub))
+				   (:indices (handle-ext-kw old-view-axis sub))))
 				(index
 				 (handle-ext-range old-view-axis sub))
 				(t (view-indexing-error "Cant handle this subscript: ~a" sub))))
@@ -335,15 +377,15 @@ Legal Subscript -> fixnum/list/t, (external-option ~)"
 (defun parse-and-replace-tflist-subscripts (matrix
 					    subscripts
 					    &aux
-					    (tf-p
-					     #'(lambda (x)
-						 (and (typep x 'list)
-						      (eql (car x)
-							   :tflist))))
-					     (candiates
-					      (position-if
-					       tf-p
-					       subscripts)))
+					      (tf-p
+					       #'(lambda (x)
+						   (and (typep x 'list)
+							(eql (car x)
+							     :tflist))))
+					      (candiates
+					       (position-if
+						tf-p
+						subscripts)))
 
   (if candiates
       (let* ((tflist (find-if tf-p subscripts))
@@ -380,7 +422,7 @@ Legal Subscript -> fixnum/list/t, (external-option ~)"
 		   (unless (= (the index (nth i (matrix-visible-shape matrix))) 1)
 		     (view-indexing-error "Can't Broadcast the matrix~%because the axis to be broadcasted is not 1: ~a at axis=~a" (matrix-visible-shape matrix) i))
 		   (push (second sub) broadcasts)
-		   (push t newsubs))
+		   (push sub newsubs))
 		 (progn
 		   (push nil broadcasts)
 		   (push sub newsubs))))
@@ -475,7 +517,8 @@ Done: Straighten-up subscripts
       (labels ((external-operations-p (sub)
 		 (when (and (typep sub 'list)
 			    (typep (car sub) 'keyword))
-		   (if (eql (car sub) :indices)
+		   (if (or (eql (car sub) :indices)
+			   (eql (car sub) :broadcast))
 		       t
 		       (view-indexing-error "Unknown External Operation: ~a. Only :indices :broadcast :tflist are available" sub)))))
 
@@ -524,6 +567,7 @@ Done: Straighten-up subscripts
        (keyword
 	(case (car view)
 	  (:indices 0)
+	  (:broadcast 0)
 	  (T
 	   (error "view-startindex: unknown keyword"))))
        (T (error "view-startindex: invaild view-instruction fell through"))))
@@ -541,6 +585,7 @@ Done: Straighten-up subscripts
        (keyword
 	(case (car view)
 	  (:indices (1- (length view)))
+	  (:broadcast 1)
 	  (T
 	   (error "view-endindex: unknown keyword"))))
        (T (error "view-endindex: unknown view-instruction fell through"))))
@@ -561,18 +606,29 @@ Done: Straighten-up subscripts
       (:indices
        (let ((indices (cdr external-operation))
 	     ;; copy-list: avoid side effects.
-	     (view   (copy-list (matrix-view matrix))))
-	 (dolist (index indices)
-	   (setf (nth external-operation-dim view) index)
-	   (let ((matrix* (apply #'view-of-matrix matrix nil view)))
-	     (call-with-visible-area matrix* function :mat-operated-with mat-operated-with))))
+	     (view   (copy-list (matrix-view matrix)))
+	     (stride (nth external-operation-dim (matrix-strides matrix))))
+	 (loop for index in indices
+	       for ith fixnum upfrom 0
+	       do (let ((view (copy-list view)))
+		    (setf (nth external-operation-dim view) index)
+		    (let ((matrix* (apply #'view-of-matrix matrix nil view)))
+		      (call-with-visible-area
+		       matrix*
+		       function
+		       :mat-operated-with mat-operated-with
+		       :first-offset (the fixnum
+					  (* (the fixnum stride) (the fixnum ith))))))))
        nil)
       (T
        (error "Can't handle with unknown ext-operation ~a" external-operation))))
   nil)
 
 
-(defun call-with-visible-area (matrix function &key (mat-operated-with nil))
+(defun call-with-visible-area (matrix function
+			       &key
+				 (mat-operated-with nil)
+				 (first-offset 0))
   "Under this macro, three or more dimensions matrix are expanded into 2d, and set index-variable ViewInstruction.
 
 function - #'(lambda (lisp-structure) body)
@@ -586,7 +642,10 @@ Returns - nil"
 
   ;; Assert matrix doesn't have broadcast
   
-  (when (matrix-external-operation matrix)
+  (when (let ((op (matrix-external-operation matrix)))
+	  (and
+	   op
+	   (not (eql (car op) :broadcast))))
     (let ((mat (if (matrix-external-operation mat-operated-with)
 		   (progn
 		     (format t "Warning: call-with-visible-area copied mat-operated-with")
@@ -770,7 +829,7 @@ Returns - nil"
       ;; getting ugly ><
       (explore-batch
        0
-       0
+       first-offset
        0
        (length dims))
       nil)))

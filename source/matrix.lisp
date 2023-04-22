@@ -158,7 +158,8 @@
 					 collect t))
 			  (matrix-vec (allocate-mat (apply #'* shape) :dtype dtype))
 			  (broadcasts nil)
-			  (projected-p nil)))
+			  (projected-p nil)
+			  (strides (calc-strides shape))))
 	    (:constructor
 		view-of-matrix (matrix
 				broadcasts
@@ -166,6 +167,7 @@
 				&aux
 				  (shape (matrix-shape matrix))
 				  (dtype (matrix-dtype matrix))
+				  (strides (matrix-strides matrix))
 				  (matrix-vec (matrix-vec matrix))
 				  (projected-p t)
 				  (broadcasts
@@ -181,6 +183,7 @@
 					(matrix-vec matrix)
 					(matrix-shape matrix)
 					quantize-into))
+				   (strides (matrix-strides matrix))
 				   (dtype (vec-dtype-quantized quantize-into))
 				   (shape (matrix-shape matrix))
 				   (view (loop repeat (length (the list shape))
@@ -198,7 +201,7 @@
   (external-operation-dim nil)
   (visible-shape (compute-visible-and-broadcasted-shape (visible-shape shape view) broadcasts) :type cons) ;; visible area's shape following viewinstruction
   (broadcasts broadcasts :type list)
-  (strides (calc-strides (compute-visible-and-broadcasted-shape (visible-shape shape view) broadcasts)) :type cons))
+  (strides strides :type cons))
 
 ;; Accessors
 
