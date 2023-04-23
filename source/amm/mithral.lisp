@@ -438,7 +438,7 @@ x - One of prototypes. [num_idxs, D]"
 				  (list start-idx end-idx)
 				(setq start-idx end-idx)))))))
       ;;result
-      (butlast result)))) ;; Fixme: Last Result is invaild
+      (print result)))) ;; Fixme: Last Result is invaild
 
 (defun flatten (lst)
   (labels ((rflatten (lst1 acc)
@@ -620,14 +620,16 @@ y = [D M] (To be multiplied)"
 	 (all-buckets nil) ;; Tmp List
 	 ;; indices of disjoints based on C are needed when training KMeans. (j)
 	 (pq-idxs (create-codebook-idxs D C :start-or-end :start)))
+    ;; Fix: pq-idxs[1]'s last index.
     (declare (type list pq-idxs))
     (dotimes (cth (length pq-idxs)) ;; Applying to each prototypes.
       (let ((cth-idx (nth cth pq-idxs)))
+	(print cth-idx)
 	(with-views ((use-x-error x-error t `(,(first cth-idx)
 					      ,(second cth-idx)))
 		     (use-x-orig  x-orig  t `(,(first cth-idx)
 					      ,(second cth-idx))))
-	  ;; Iteraiton: [100, D] -> [0~4, D], [4~8, D] ...
+	  ;; Iteraiton: [100, D] -> [100, 0~4], [100, 4~8] ...
 	  
 	  (multiple-value-bind (msplits loss buckets)
 	      (learn-binary-tree-splits use-x-error use-x-orig N :need-prototypes nil)
@@ -659,14 +661,18 @@ y = [D M] (To be multiplied)"
 	      (loop for b fixnum upfrom 0
 		    for bucket in buckets
 		    if (bucket-point-ids bucket)
-		      do (let ((centroid (col-means bucket))
+		      do (let ((mean (col-means bucket))
 			       (bids (bucket-point-ids bucket)))
 			   (%fill centroids 0.0)
 			   ;; Centroids = [1 D]
 			   ;; X-error   = [N D]
 			   (with-views ((c* centroids 0 `(:indices ,@idxs))
 					(xerr* use-X-error `(:indices ,@bids) t))
-			     (%move centroid c*)
+			     (loop for i fixnum upfrom 0
+				   for id in idxs
+				   do (with-views ((c* centroids 0 id)
+						   (m* mean 0 i))
+					(%move m* c*)))
 			     
 			     (dotimes (m (the index (car (shape xerr*))))
 			       (with-view (e* xerr* m)
@@ -675,13 +681,13 @@ y = [D M] (To be multiplied)"
 			     (with-view (protos* all-prototypes cth b t)
 			       ;; Reshape Centroids
 			       ;; Fixme: Copying
-			       (let ((centroids (cl-xmatrix::reshape
-						 (%copy centroids)
-						 `(1 ,@(shape centroids)))))
-				 (%move centroids protos*))))))
+			       (let ((centroids-res (cl-xmatrix::reshape
+						     (%copy centroids)
+						     `(1 ,@(shape centroids)))))
+				 (%move centroids-res protos*))))))
+	      (free-mat centroids)
 	      
 	      ;; Todo: Ram Usage
-	      ;; (free-mat centroids)
 	      )))))
     (values x-error (reverse all-splits) all-prototypes (reverse all-buckets))))
 
