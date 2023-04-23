@@ -64,20 +64,59 @@ int cpu_has_avx512(void){
 
 #define ALIGN 64
 
+
+// aligned_malloc is defined in C11, while MSVC doesn't.
+#if defined(_aligned_alloc)
+  #define aligned_alloc _aligned_alloc
+#endif
+
 #if defined(__AVX2__)
 
-#define FP32_SIMD_STEP 8
-#define FP16_SIMD_STEP 16
-#define FP8_SIMD_STEP 32
+#define FP32_SIMD_STEP 8   // float32
+#define FP16_SIMD_STEP 16  // uint16_t
+#define FP8_SIMD_STEP 32   // uint8_t
 
-#define XMAT_FP32_LOADU_PS(var, pointer) __m256 var = _mm256_loadu_ps(pointer);
-#define XMAT_FP16_LOADU_PS(var, pointer) __m256 var = _mm256_loadu_ps((__m256i *)pointer);
+// (Note for myself) Dtypes:
+// (AVX, AVX2 2008 onwards)
+// __mm256  <- float32 * 8
+// __mm256i <- 4*uint64, 8*uint32, 16*uint16, 32*uint8
+// __mm256d <- 4*float64
+
+// _ps packed single_floats, _pd packed double_floats
+// epin packed intn
+// epun packed unsigned_intn
+
+#define XMAT_FP32_LOADU(var, pointer) __m256 var = _mm256_loadu_ps(pointer);
+#define XMAT_FP16_LOADU(var, pointer) __m256i var = _mm256_loadu_si256((__m256i*)pointer);
+#define XMAT_FP8_LOADU(var, pointer) __m256i var = _mm256_loadu_si256((__m256i*)pointer);
+
+#define XMAT_FP32_STOREU(target, pointer) _mm256_storeu_ps(target, pointer);
+#define XMAT_FP16_STOREU(target, pointer) _mm256_storeu_si256((__m256i*)target, pointer);
+#define XMAT_FP8_STOREU(target, pointer)  _mm256_storeu_si256((__m256i*)target, pointer);
 
 #elif defined(__AVX__)
 
 #define FP32_SIMD_STEP 8
 
 #endif
+
+// Problem: Memory Aligment with CFFI.
+// Depcrecated
+single_float* fp32_allocate_aligned_mat(int size) {
+  return (single_float*)aligned_alloc(ALIGN, size * sizeof(single_float));
+}
+
+fp16_t* fp16_allocate_aligned_mat(int size) {
+  return (fp16_t*)aligned_alloc(ALIGN, size * sizeof(fp16_t));
+}
+
+fp8_t* fp8_allocate_aligned_mat(int size) {
+  return (fp8_t*)aligned_alloc(ALIGN, size * sizeof(fp8_t));
+}
+
+int* int_allocate_aligned_mat(int size) {
+  return (int*)aligned_alloc(ALIGN, size * sizeof(int));
+}
 
 // Macros for STORING AND LOADING
 
@@ -127,9 +166,9 @@ int cpu_has_avx512(void){
 
 
 static inline void fp32_abs_simd(single_float* x, __m256 sign_mask, int i) {
-  XMAT_FP32_LOADU_PS(vec, &x[i]);
+  XMAT_FP32_LOADU(vec, &x[i]);
   __m256 abs_vec = _mm256_andnot_ps(sign_mask, vec);
-  _mm256_storeu_ps(&x[i], abs_vec);
+  XMAT_FP32_STOREU(&x[i], abs_vec);
 }
 
 #define DEFINE_ABS_ELEMENTWISE(name, dtype)	\
@@ -151,6 +190,9 @@ void fp32_abs(const struct ViewInstruction view, single_float* vec) {
 		 fp32_abs_simd(vec, sign_mask, i),
 		 fp32_abs_scalarwise(vec, i));
 }
+
+
+
 
 // f(x)
 #define WITH_ELWISE_VIEW(view, index, element_wise_operation)		\
@@ -185,8 +227,18 @@ void fp32_abs(const struct ViewInstruction view, single_float* vec) {
 
 // vec2 <- vec1
 static inline void fp32_simd_copy(single_float* vec1, single_float* vec2, int k, int m) {
-  XMAT_FP32_LOADU_PS(vec1_r, &vec1[k]);
-  _mm256_storeu_ps(&vec2[m], vec1_r);
+  XMAT_FP32_LOADU(vec1_r, &vec1[k]);
+  XMAT_FP32_STOREU(&vec2[m], vec1_r);
+}
+
+static inline void fp16_simd_copy(fp16_t* vec1, fp16_t* vec2, int k, int m) {
+  XMAT_FP16_LOADU(vec1_r, &vec1[k]);
+  XMAT_FP16_STOREU(&vec2[m], vec1_r);
+}
+
+static inline void fp8_simd_copy(fp8_t* vec1, fp8_t* vec2, int k, int m) {
+  XMAT_FP8_LOADU(vec1_r, &vec1[k]);
+  XMAT_FP8_STOREU(&vec2[m], vec1_r);
 }
 
 
@@ -198,15 +250,27 @@ void fp32_copy(const struct ViewInstruction view, const struct ViewInstruction v
  		m,
  		FP32_SIMD_STEP,
   		fp32_simd_copy(vec1, vec2, k, m),
-				vec2[m] = vec1[k]);
+		vec2[m] = vec1[k]);
 }
 
 void fp16_copy(const struct ViewInstruction view, const struct ViewInstruction view1, fp16_t* vec1, fp16_t* vec2) {
-  WITH_ELWISE_OPS(view, view1, k, m, vec2[m] = vec1[k]);
+  WITH_VIEW_OPS(view,
+		view1,
+		k,
+		m,
+		FP16_SIMD_STEP,
+		fp16_simd_copy(vec1, vec2, k, m),
+		vec2[m] = vec1[k]);
 }
 
 void fp8_copy(const struct ViewInstruction view, const struct ViewInstruction view1, fp8_t* vec1, fp8_t* vec2) {
-  WITH_ELWISE_OPS(view, view1, k, m, vec2[m] = vec1[k]);
+  WITH_VIEW_OPS(view,
+		view1,
+		k,
+		m,
+		FP8_SIMD_STEP,
+		fp8_simd_copy(vec1, vec2, k, m),
+		vec2[m] = vec1[k]);
 }
 
 void int_copy(const struct ViewInstruction view, const struct ViewInstruction view1, int* vec1, int* vec2) {
@@ -214,7 +278,10 @@ void int_copy(const struct ViewInstruction view, const struct ViewInstruction vi
 }
 
 
-
+static inline void fp32_simd_add(single_float* vec1, single_float* vec2, int k, int m) {
+  XMAT_FP32_LOADU(v_r1, &vec1[k]);
+  XMAT_FP32_LOADU(v_r2, &vec2[m]); 
+}
 
 // TODO: SIMD
 void fp32_add(const struct ViewInstruction view, const struct ViewInstruction view1, single_float* vec1, single_float* vec2) {

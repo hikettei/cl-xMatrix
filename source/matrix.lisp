@@ -51,6 +51,15 @@
   `(and (or fixnum)
 	(satisfies index-p)))
 
+(eval-when (:compile-toplevel :execute :load-toplevel)
+  (macrolet ((define-allocate-cfun (fname dtype)
+	       `(defcfun ,fname (:pointer ,dtype)
+		  (size :int))))
+    (define-allocate-cfun "fp32_allocate_aligned_mat" :float)
+    (define-allocate-cfun "fp16_allocate_aligned_mat" :uint16)
+    (define-allocate-cfun "fp8_allocate_aligned_mat"  :uint8)
+    (define-allocate-cfun "int_allocate_aligned_mat"  :int)))
+
 (defun allocate-mat (size &key (dtype :float))
   (declare (type matrix-dtype dtype)
 	   (type index size))

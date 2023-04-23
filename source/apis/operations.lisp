@@ -6,6 +6,14 @@
 ;; Where
 ;; SumUp in SIMD
 ;; with-copying
+;; repeats/expands
+
+;; concatenate:
+;; A = [1, 10]
+;; B = [1, 10]
+;; C = [1, 10]
+;; D = [A, B, C , A , B , ...]
+
 
 (defun %sumup (matrix)
   (let ((total 0.0))

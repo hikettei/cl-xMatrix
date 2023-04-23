@@ -26,6 +26,11 @@ int cpu_has_avx(void);
 int cpu_has_avx2(void);
 int cpu_has_avx512(void);
 
+single_float* fp32_allocate_aligned_mat(int);
+fp16_t* fp16_allocate_aligned_mat(int);
+fp8_t* fp8_allocate_aligned_mat(int);
+int* int_allocate_aligned_mat(int);
+
 struct ViewInstruction {
   int offset;
   int actualoffset;
