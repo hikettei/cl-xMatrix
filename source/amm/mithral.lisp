@@ -52,56 +52,62 @@
 (deftype index () `(or fixnum))
 
 (defstruct (MSBucket ;; Bucket
-	    (:conc-name bucket-)
-	    (:constructor
-		make-bucket (&key
-			       (d nil)         ;; d=tree's level (i.e.: t)
-			       (n 0)           ;; the number of nodes the bucket has.
-			       (sumx nil)      ;; For compute losses
-			       (sumx2 nil)     ;; For compute losses
-			       (point-ids nil) ;; 
-			       (bucket-id 0)   ;; The bucket's index.
-			       (adjustable nil);; allowed to modify? (maybe unused)
-			     &aux
-			       (dtype :float) ;;:tmp
-			       (point-ids (if (null point-ids)
-					      (progn
-						(unless (= N 0)
-						  (error "Assetion failed with N = 0"))
-						nil)
-					      point-ids))
-			       (n (length point-ids))
-			       (id bucket-id)
-			       (point-ids point-ids)
-			       (d (cond
-				    ((and (or (null d) ;; is bucket a top?
-					      (< d 1)) 
-					  (not (null sumx)))
-				     ;; => Bucket posses the original X.
-				     (apply #'* (shape sumx)))
-				    ((and (or (null d) ;; is bucket a top?
-					      (< d 1))
-					  (not (null sumx2)))
-				     ;; => Bucket possess the original X.
-				     (apply #'* (shape sumx2)))
-				    (t
-				     (if (null d)
-					 (error "Assertion Failed because d is nil")
-					 d))))
-			       (sumx (if sumx
-					 sumx
-					 (matrix `(1 ,d) :dtype dtype)))
-			       (sumx2 (if sumx2
-					  sumx2
-					 (matrix `(1 ,d) :dtype dtype))))))
-  (point-ids point-ids :type list) ;; the list of indices that could be branch's destination.
-  (n n :type index)
-  (id id :type fixnum) ;; split-index j1 ... j4
-  (adjustable adjustable :type boolean)
-  (d d :type fixnum)
-  (sumx sumx :type matrix)
-  (sumx2 sumx2 :type matrix))
+	    (:conc-name bucket-))
+  (point-ids nil :type list) ;; the list of indices that could be branch's destination.
+  (n nil :type index)
+  (id nil :type fixnum) ;; split-index j1 ... j4
+  (adjustable nil :type boolean)
+  (d nil :type fixnum)
+  (sumx nil :type matrix)
+  (sumx2 nil :type matrix))
 
+(declaim (inline make-bucket))
+(defun make-bucket (&key
+		      (d nil)
+		      (n 0)
+		      (sumx  nil)
+		      (sumx2 nil)
+		      (point-ids nil)
+		      (bucket-id 0)
+		      (adjustable nil)
+		      (dtype :float))
+  (declare (optimize (speed 3) (safety 0))
+	   (type (or null fixnum) d)
+	   (type (or null matrix) sumx sumx2)
+	   (type list point-ids)
+	   (type fixnum bucket-id n)
+	   (type boolean adjustable))
+
+  
+  (if (and (null point-ids)
+	   (not (= N 0)))
+      (error "Assertion Failed with (not (= N 0)) and (Null Point-ids)"))
+
+  (let* ((n (length point-ids))
+	 (d (cond ;; Update D
+	      ((and (or (null d) ;; is bucket a top?
+			(< d 1)) 
+		    (not (null sumx)))
+	       ;; => Bucket posses the original X.
+	       (apply #'* (shape sumx)))
+	      ((and (or (null d) ;; is bucket a top?
+			(< d 1))
+		    (not (null sumx2)))
+	       ;; => Bucket possess the original X.
+	       (apply #'* (shape sumx2)))
+	      (t
+	       (if (null d)
+		   (error "Assertion Failed with (!= n 0)")
+		   d))))
+	 (sumx  (or sumx  (matrix `(1 ,D) :dtype dtype)))
+	 (sumx2 (or sumx2 (matrix `(1 ,D) :dtype dtype))))
+    (make-msbucket :d d
+		   :n n
+		   :sumx sumx
+		   :sumx2 sumx2
+		   :point-ids point-ids
+		   :id bucket-id
+		   :adjustable adjustable)))
 
 (defmethod destroy-bucket ((bucket MSBucket))
   "Memfree the bucket's non-gc-able matrices"
@@ -144,28 +150,30 @@
 				      bucket-id
 				      (bucket-id bucket))))
   "Creates the clone of the bucket"
+  (declare (optimize (speed 3) (safety 0))
+	   (inline make-bucket))
   ;; To fix: don't create copy! the toplevel matrix's view is enough.
   (make-bucket
-   :sumx      (bucket-sumx bucket) ;; I don't know why but I guess coping them will make it stable.
+   :sumx      (bucket-sumx bucket)
    :sumx2     (bucket-sumx2 bucket)
    :point-ids (copy-list (bucket-point-ids bucket))
    :bucket-id bucket-id))
 
+;; Optimize: Type Convertions, between List <-> Matrix
 (defmethod bucket-split ((bucket MSBucket)
 			 x
 			 &key
 			   (dim nil)
-			   (val nil)
-			   (x-orig nil))
+			   (val nil))
   "Given val (threshold v?), splits the bucket, and increment: node-level t+=1.
 B(t, ?) -> B(t+1, ?), B(t+1, ??), ...
 
 Algorithm 2 Adding The Next Level to The Hashing Tree.
 
 Bucket-Split: B(A) -> B(id0), B(id1)"
-  (declare ;;(optimize (speed 3))
-	   (ignore x-orig)
-	   (type number val))
+  (declare (optimize (speed 3))
+	   (type number val)
+	   (inline make-bucket))
 
   ;; X = [N, C]
   
@@ -194,12 +202,10 @@ Bucket-Split: B(A) -> B(id0), B(id1)"
       ;; And Compares the row[dim] with val.
       ;; dim and val is a parameter to be optimized.
 
-      ;; Note: X and point-idxs are compatible?
-
       (labels ((create-buckets (points ids bucket-id
 				&aux
 				  (sumx (if ids
-					    (%sum points :axis 0)))
+					     (%sum (%copy points) :axis 0)))
 				  (sumx2 (if ids
 					     (%sum (%square points) :axis 0))))
 		 (make-bucket :d (bucket-d bucket)
@@ -207,40 +213,37 @@ Bucket-Split: B(A) -> B(id0), B(id1)"
 			      :sumx sumx
 			      :sumx2 sumx2
 			      :bucket-id bucket-id))
-	       (%cmp> (matrix
-		       scalar
-		       &aux
-			 (N (car (shape matrix)))
-			 (result (loop repeat N collect nil)))
+	       (%cmp> (matrix scalar)
 		 "matrix = [N, 1]. Result=List"
-		 (call-with-visible-area
-		  matrix
-		  #'(lambda (view)
-		      (with-view-object (index view :absolute i)
-			(setf (nth i result) (if (> (1d-mat-aref matrix index) scalar)
-						 t
-						 nil)))))
-		 result)
-	       (list-tf-map (list tf-list)
+		 (%satisfies matrix
+			     #'(lambda (x)
+				 ;; with-typevar?
+				 ;; may error when dtype!=:float
+				 (declare (type single-float x scalar))
+				 (> x scalar))))
+	       (next-point-ids (list tf-list)
 		 (loop for l in list
-		       for tf in tf-list
-		       if tf
+		       for count fixnum upfrom 0 below (car (shape tf-list))
+		       if (= (the single-float
+				  (1d-mat-aref tf-list count))
+			     1.0)
 			 collect l)))
+	;; Here, remains to be optimized.
 	(let* ((xd (view x `(:indices ,@transition-states) dim))
-	       (mask (%cmp> (%copy xd) val)) ; %cmp > val
-	       (not-mask (map 'list #'not mask)) ;; Python impls uses lognot but why?
-	       (x0 (%copy (view x `(:tflist ,@not-mask) t)))
-	       (x1 (%copy (view x `(:tflist ,@mask) t)))
+	       (mask     (%cmp> xd val)) ;; %cmp > val
+	       (not-mask (%filter mask #'(lambda (x)
+					   ;; Fixme: x's dtype is unknown
+					   (if (= (the single-float x) 1.0)
+					       0.0
+					       1.0))))
+	       (x0 (%copy (view x `(:tflist ,not-mask) t)))
+	       (x1 (%copy (view x `(:tflist ,mask)     t)))
 	       
-	       (ids0 (list-tf-map transition-states not-mask))
-	       (ids1 (list-tf-map transition-states mask)))
-	  
-	  (prog1
-	      (values (create-buckets x0 ids0 id0)
-		      (create-buckets x1 ids1 id1))
-	    ;(free-mat x0)
-	    ;(free-mat x1)
-	    ))))))
+	       (ids0 (next-point-ids transition-states not-mask))
+	       (ids1 (next-point-ids transition-states mask)))	  
+
+	  (values (create-buckets x0 ids0 id0)
+		  (create-buckets x1 ids1 id1)))))))
 
 (declaim (ftype (function (MSBucket matrix index) (values (or null matrix) (or null matrix))) optimal-split-val))
 (defmethod optimal-split-val ((bucket MSBucket) x dim)
@@ -427,6 +430,15 @@ x - One of prototypes. [num_idxs, D]"
       ;;result
       (butlast result)))) ;; Fixme: Last Result is invaild
 
+(defun flatten (lst)
+  (labels ((rflatten (lst1 acc)
+             (dolist (el lst1)
+               (if (listp el)
+                   (setf acc (rflatten el acc))
+                   (push el acc)))
+             acc))
+    (reverse (rflatten lst nil))))
+
 (defun argsort (array &key (test #'>))
   (declare (optimize (speed 3))
 	   (type function test)
@@ -522,13 +534,13 @@ scal-by, offset: alpha, beta which corresponds to y = alpha*x + beta."
 				named bucket-training-iter
 				for b in buckets
 				do (multiple-value-bind (val loss) (optimal-split-val b X dim)
-				     (let ((val (or val 0.0))
+				     (let ((val (or val (matrix `(1 1))))
 					   (loss (if loss
 						     (cl-xmatrix::1d-mat-aref loss 0)
 						     0.0)))
 				     (%scalar-add (view total-losses t d) loss)
 				     (when (and (>= d 1)
-						(>= (cl-xmatrix::1d-mat-aref total-losses d)
+						(>= (1d-mat-aref total-losses d)
 						    (previous-min-losses d)))
 				       ;; Early Stopping
 				       (return-from bucket-training-iter))
@@ -556,11 +568,11 @@ scal-by, offset: alpha, beta which corresponds to y = alpha*x + beta."
 
 		   (let ((new-buckets (loop for i fixnum upfrom 0
 					    for b in buckets
-					    collect (let ((val (cl-xmatrix::1d-mat-aref (nth i use-split-vals) 0)))
-						    (bucket-split b x :dim best-dim :val val :x-orig x-orig)))))
+					    collect (let ((val (1d-mat-aref (nth i use-split-vals) 0)))
+						    (bucket-split b x :dim best-dim :val val)))))
 		     
 		     ;(mapc #'destroy-bucket buckets)
-		     (setq buckets new-buckets))))))
+		     (setq buckets (flatten new-buckets)))))))
     (let ((loss (loop for b in buckets sum (bucket-loss b))))
       (if need-prototypes
 	  (progn

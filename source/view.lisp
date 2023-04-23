@@ -518,6 +518,7 @@ Legal Subscript -> fixnum/list/t, (external-option ~)"
 	  (matrix
 	   ;; Todo: %satisfies return a matrix of bit.
 	   ;; Todo: Detect :tflist mat1 mat2
+	   ;; 1.0 = True, 0.0 = False.
 	   (let* ((mat (car tflist-args))
 		  (indices (loop for i fixnum upfrom 0
 				   below (nth candiates (shape mat))
