@@ -16,23 +16,13 @@
 
 (in-suite :test)
 
+(defun test-mithral ()
+  (let ((a (matrix `(128 32))))
+    (%filter a #'(lambda (x) (random 1.0)))
+    (cl-xmatrix.amm.maddness:init-and-learn-mithral a 16 4)))
 
-(cl-xmatrix::load-xmatrix)
 
-(defun test-mithral-learn ()
-  (let ((a (cl-xmatrix::matrix `(256 128))))
-    (cl-xmatrix::randn a)
-    (sb-profile:profile "CL-XMATRIX")
-    (time (cl-xmatrix::init-and-learn-mithral a 16 4))
-    (sb-profile:report)
-    ;;(setq a (cl-xmatrix::matrix `(8 128)))
-    ;;(cl-xmatrix::randu a)
-    ;;(cl-xmatrix::compute-optimal-split-val a 0)
-    t))
+(test-mithral)
 
-(test-mithral-learn)
-
-(test hoge
-  (is (= 1 1))
-  (is (test-mithral-learn)))
-
+(test mithral
+  (is (test-mithral)))
