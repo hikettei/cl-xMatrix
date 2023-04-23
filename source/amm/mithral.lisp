@@ -72,7 +72,7 @@
 ;; cumsse-colsはnumbaを使えば100倍くらい高速化できる
 ;; このライブラリはallocate-matが一番遅いので、それを避けるようにしてコードを書けば同等の速度になる？ -> with-cache macro.
 ;; CPU使用率が高くない
-;; cumsse-colsはほぼ線形時間, optimal-split-valも線形時間のはずだがこの実装だとなぜかO(N)
+;; cumsse-colsはほぼ定数時間, optimal-split-valも定数時間のはずだがこの実装だとなぜかO(N)
 ;; sumx/sumx2 前後の行列の依存関係はないので、%sum関数に:outを追加->固定の領域のみ使うようにする
 
 ;; 1. SIMD化 (memory alignment...)
@@ -80,7 +80,7 @@
 ;; 3. (もしコア数やレジスタなどが余るなら) 並列化
 ;; 4. inline
 ;; 5. Lisp定義の関数を排除するかlparallel (e.g.: %filter, %cmp>) or インラインアセンブリ
-;; 
+;; 調べる: Viewのボトルネック SBCLの最適化に頼りずらい...
 
 ;;seconds  |     gc     |     consed    | calls |  sec/call  |  name
 ;;-----------------------------------------------------------
