@@ -492,24 +492,43 @@ Legal Subscript -> fixnum/list/t, (external-option ~)"
 					       (position-if
 						tf-p
 						subscripts)))
-  (declare (ignore matrix))
+  "(:tflist t f t f ...) -> (:indices 1 3 4 ...)
+   (:tflist matrix)      -> (:indices 1 3 4 ...)"
+  (declare (optimize (speed 3))
+	   (type list subscripts))
 
   (if candiates
       (let* ((tflist (find-if tf-p subscripts))
 	     (tflist-args (cdr tflist)))
 	(unless (= (count-if tf-p subscripts) 1)
-	  (view-indexing-error "External options can be used at once in one view-obj."))
-	;; Is Assertion Needed?
-	;;(unless (= (nth candiates (matrix-visible-shape matrix))
-	;;	   (length tflist-args))
-	;; (view-indexing-error "view, assertion failed with (length tflist) = matrix[dim].size ~a" tflist-args))
-	(let ((indices (loop for i fixnum upfrom 0
-			     for tf in tflist-args
-			     if tf
-			       collect i)))
-	  (setf (nth candiates subscripts) `(:indices ,@indices))
-	  subscripts))
-
+	  (view-indexing-error ":tflist can be used at once in view function's subscript."))
+	
+	(unless (or (typep tflist-args 'list) ;; check list's elements
+		    (typep tflist-args 'matrix))
+	  (view-indexing-error ":tflist requires the following: list (consisted of boolean), matrix but got ~a" tflist-args))
+	(typecase (car tflist-args)
+	  (boolean
+	   ;; Todo: Detect (:tflist)
+	   (let ((indices (loop for i fixnum upfrom 0
+				for tf in tflist-args
+				if tf
+				  collect i)))
+	     (setf (nth candiates subscripts) `(:indices ,@indices))
+	     subscripts))
+	  (matrix
+	   ;; Todo: %satisfies return a matrix of bit.
+	   ;; Todo: Detect :tflist mat1 mat2
+	   (let* ((mat (car tflist-args))
+		  (indices (loop for i fixnum upfrom 0
+				   below (nth candiates (shape mat))
+				 if (= 1 (round
+					  ;; Fixme 1d-mat-aref's return type is unknown.
+					  (1d-mat-aref mat i)))
+				   collect i)))
+	     (setf (nth candiates subscripts) `(:indices ,@indices))
+	     subscripts))
+	  (T
+	   (view-indexing-error ":tflist got invaild argument: ~a. :tflist can be described by list or matrix" (type-of (second tflist-args))))))
       subscripts))
 
 (defun parse-broadcast-subscripts (matrix subscripts)
