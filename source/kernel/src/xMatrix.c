@@ -244,13 +244,15 @@ static inline void fp8_simd_copy(fp8_t* vec1, fp8_t* vec2, int k, int m) {
 
 // TODO: Current Operations are temporary, make them SIMD.
 void fp32_copy(const struct ViewInstruction view, const struct ViewInstruction view1, single_float* vec1, single_float* vec2) {
-  WITH_VIEW_OPS(view,
-  		view1,
-  		k,
- 		m,
- 		FP32_SIMD_STEP,
-  		fp32_simd_copy(vec1, vec2, k, m),
-		vec2[m] = vec1[k]);
+  //WITH_VIEW_OPS(view,
+  //		view1,
+  //		k,
+  //		m,
+  //		FP32_SIMD_STEP,
+  //		fp32_simd_copy(vec1, vec2, k, m),
+  //		vec2[m] = vec1[k]);
+
+  WITH_ELWISE_OPS(view, view1, k, m, vec2[m] = vec1[k]);
 }
 
 void fp16_copy(const struct ViewInstruction view, const struct ViewInstruction view1, fp16_t* vec1, fp16_t* vec2) {

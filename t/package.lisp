@@ -21,10 +21,9 @@
     (sb-profile:profile "CL-XMATRIX")
     (%filter a #'(lambda (x) (random 1.0)))
     (cl-xmatrix.amm.maddness:init-and-learn-mithral a 16 4)
-    (sb-profile:report)))
+    (sb-profile:report)
+    t))
 
 
-;;(test-mithral)
-
-;;(test mithral
-;;  (is (test-mithral)))
+(test mithral-training-hash-table
+  (is (test-mithral)))
