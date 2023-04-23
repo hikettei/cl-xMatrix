@@ -492,15 +492,17 @@ Legal Subscript -> fixnum/list/t, (external-option ~)"
 					       (position-if
 						tf-p
 						subscripts)))
+  (declare (ignore matrix))
 
   (if candiates
       (let* ((tflist (find-if tf-p subscripts))
 	     (tflist-args (cdr tflist)))
 	(unless (= (count-if tf-p subscripts) 1)
-	  (error "External options can be used at once in one view-obj."))
-	(unless (= (nth candiates (matrix-visible-shape matrix))
-		   (length tflist-args))
-	  (error "view, assertion failed with (length tflist) = matrix[dim].size"))
+	  (view-indexing-error "External options can be used at once in one view-obj."))
+	;; Is Assertion Needed?
+	;;(unless (= (nth candiates (matrix-visible-shape matrix))
+	;;	   (length tflist-args))
+	;; (view-indexing-error "view, assertion failed with (length tflist) = matrix[dim].size ~a" tflist-args))
 	(let ((indices (loop for i fixnum upfrom 0
 			     for tf in tflist-args
 			     if tf

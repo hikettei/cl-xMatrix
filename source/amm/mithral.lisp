@@ -227,7 +227,7 @@ Bucket-Split: B(A) -> B(id0), B(id1)"
 		       if tf
 			 collect l)))
 	(let* ((xd (view x `(:indices ,@transition-states) dim))
-	       (mask (%cmp> (view xd t dim) val)) ; %cmp > val
+	       (mask (%cmp> (%copy xd) val)) ; %cmp > val
 	       (not-mask (map 'list #'not mask)) ;; Python impls uses lognot but why?
 	       (x0 (%copy (view x `(:tflist ,@not-mask) t)))
 	       (x1 (%copy (view x `(:tflist ,@mask) t)))
