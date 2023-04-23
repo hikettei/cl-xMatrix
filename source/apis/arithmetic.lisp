@@ -45,7 +45,16 @@
 		%divs
 		%move))
 (defun %adds (matrix matrix1)
-  "Todo: DOC"
+  "The function %adds adds matrix1 into matrix.
+
+where:
+  - matrix and matrix1 both has the same shape, and dtype.
+
+SideEffects:
+  - matrix will be modified.
+
+Return:
+  - modified matrix."
   (declare (optimize (speed 3))
 	   (type matrix matrix matrix1))
 
@@ -69,7 +78,16 @@
 
 
 (defun %subs (matrix matrix1)
-  "Todo: DOC"
+  "The function %subs substracts matrix by matrix1.
+
+where:
+  - matrix and matrix1 both has the same shape, and dtype.
+
+SideEffects:
+  - matrix will be modified.
+
+Return:
+  - modified matrix."
   (declare (optimize (speed 3))
 	   (type matrix matrix matrix1))
 
@@ -92,7 +110,16 @@
 
 
 (defun %muls (matrix matrix1)
-  "Todo: DOC"
+  "The function %muls multiplies matrix and matrix1 element by element.
+
+where:
+    - matrix and matrix1 both has the same shape, and dtype.
+
+SideEffects:
+  - matrix will be modified.
+
+Return:
+  - modified matrix."
   (declare (optimize (speed 3))
 	   (type matrix matrix matrix1))
 
@@ -116,7 +143,16 @@
 
 
 (defun %divs (matrix matrix1)
-  "Todo: DOCS"
+  "The function %divs divides matrix by matrix1 element by element.
+
+where:
+    - matrix and matrix1 both has the same shape, and dtype.
+
+SideEffects:
+  - matrix will be modified.
+
+Return:
+  - modified matrix."
   (declare (optimize (speed 3))
 	   (type matrix matrix matrix1))
 
@@ -140,7 +176,16 @@
 
 
 (defun %move (matrix matrix1)
-  "Copy matrix"
+  "The function %move copies matrix's visible area into matrix1's visible area.
+
+where:
+    - matrix and matrix1 both has the same shape, and dtype.
+
+SideEffects:
+  - matrix1 will be modified.
+
+Return:
+  - copied matrix1."
   (declare (optimize (speed 3))
 	   (type matrix matrix matrix1))
 
@@ -160,11 +205,20 @@
 	 (:int
 	  (int-copy x-view x1-view (matrix-vec matrix) (matrix-vec matrix1)))))
    :mat-operated-with matrix1)
-  matrix)
+  matrix1)
 
 
 (defun %copy (matrix)
-  "Todo: Docs"
+  "The function %copy allocates the new matrix whose shape is the equivalent to matrix's visible shape, and moves the corresponding elements into the new matrix.
+
+where:
+    - matrix is a matrix.
+
+SideEffects:
+  - No.
+
+Return:
+  - The copied matrix (whose shape is the same as the matrix's visible shape)"
   (declare (optimize (speed 3))
 	   (type matrix matrix))
   (let ((new-matrix (matrix (matrix-visible-shape matrix)
@@ -194,7 +248,18 @@
 
 (defun %scalar-add (matrix scalar
 		    &aux (scalar (coerce scalar (dtype->lisp-type (matrix-dtype matrix)))))
-  "Todo :Docs"
+  "The function %scalar-add adds the given scalar value into the matrix.
+
+Note: scalar is coerced into the matrix's dtype (This could be lead to the performance problem. FIXME)
+
+where:
+    - matrix and scalar has the same dtype.
+
+SideEffects:
+  - matrix will be modified.
+
+Return:
+  - modified matrix."
   (declare (optimize (speed 3) (safety 0)))
   (call-with-visible-area
    matrix #'(lambda (x)
@@ -210,11 +275,34 @@
   matrix)
 
 (defun %scalar-sub (matrix scalar &aux (scalar (coerce scalar (dtype->lisp-type (matrix-dtype matrix)))))
+    "The function %scalar-sub substracts the matrix by the given scalar..
+
+Note: scalar is coerced into the matrix's dtype (This could be lead to the performance problem. FIXME)
+
+where:
+    - matrix and scalar has the same dtype.
+
+SideEffects:
+  - matrix will be modified.
+
+Return:
+  - modified matrix."
   (%scalar-add matrix (- scalar)))
 
 
 (defun %scalar-mul (matrix scalar &aux (scalar (coerce scalar (dtype->lisp-type (matrix-dtype matrix)))))
-  "Todo :Docs"
+    "The function %scalar-mul multiplies the given scalar value and the matrix.
+
+Note: scalar is coerced into the matrix's dtype (This could be lead to the performance problem. FIXME)
+
+where:
+    - matrix and scalar has the same dtype.
+
+SideEffects:
+  - matrix will be modified.
+
+Return:
+  - modified matrix."
   ;; tmp
   (declare (optimize (speed 3) (safety 0)))
   (call-with-visible-area
@@ -231,11 +319,32 @@
   matrix)
 
 (defun %scalar-div (matrix scalar)
+    "The function %scalar-div divides the matrix by scalar.
+
+Note: scalar is coerced into the matrix's dtype (This could be lead to the performance problem. FIXME)
+
+where:
+    - matrix and scalar has the same dtype.
+
+SideEffects:
+  - matrix will be modified.
+
+Return:
+  - modified matrix."
   (%scalar-mul matrix (coerce (/ scalar) (dtype->lisp-type (matrix-dtype matrix)))))
 
 
 (defun %fill (matrix scalar)
-  "Todo :Docs"
+  "The function %fill fills all the matrix's visible area with scalar value.
+
+where:
+    - scalar and matrix has the same dtype.
+
+SideEffects:
+    - matrix will be modified.
+
+Return:
+    - modified matrix."
   (declare (optimize (speed 3)))
   (call-with-visible-area
    matrix #'(lambda (x)
