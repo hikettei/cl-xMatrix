@@ -170,10 +170,10 @@ void fp32_abs(const struct ViewInstruction view, single_float* vec) {
 #define WITH_ELWISE_OPS(view1, view2, index1, index2, element_wise_operation) \
   do {									\
     for (int mi = 0; mi < view1.m; mi++) {				\
+      int mi1 = mi + view1.offset2;					\
+      int mi2 = mi + view2.offset2;					\
       for (int ni = 0; ni < view1.n; ni++) {				\
-        int mi1 = mi + view1.offset2;					\
 	int ni1 = ni + view1.offset1;					\
-	int mi2 = mi + view2.offset2;					\
 	int ni2 = ni + view2.offset1;					\
         int index1 = view1.offset + mi1 * view1.stride2 * view1.broadcast2 + ni1 * view1.stride1 * view1.broadcast1; \
 	int index2 = view2.offset + mi2 * view2.stride2 * view2.broadcast2 + ni2 * view2.stride1 * view2.broadcast1; \
