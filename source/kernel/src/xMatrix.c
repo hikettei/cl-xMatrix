@@ -119,7 +119,7 @@ int cpu_has_avx512(void){
 	int ni1 = ni + view1.offset1;					\
 	int ni2 = ni + view2.offset1;					\
 	int index1 = view1.offset + mi1 * view1.stride2 * view1.broadcast2 + ni1 * view1.stride1 * view1.broadcast1; \
-	int index2 view2.offset + mi2 * view2.stride2 * view2.broadcast2 + ni2 * view2.stride1 * view2.broadcast1; \
+	int index2 = view2.offset + mi2 * view2.stride2 * view2.broadcast2 + ni2 * view2.stride1 * view2.broadcast1; \
 	(reminder);							\
       }									\
     }									\
@@ -182,9 +182,23 @@ void fp32_abs(const struct ViewInstruction view, single_float* vec) {
     }									\
   } while(0)
 
+
+// vec2 <- vec1
+static inline void fp32_simd_copy(single_float* vec1, single_float* vec2, int k, int m) {
+  XMAT_FP32_LOADU_PS(vec1_r, &vec1[k]);
+  _mm256_storeu_ps(&vec2[m], vec1_r);
+}
+
+
 // TODO: Current Operations are temporary, make them SIMD.
 void fp32_copy(const struct ViewInstruction view, const struct ViewInstruction view1, single_float* vec1, single_float* vec2) {
-  WITH_ELWISE_OPS(view, view1, k, m, vec2[m] = vec1[k]);
+  WITH_VIEW_OPS(view,
+  		view1,
+  		k,
+ 		m,
+ 		FP32_SIMD_STEP,
+  		fp32_simd_copy(vec1, vec2, k, m),
+				vec2[m] = vec1[k]);
 }
 
 void fp16_copy(const struct ViewInstruction view, const struct ViewInstruction view1, fp16_t* vec1, fp16_t* vec2) {
@@ -198,6 +212,8 @@ void fp8_copy(const struct ViewInstruction view, const struct ViewInstruction vi
 void int_copy(const struct ViewInstruction view, const struct ViewInstruction view1, int* vec1, int* vec2) {
   WITH_ELWISE_OPS(view, view1, k, m, vec2[m] = vec1[k]);
 }
+
+
 
 
 // TODO: SIMD
@@ -216,6 +232,8 @@ void fp8_add(const struct ViewInstruction view, const struct ViewInstruction vie
 void int_add(const struct ViewInstruction view, const struct ViewInstruction view1, int* vec1, int* vec2) {
   WITH_ELWISE_OPS(view, view1, k, m, vec1[k] += vec2[m]);
 }
+
+
 
 
 void fp32_sub(const struct ViewInstruction view, const struct ViewInstruction view1, single_float* vec1, single_float* vec2) {

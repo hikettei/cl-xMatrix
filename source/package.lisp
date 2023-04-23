@@ -16,7 +16,8 @@
    #:convert-into-lisp-array
    #:free-mat
    #:dtype
-   #:1d-mat-aref)
+   #:1d-mat-aref
+   #:coerce-to-dtype)
 
   ;; Mat Pointer API
   (:export

@@ -43,6 +43,9 @@
   :pathname "t"
   :serial t
   :depends-on (:cl-xmatrix :fiveam)
-  :components ((:file "package"))
+  :components ((:file "package")
+	       (:file "utils")
+	       (:file "view")
+	       (:file "arithmetic"))
   :perform (test-op (o s)
 		    (symbol-call :fiveam :run! :test)))
