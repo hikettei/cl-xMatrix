@@ -79,7 +79,8 @@
 ;; 2. with-cache
 ;; 3. (もしコア数やレジスタなどが余るなら) 並列化
 ;; 4. inline
-;; 5. Lisp定義の関数を排除するかlparallel (e.g.: %filter, %cmp>)
+;; 5. Lisp定義の関数を排除するかlparallel (e.g.: %filter, %cmp>) or インラインアセンブリ
+;; 
 
 ;;seconds  |     gc     |     consed    | calls |  sec/call  |  name
 ;;-----------------------------------------------------------
@@ -102,6 +103,33 @@
 ;;-----------------------------------------------------------
 ;;    20.834 |      0.047 | 2,785,844,512 | 2,379 |            | Total
 
+;;seconds  |     gc     |    consed   |   calls   |  sec/call  |  name  
+;;-------------------------------------------------------------
+;;     0.321 |      0.000 |   8,633,792 |    36,095 |   0.000009 | CL-XMATRIX::FP32-SCALAR-ADD
+;;     0.288 |      0.000 |   8,894,768 |    36,238 |   0.000008 | CL-XMATRIX::FP32-SCALAR-MUL
+;;     0.185 |      0.000 |   7,201,472 |    26,406 |   0.000007 | CL-XMATRIX::FP32-COPY
+;;     0.126 |      0.000 |   2,222,672 |    18,368 |   0.000007 | CL-XMATRIX::FP32-ADD
+;;     0.125 |      0.000 |   3,894,352 |    18,335 |   0.000007 | CL-XMATRIX::FP32-MUL
+;;     0.044 |      0.000 |           0 | 1,667,225 |   0.000000 | CL-XMATRIX::INDEX-P
+;;     0.025 |      0.000 |   2,015,744 |    73,953 |   0.000000 | CL-XMATRIX::COMPUTE-ABSOLUTE-SUBSCRIPTS
+;;     0.025 |      0.000 |           0 |   178,700 |   0.000000 | CL-XMATRIX::VIEW-ENDINDEX
+;;     0.019 |      0.000 |           0 |   147,906 |   0.000000 | CL-XMATRIX::DIMS
+;;     0.019 |      0.000 |   8,843,264 |    73,953 |   0.000000 | CL-XMATRIX::PARSE-BROADCAST-SUBSCRIPTS
+;;     0.018 |      0.000 |           0 |   178,700 |   0.000000 | CL-XMATRIX::VIEW-STARTINDEX
+;;     0.017 |      0.000 |   2,374,096 |       951 |   0.000018 | CL-XMATRIX::ALLOCATE-MAT
+;;     0.012 |      0.000 |           0 |    73,953 |   0.000000 | CL-XMATRIX::SUBSCRIPT-P
+;;     0.012 |      0.000 |           0 |   199,043 |   0.000000 | CL-XMATRIX::TRANSCRIPT-VIEW
+;;     0.010 |      0.000 |   3,901,440 |    89,384 |   0.000000 | CL-XMATRIX::COMPUTE-VISIBLE-AND-BROADCASTED-SHAPE
+;;     0.009 |      0.000 |           0 |   186,436 |   0.000000 | CL-XMATRIX:SHAPE
+;;     0.008 |      0.000 |      65,024 |    73,953 |   0.000000 | CL-XMATRIX::PARSE-AND-REPLACE-TFLIST-SUBSCRIPTS
+;;     0.007 |      0.000 |     943,328 |    17,804 |   0.000000 | CL-XMATRIX:1D-MAT-AREF
+;;     0.004 |      0.000 |           0 |    73,414 |   0.000000 | CL-XMATRIX::DTYPE->LISP-TYPE
+;;     0.002 |      0.000 |     422,816 |     4,504 |   0.000000 | (SETF CL-XMATRIX:1D-MAT-AREF)
+;;     0.001 |      0.000 |           0 |     2,314 |   0.000001 | CL-XMATRIX::GET-STRIDE
+;;     0.001 |      0.000 |      65,536 |       229 |   0.000005 | CL-XMATRIX::FP32-SUB
+;;     0.001 |      0.000 |           0 |       280 |   0.000004 | CL-XMATRIX:FREE-MAT
+;;     0.001 |      0.000 |           0 |     1,007 |   0.000001 | CL-XMATRIX::COERCE-TO-DTYPE
+;;     0.001 |      0.000 |           0 |     1,908 |   0.000000 | CL-XMATRIX::DTYPE-P
 (deftype index () `(or fixnum))
 
 (defstruct (MSBucket ;; Bucket
