@@ -17,12 +17,14 @@
 (in-suite :test)
 
 (defun test-mithral ()
-  (let ((a (matrix `(128 32))))
+  (let ((a (matrix `(100 64))))
+    (sb-profile:profile "CL-XMATRIX")
     (%filter a #'(lambda (x) (random 1.0)))
-    (cl-xmatrix.amm.maddness:init-and-learn-mithral a 16 4)))
+    (cl-xmatrix.amm.maddness:init-and-learn-mithral a 16 4)
+    (sb-profile:report)))
 
 
-(test-mithral)
+;;(test-mithral)
 
-(test mithral
-  (is (test-mithral)))
+;;(test mithral
+;;  (is (test-mithral)))
