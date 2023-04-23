@@ -240,7 +240,10 @@ Bucket-Split: B(A) -> B(id0), B(id1)"
 	       (x1 (%copy (view x `(:tflist ,mask)     t)))
 	       
 	       (ids0 (next-point-ids transition-states not-mask))
-	       (ids1 (next-point-ids transition-states mask)))	  
+	       (ids1 (next-point-ids transition-states mask)))
+
+	  (free-mat mask)
+	  (free-mat not-mask)
 
 	  (values (create-buckets x0 ids0 id0)
 		  (create-buckets x1 ids1 id1)))))))
@@ -254,7 +257,7 @@ Input: x  - a view of X-orig
 Return:
       (values matrix matrix)
 Memo: Spelling Inconsistency -> threshold and val."
-
+  (declare (optimize (speed 3)))
   (cond
     ((or (< (bucket-n bucket) 2)
 	 (null (bucket-point-ids bucket)))
@@ -267,8 +270,9 @@ Memo: Spelling Inconsistency -> threshold and val."
 
 ;; Computes losses
 (defmethod col-variances ((bucket MSBucket))
+  (declare (optimize (speed 3)))
   (if (< (bucket-n bucket) 1)
-      (matrix `(1 ,(bucket-d bucket)) :dtype :float)
+      (matrix `(1 ,(bucket-d bucket)) :dtype :float) ;; Fixme: dtype is unknown
       (let ((ex2 (%scalar-div
 		  (%copy (bucket-sumx2 bucket))
 		  (bucket-n bucket)))
@@ -278,15 +282,17 @@ Memo: Spelling Inconsistency -> threshold and val."
 	(%adds ex2 (%scalar-mul (%square ex) -1.0)))))
 
 (defmethod col-means ((bucket MSBucket))
-  (%scalar-mul (%copy (bucket-sumx bucket))
-	       (/ (max 1 (bucket-n bucket)))))
+  (declare (optimize (speed 3)))
+  (%scalar-div (%copy (bucket-sumx bucket)) (max 1 (bucket-n bucket))))
 
 (defmethod col-sum-sqs ((bucket MSBucket))
-  (%scalar-mul (col-variances bucket)
-	       (bucket-n bucket)))
+  (declare (optimize (speed 3)))
+  (%scalar-mul (col-variances bucket) (bucket-n bucket)))
 
 (defmethod bucket-loss ((bucket MSBucket))
+  (declare (optimize (speed 3)))
   (let ((loss (%sumup (col-sum-sqs bucket))))
+    (declare (type single-float loss))
     (if (> loss 0)
 	loss
 	0.0)))
@@ -301,13 +307,13 @@ Memo: Spelling Inconsistency -> threshold and val."
 
 (defmethod preprocess-x ((msplit MultiSplit) x)
   "y = alpha*x + beta element-wise, and destructively"
+  (declare (optimize (speed 3)))
   (let ((x x))
     (unless (null (multisplit-beta msplit))
-      (setq x (%scalar-add x (- (multisplit-beta msplit)))))
+      (setq x (%scalar-sub x (multisplit-beta msplit))))
 
     (unless (null (multisplit-alpha msplit))
       (setq x (%scalar-mul x (multisplit-alpha msplit))))
-
     x))
 
 
@@ -356,8 +362,8 @@ Output: Cumsses [N D]"
 		   (mx    (%scalar-mul mx -1.0)))
 	      (%move cxc2 cs) ;; cs = cxc2
 	      (%adds cs mx))))))
-    ;(free-mat cumX-cols) ;; (Heap Corruption...) To Add: GCable CFFI Pointer?
-    ;(free-mat cumx2-cols)
+    (free-mat cumX-cols) ;; (Heap Corruption...) To Add: GCable CFFI Pointer?
+    (free-mat cumx2-cols)
     cumsses))
 
 ;; 6: fp=0x7f65648 pc=0x536a2e6b CL-XMATRIX::COMPUTE-OPTIMAL-SPLIT-VAL
@@ -366,21 +372,25 @@ Output: Cumsses [N D]"
   "Given x and dim, computes a optimal split-values.
 
 x - One of prototypes. [num_idxs, D]"
+  (declare (optimize (speed 3))
+	   (type fixnum dim)
+	   (type matrix x))
   (let* ((N (car (shape X)))
  	 (sort-idxs (argsort (convert-into-lisp-array (view x t dim))))
 	 (sort-idxs-rev      (reverse sort-idxs))
 	 (sses-head          (cumsse-cols (view x `(:indices ,@sort-idxs-rev) t)))
 	 (sses-tail-reversed (cumsse-cols (view x `(:indices ,@sort-idxs) t)))
 	 (sses sses-head)
-	 (last-index  (car (shape sses-head)))
-	 (indices (loop for i downfrom (1- last-index) to 0 collect i)))
-
+	 (last-index  (the index (car (shape sses-head))))
+	 (indices (loop for i fixnum downfrom (1- last-index) to 0 collect i)))
+    (declare (type index N))
+    
     (%adds (view sses `(0 ,last-index) t)
 	   (view sses-tail-reversed `(:indices ,@indices) t))
 
     (let* ((sses (%sum sses :axis 1))
-	   (best-idx (nth 0 (argsort (convert-into-lisp-array sses :freep nil) :test #'<)))
-	   (next-idx (min (1- N) (1+ best-idx)))
+	   (best-idx (the index (nth 0 (argsort (convert-into-lisp-array sses :freep nil) :test #'<))))
+	   (next-idx (min (the index (1- N)) (the index (1+ best-idx))))
 	   (col (%copy (view x t dim)))
 	   (best-col (view col (nth best-idx sort-idxs) t))
 	   (next-col (%copy (view col (nth next-idx sort-idxs) t))))
@@ -469,10 +479,11 @@ scal-by, offset: alpha, beta which corresponds to y = alpha*x + beta."
 
   ;; Assert:: (> nsplits 4)
 
+  (declare (optimize (speed 3))
+	   (type fixnum nsplits N))
   (let* ((D (second (shape X)))
-	 (X-copy (%copy X)) ;; X-copy is shared by every buckets.
-	 (X-square (%square (%copy X)))
-	 (X-orig (%copy x-orig)) ;; X-copy is shared too?
+	 (X-copy     (%copy X)) ;; X-copy is shared by every buckets.
+	 (X-square   (%square (%copy X)))
 	 (buckets (list
 		   ;; Creates the toplevel of bucket.
 		   ;; point-ids = 0~N because it has the original X.
@@ -484,7 +495,6 @@ scal-by, offset: alpha, beta which corresponds to y = alpha*x + beta."
 				     collect i))))
 	 (splits)
 	 
-	 ;; The storerooms of losses (should be list?)
 	 (col-losses (matrix `(1 ,D) :dtype :float))
 	 
 	 (offset 0.0)
@@ -500,17 +510,15 @@ scal-by, offset: alpha, beta which corresponds to y = alpha*x + beta."
 	       (%fill col-losses 0.0)
 	       
 	       ;; heuristic = bucket_sse
-	       (dolist (buck buckets)
-		 (let ((loss (col-sum-sqs buck)))
-		   (%adds col-losses loss)
-		   ;(free-mat loss)
-		   ))
+	       (with-pointer-barricade
+		 (dolist (buck buckets)
+		   (%adds col-losses (col-sum-sqs buck))))
 
 	       ;; dim-order -> [Largest Loss ... Smallest Loss]
 	       (let* ((dim-order (the list (argsort (convert-into-lisp-array col-losses :freep nil))))
 		      (all-split-vals)
 		      (dim-size (length dim-order))
-		      (total-losses (matrix `(1 ,dim-size) :dtype (cl-xmatrix::matrix-dtype X))))
+		      (total-losses (matrix `(1 ,dim-size) :dtype (dtype X))))
 		 (declare (type matrix total-losses)
 			  (type list dim-order all-split-vals)
 			  (type index dim-size))
@@ -522,7 +530,7 @@ scal-by, offset: alpha, beta which corresponds to y = alpha*x + beta."
 						       (view total-losses t `(0 ,d))
 						       :freep nil)
 						      :test #'<))))
-			      (cl-xmatrix::1d-mat-aref total-losses idx))))
+			      (1d-mat-aref total-losses idx))))
 
 		   ;; Todo: Refactor...
 		   ;; Loop for (length dim-order) times.
@@ -540,8 +548,9 @@ scal-by, offset: alpha, beta which corresponds to y = alpha*x + beta."
 						     0.0)))
 				     (%scalar-add (view total-losses t d) loss)
 				     (when (and (>= d 1)
-						(>= (1d-mat-aref total-losses d)
-						    (previous-min-losses d)))
+						(>= (the single-float
+							 (1d-mat-aref total-losses d))
+						    (the single-float (previous-min-losses d))))
 				       ;; Early Stopping
 				       (return-from bucket-training-iter))
 				     (push val split-vals))))
@@ -573,7 +582,7 @@ scal-by, offset: alpha, beta which corresponds to y = alpha*x + beta."
 		     
 		     ;(mapc #'destroy-bucket buckets)
 		     (setq buckets (flatten new-buckets)))))))
-    (let ((loss (loop for b in buckets sum (bucket-loss b))))
+    (let ((loss (loop for b in buckets sum (the single-float (bucket-loss b)))))
       (if need-prototypes
 	  (progn
 	    (error "Unimplemented")
@@ -592,7 +601,8 @@ In the maddness paper, the single-float matrix X is compressed into lower bit's 
 
 X = [N D] (To be optimized)
 y = [D M] (To be multiplied)"
-  (declare (type matrix x)
+  (declare (optimize (speed 3))
+	   (type matrix x)
 	   (type index C ncodebooks)
 	   (ignore ncodebooks)) ;; X.dtype = :uint16_t
 
@@ -610,7 +620,7 @@ y = [D M] (To be multiplied)"
 	 (all-buckets nil) ;; Tmp List
 	 ;; indices of disjoints based on C are needed when training KMeans. (j)
 	 (pq-idxs (create-codebook-idxs D C :start-or-end :start)))
-
+    (declare (type list pq-idxs))
     (dotimes (cth (length pq-idxs)) ;; Applying to each prototypes.
       (let ((cth-idx (nth cth pq-idxs)))
 	(with-views ((use-x-error x-error t `(,(first cth-idx)
@@ -625,7 +635,7 @@ y = [D M] (To be multiplied)"
 
 	    (loop for s in msplits
 		  do (setf (multisplit-split-dim s)
-			   (+ (first cth-idx)
+			   (+ (the index (first cth-idx))
 			      (multisplit-split-dim s))))
 	    
 	    
@@ -658,7 +668,7 @@ y = [D M] (To be multiplied)"
 					(xerr* use-X-error `(:indices ,@bids) t))
 			     (%move centroid c*)
 			     
-			     (dotimes (m (nth 0 (shape xerr*)))
+			     (dotimes (m (the index (car (shape xerr*))))
 			       (with-view (e* xerr* m)
 				 (%subs e* c*)))
 
