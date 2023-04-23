@@ -49,6 +49,59 @@
 ;; Note: B(1, 1) is the special case that the vector is the equivalent to the original. (that is why often I've compared (< d 1))
 ;; Todo: perhaps I can give the more faster implementation of traning.
 
+;; Memo
+;;
+
+;;(time (progn (%abs a) (%abs a)))
+;;Evaluation took:
+;;  0.000 seconds of real time
+;;  0.000084 seconds of total run time (0.000082 user, 0.000002 system)
+;;  100.00% CPU
+;;  120,032 processor cycles
+;;  0 bytes consed
+
+;;(time (%abs a))
+;;Evaluation took:
+;; 0.000 seconds of real time
+;; 0.000103 seconds of total run time (0.000077 user, 0.000026 system)
+;;  100.00% CPU
+;;  113,952 processor cycles
+;;  0 bytes consed
+
+;; 演算ごとで見ればSIMD化してNumpyと同等
+;; cumsse-colsはnumbaを使えば100倍くらい高速化できる
+;; このライブラリはallocate-matが一番遅いので、それを避けるようにしてコードを書けば同等の速度になる？ -> with-cache macro.
+;; CPU使用率が高くない
+;; cumsse-colsはほぼ線形時間, optimal-split-valも線形時間のはずだがこの実装だとなぜかO(N)
+;; sumx/sumx2 前後の行列の依存関係はないので、%sum関数に:outを追加->固定の領域のみ使うようにする
+
+;; 1. SIMD化 (memory alignment...)
+;; 2. with-cache
+;; 3. (もしコア数やレジスタなどが余るなら) 並列化
+;; 4. inline
+;; 5. Lisp定義の関数を排除するかlparallel (e.g.: %filter, %cmp>)
+
+;;seconds  |     gc     |     consed    | calls |  sec/call  |  name
+;;-----------------------------------------------------------
+ ;;   20.122 |      0.021 | 2,638,725,520 |   496 |   0.040568 | CL-XMATRIX.AMM.MADDNESS::CUMSSE-COLS
+;;     0.464 |      0.025 |    88,280,608 |   248 |   0.001872 | CL-XMATRIX.AMM.MADDNESS::COMPUTE-OPTIMAL-SPLIT-VAL
+;;     0.177 |      0.000 |    37,430,896 |    65 |   0.002724 | CL-XMATRIX.AMM.MADDNESS::BUCKET-SPLIT
+;;     0.024 |      0.000 |     4,754,032 |     1 |   0.024124 | CL-XMATRIX.AMM.MAD;;DNESS:INIT-AND-LEARN-MITHRAL
+;;     0.018 |      0.000 |     3,838,656 |    16 |   0.001132 | CL-XMATRIX.AMM.MADDNESS::LEARN-BINARY-TREE-SPLITS
+;;     0.016 |      0.000 |     8,614,512 |   816 |   0.000019 | CL-XMATRIX.AMM.MADDNESS::ARGSORT
+;;     0.004 |      0.000 |     1,824,528 |   257 |   0.000014 | CL-XMATRIX.AMM.MADDNESS::OPTIMAL-SPLIT-VAL
+;;     0.003 |      0.000 |       228,464 |    84 |   0.000040 | CL-XMATRIX.AMM.MADDNESS::COL-VARIANCES
+;;     0.003 |      0.000 |     1,134,624 |    84 |   0.000037 | CL-XMATRIX.AMM.MADDNESS::COL-SUM-SQS
+;;     0.002 |      0.000 |       718,768 |     3 |   0.000585 | CL-XMATRIX.AMM.MADDNESS::DEEPCOPY
+;;     0.000 |      0.000 |        97,760 |    15 |   0.000022 | CL-XMATRIX.AMM.MADDNESS::COL-MEANS
+;;     0.000 |      0.000 |       130,656 |    19 |   0.000009 | CL-XMATRIX.AMM.MADDNESS::BUCKET-LOSS
+;;     0.000 |      0.000 |        32,720 |   146 |   0.000001 | CL-XMATRIX.AMM.MADDNESS::MAKE-MSBUCKET
+;;     0.000 |      0.000 |        32,768 |     1 |   0.000059 | CL-XMATRIX.AMM.MADDNESS::CREATE-CODEBOOK-IDXS
+;;     0.000 |      0.000 |             0 |    64 |   0.000001 | CL-XMATRIX.AMM.MADDNESS::FLATTEN
+;;     0.000 |      0.000 |             0 |    64 |   0.000000 | CL-XMATRIX.AMM.MADDNESS::MAKE-MULTISPLIT
+;;-----------------------------------------------------------
+;;    20.834 |      0.047 | 2,785,844,512 | 2,379 |            | Total
+
 (deftype index () `(or fixnum))
 
 (defstruct (MSBucket ;; Bucket
@@ -328,22 +381,23 @@ Input: X [N D]
 Output: Cumsses [N D]"
   (declare (optimize (speed 3))
 	   (type index N D))
-  (let ((cumsses (matrix `(,N ,D) :dtype dtype))
-	(cumX-cols (matrix `(1 ,D) :dtype dtype))
+  (let ((cumsses    (matrix `(,N ,D) :dtype dtype))
+	(cumX-cols  (matrix `(1 ,D) :dtype dtype))
 	(cumx2-cols (matrix `(1 ,D) :dtype dtype)))
 
+    (setq *cumX-cols-cache* cumx-cols)
+    (setq *cumX2-cols-cache* cumx2-cols)
     ;; cumsses ... each N's Loss
-    ;;
+    ;; Compared to Numba JIT, this is ridiculously slow...
     ;;
 
     ;; First Step (n=0), (for initializing)
-    (dotimes (j D)
-      (with-views ((cxc cumX-cols 0 j)
-		   (cxc2 cumX2-cols 0 j)
-		   (x* x 0 j))
+    (with-views ((cxc cumX-cols 0 t)
+		 (cxc2 cumX2-cols 0 t)
+		 (x* x 0 t))
 	(%move x* cxc)
 	(%move x* cxc2)
-	(%square cxc2)))
+	(%square cxc2))
 
     (dotimes (i N)
       (let ((lr (/ (+ 2.0 i))))
@@ -366,7 +420,7 @@ Output: Cumsses [N D]"
     (free-mat cumx2-cols)
     cumsses))
 
-;; 6: fp=0x7f65648 pc=0x536a2e6b CL-XMATRIX::COMPUTE-OPTIMAL-SPLIT-VAL
+;; This function is O(N)
 (declaim (ftype (function (matrix index) (values matrix matrix)) compute-optimal-split-val))
 (defun compute-optimal-split-val (x dim)
   "Given x and dim, computes a optimal split-values.
