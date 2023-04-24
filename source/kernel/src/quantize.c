@@ -81,13 +81,22 @@ static inline fp16_t compute_fp32_to_fp16(float f) {
 
 #define WITH_ELWISE_VIEW(view, index, element_wise_operation)		\
   do {									\
-    for (int mi = view.offset2; mi < view.m; mi++) {			\
-      for (int ni = view.offset1; ni < view.n; ni++) {			\
-        int index = view.offset + mi * view.stride2 * view.broadcast2 + ni * view.stride1 * view.broadcast1; \
-	(element_wise_operation);					\
+    for (int mi = 0; mi < view.m; mi++) {				\
+      int tmp = view.offset + mi * view.stride2 * view.broadcast2;	\
+      if (view.broadcast1 == 1) {					\
+	for (int ni = 0; ni < view.n; ni++) {				\
+	  int index = tmp + ni;						\
+	  (element_wise_operation);					\
+	}								\
+      } else {								\
+	for (int ni = 0; ni < view.n; ni++) {				\
+	  int index = tmp;						\
+	  (element_wise_operation);					\
+	}								\
       }									\
     }									\
-  } while(0)
+  } while(0)								\
+
 
 fp16_t* convert_fp32_into_fp16_within_view(const struct ViewInstruction view, single_float* x) {
   fp16_t* result = (fp16_t*)malloc(view.m * view.n * sizeof(fp16_t));
