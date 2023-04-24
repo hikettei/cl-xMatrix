@@ -972,6 +972,9 @@ Returns - nil"
        (length dims))
       nil)))
 
+;; Inlining
+(defmacro -> ())
+
 ;; (disassemble #'matrix-visible-row-major-index)
 (defun matrix-visible-row-major-index (matrix &rest indices)
   "Todo: Error check"

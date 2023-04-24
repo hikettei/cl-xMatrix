@@ -40,8 +40,8 @@ struct ViewInstruction {
   int offset1;
   int m;
   int n;
-  int broadcast2;
-  int broadcast1;
+  int broadcast2; // 0 or 1
+  int broadcast1; // 0 or 1
 };
 
 // element-wise mathematical functions

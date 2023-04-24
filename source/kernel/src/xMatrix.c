@@ -1,4 +1,7 @@
 #pragma SIMD
+#pragma GCC optimize ("O3")
+#pragma GCC target ("avx2")
+
 #include "xMatrix.h"
 
 #include <immintrin.h>
@@ -121,6 +124,7 @@ int* int_allocate_aligned_mat(int size) {
 // Macros for STORING AND LOADING
 
 // f(x)
+// indexの計算をFor内部でしない, 関数呼び出しはSIMD化を妨げる
 // simd_operation -> SIMD Operation, reminder = element_wise_operation
 #define WITH_VIEW_ITER(view, index, stride, simd_operation, reminder)	\
   do {									\
@@ -194,7 +198,7 @@ void fp32_abs(const struct ViewInstruction view, single_float* vec) {
 
 
 
-// f(x)
+// f(x) Depcrecated
 #define WITH_ELWISE_VIEW(view, index, element_wise_operation)		\
   do {									\
     for (int mi = view.offset2; mi < view.m; mi++) {			\
@@ -211,20 +215,44 @@ void fp32_abs(const struct ViewInstruction view, single_float* vec) {
 // Index = view.offset + (mi + view.offset2) * view.stride2 * view.broadcast
 #define WITH_ELWISE_OPS(view1, view2, index1, index2, element_wise_operation) \
   do {									\
-    for (int mi = 0; mi < view1.m; mi++) {				\
-      int mi1 = mi + view1.offset2;					\
-      int mi2 = mi + view2.offset2;					\
-      for (int ni = 0; ni < view1.n; ni++) {				\
-	int ni1 = ni + view1.offset1;					\
-	int ni2 = ni + view2.offset1;					\
-        int index1 = view1.offset + mi1 * view1.stride2 * view1.broadcast2 + ni1 * view1.stride1 * view1.broadcast1; \
-	int index2 = view2.offset + mi2 * view2.stride2 * view2.broadcast2 + ni2 * view2.stride1 * view2.broadcast1; \
-	(element_wise_operation);					\
+    int mi1_stride;							\
+    int mi2_stride;							\
+    int index1;								\
+    int index2;								\
+    int index1_maxlen;							\
+    if (view1.broadcast2 == 0) { mi1_stride = 0; } else { mi1_stride = view1.stride2; } \
+    if (view2.broadcast2 == 0) { mi2_stride = 0; } else { mi2_stride = view2.stride2; } \
+    int mi1 = view1.offset2 * mi1_stride;				\
+    int mi2 = view2.offset2 * mi2_stride;				\
+    for (int m_index=0;m_index<view1.m;m_index++, mi1+=mi1_stride, mi2+=mi2_stride) { \
+      if (view1.broadcast1 + view2.broadcast1 == 2) {			\
+        index1_maxlen = view1.offset + view1.offset1 + mi1 + view1.n;	\
+	for (index1=view1.offset + view1.offset1 + mi1, index2 = view2.offset + view2.offset1 + mi2;index1 < index1_maxlen; index1++,index2++) { \
+	  (element_wise_operation);					\
+	}								\
+      } else if (view1.broadcast1 + view2.broadcast1 == 0) {	        \
+	index1 = view1.offset + mi1 + view1.offset1;			\
+	index2 = view2.offset + mi2 + view2.offset1;			\
+	for (int n_index=0;n_index<view1.n;n_index++) {			\
+	  (element_wise_operation);					\
+        }								\
+      }	else if (view1.broadcast1 == 0) {				\
+	index1 = view1.offset + view1.offset1 + mi1;			\
+	index1_maxlen = view2.offset + view2.offset1 + mi2 + view2.n;   \
+	for (index2=view2.offset + view2.offset1 + mi2;index2<index1_maxlen;index2++) { \
+	  (element_wise_operation);					\
+	}								\
+      }	else if (view2.broadcast1 == 0) {				\
+	index2 = view2.offset + view2.offset1 + mi2;			\
+	index1_maxlen = view1.offset + view1.offset1 + mi1 + view1.n;   \
+	for (index1=view1.offset + view1.offset1 + mi1;index1<index1_maxlen;index1++) { \
+	  (element_wise_operation);					\
+	}								\
       }									\
     }									\
-  } while(0)
-
-
+  } while (0)
+  
+  
 // vec2 <- vec1
 static inline void fp32_simd_copy(single_float* vec1, single_float* vec2, int k, int m) {
   XMAT_FP32_LOADU(vec1_r, &vec1[k]);
@@ -285,6 +313,29 @@ static inline void fp32_simd_add(single_float* vec1, single_float* vec2, int k, 
   XMAT_FP32_LOADU(v_r2, &vec2[m]); 
 }
 
+void simd_test_f(const struct ViewInstruction view1, const struct ViewInstruction view2, single_float* vec1, single_float* vec2) {
+  register int mi1;
+  register int mi2;
+
+  int mi_max = view1.offset2 + view1.m;
+
+  register int ni1;
+  register int ni2;
+
+  int ni_max = view1.offset1 + view1.m;
+
+  // if broadcast=0, make stride=0
+
+  for (mi1=view1.offset2, mi2=view2.offset2;mi1<mi_max; mi1+=view1.stride2, mi2+=view2.stride2) {
+    if (view1.broadcast2 == 0){
+      for (ni1=view1.offset1, ni2=view2.offset1;ni1<ni_max;ni1++, ni2++){
+      int index = mi1 + ni1;
+      // ni++じゃないとダメみたい
+      vec1[index] += vec2[mi2 + ni2];
+    }
+    }
+  }
+}
 // TODO: SIMD
 void fp32_add(const struct ViewInstruction view, const struct ViewInstruction view1, single_float* vec1, single_float* vec2) {
   WITH_ELWISE_OPS(view, view1, k, m, vec1[k] += vec2[m]);
@@ -443,3 +494,6 @@ void fp8_cos(const struct ViewInstruction view, fp8_t* vec) {
 void int_cos(const struct ViewInstruction view, int* vec) {
   WITH_ELWISE_VIEW(view, k, vec[k] = cos(vec[k]));
 }
+
+
+int main () {}

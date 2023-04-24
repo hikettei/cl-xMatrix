@@ -25,6 +25,8 @@
       (sh (format nil "~a -O3 -march=native ./source/kernel/src/mithral.cpp -I ./source/kernel/include/xMatrix/ -I ./source/kernel/lib/eigen/Eigen/ -I ./source/kernel/lib/eigen/unsupported/Eigen/CXX11/ -I ./source/kernel/lib/eigen -dynamiclib -o ./source/kernel/libMithral.dylib" *cxx-compiler*))
       
       (sh "gcc -shared ./source/kernel/src/xMatrix.o ./source/kernel/src/quantize.o ./source/kernel/src/maddness.o -o ./source/kernel/libxMatrix.dylib")
+
+      (sh "gcc -S -O3 -mavx2 ./source/kernel/src/xMatrix.c -I./source/kernel/include/xMatrix")
       )
 
 (task "testc" ()
