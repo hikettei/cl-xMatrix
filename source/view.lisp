@@ -507,7 +507,8 @@ Legal Subscript -> fixnum/list/t, (external-option ~)"
   "(:tflist t f t f ...) -> (:indices 1 3 4 ...)
    (:tflist matrix)      -> (:indices 1 3 4 ...)"
   (declare (optimize (speed 3))
-	   (type list subscripts))
+	   (type list subscripts)
+	   (ignore matrix))
 
   (if candiates
       (let* ((tflist (find-if tf-p subscripts))
@@ -738,7 +739,7 @@ Done: Straighten-up subscripts
     (t
      (the index shape))))
 
-(defun call-with-visible-area-and-extope (matrix function &key (mat-operated-with nil))
+(defun call-with-visible-area-and-extope (matrix function &key (mat-operated-with nil) (direction :lisp))
   "Handles the external operation of matrix"
   (declare (optimize (speed 3))
 	   (type matrix matrix)
@@ -761,6 +762,7 @@ Done: Straighten-up subscripts
 		      (call-with-visible-area
 		       matrix*
 		       function
+		       :direction direction
 		       :mat-operated-with mat-operated-with
 		       :first-offset (the fixnum
 					  (* (the fixnum stride) (the fixnum ith))))))))
@@ -772,7 +774,8 @@ Done: Straighten-up subscripts
 (defun call-with-visible-area (matrix function
 			       &key
 				 (mat-operated-with nil)
-				 (first-offset 0))
+				 (first-offset 0)
+				 (direction :lisp))
   "Under this macro, three or more dimensions matrix are expanded into 2d, and set index-variable ViewInstruction.
 
 function - #'(lambda (lisp-structure) body)
@@ -783,8 +786,13 @@ Returns - nil"
   (declare (optimize (speed 3) (safety 0))
 	   (type matrix matrix)
 	   (type function function)
-	   (type fixnum first-offset))
+	   (type fixnum first-offset)
+	   (type keyword direction))
 
+  (unless (or (eql direction :lisp)
+	      (eql direction :foreign))
+    (error "Unknwon direction ~a. Available directions: :lisp :foreign" direction))
+  
   ;; Assert matrix doesn't have broadcast
 
   ;; check if matrix's subscript include :indices
@@ -802,7 +810,8 @@ Returns - nil"
 	(call-with-visible-area-and-extope
 	 matrix
 	 function
-	 :mat-operated-with mat))))
+	 :mat-operated-with mat
+	 :direction direction))))
   
   (let ((dims (matrix-shape matrix))
 	(views (matrix-view matrix))
@@ -810,7 +819,13 @@ Returns - nil"
 	(broadcasts (matrix-broadcasts matrix))
 	(broadcasts1 (if mat-operated-with
 			 (matrix-broadcasts mat-operated-with)
-			 nil)))
+			 nil))
+	(view-ptr1 (if (eql direction :foreign)
+		       (foreign-alloc '(:struct ViewInstruction))))
+	(view-ptr2 (if (and (not (null mat-operated-with))
+			    (eql direction :foreign))
+		       (foreign-alloc '(:struct ViewInstruction)))))
+
     (labels ((explore-batch (total-offset  ;; Offsets considered broadcast
 			     actual-offset ;; No broadcast (for output)
 			     dim-indicator
@@ -960,8 +975,18 @@ Returns - nil"
 				     (if trepeat1
 					 0
 					 1))))
-			      (funcall function instruction instruction1)))
-			  (funcall function instruction)))))
+			      (when (eql direction :foreign)
+				(transcript-view instruction view-ptr1)
+				(transcript-view instruction1 view-ptr2))
+			      (if (eql direction :foreign)
+				  (funcall function view-ptr1 view-ptr2)
+				  (funcall function instruction instruction1))))
+			  (progn
+			    (when (eql direction :foreign)
+			      (transcript-view instruction view-ptr1))
+			    (if (eql direction :foreign)
+				(funcall function view-ptr1)
+				(funcall function instruction)))))))
 		 ((= rest-dims 1)
 		  ;; Reshaping `(M) into `(1 M) and regard it as 2d MAT
 		  (setq dims `(1 ,@dims))
@@ -982,18 +1007,6 @@ Returns - nil"
        0
        (length dims))
       nil)))
-
-;; Inlining
-(defparameter *resume-compute* nil)
-;; これで遅延評価?
-;; Viewのポインタの割り当てが一番遅いみたい
-;; トップレベルで自作 + 領域をうまく使い回す +
-;; (-> (x y)
-;;     (%move x y)
-;;     (%adds x y))
-;; こういうのはインライン化してコードの量を減らせるように
-;; 並列化, CPU使用率がひくい
-(defmacro -> ())
 
 ;; (disassemble #'matrix-visible-row-major-index)
 (defun matrix-visible-row-major-index (matrix &rest indices)

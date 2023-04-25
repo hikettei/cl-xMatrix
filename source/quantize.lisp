@@ -13,12 +13,12 @@
   (x (:pointer :uint8)))
 
 (defcfun "convert_fp32_into_fp16_within_view" (:pointer :uint8)
-  (view (:struct ViewInstruction))
+  (view :pointer)
   (x (:pointer :float)))
 
 
 (defcfun "convert_fp16_into_fp32_within_view" (:pointer :float)
-  (view (:struct ViewInstruction))
+  (view :pointer)
   (x (:pointer :uint8)))
 
 (defun fp32->fp16 (size pointer)

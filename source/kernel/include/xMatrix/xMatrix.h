@@ -46,72 +46,72 @@ struct ViewInstruction {
 
 // element-wise mathematical functions
 
-void fp32_abs(const struct ViewInstruction, single_float*);
-void fp16_abs(const struct ViewInstruction, fp16_t*);
-void fp8_abs(const struct ViewInstruction, fp8_t*);
-void int_abs(const struct ViewInstruction, int*);
+void fp32_abs(const struct ViewInstruction*, single_float*);
+void fp16_abs(const struct ViewInstruction*, fp16_t*);
+void fp8_abs(const struct ViewInstruction*, fp8_t*);
+void int_abs(const struct ViewInstruction*, int*);
 
-void fp32_sin(const struct ViewInstruction, single_float*);
-void fp16_sin(const struct ViewInstruction, fp16_t*);
-void fp8_sin(const struct ViewInstruction, fp8_t*);
-void int_sin(const struct ViewInstruction, int*);
+void fp32_sin(const struct ViewInstruction*, single_float*);
+void fp16_sin(const struct ViewInstruction*, fp16_t*);
+void fp8_sin(const struct ViewInstruction*, fp8_t*);
+void int_sin(const struct ViewInstruction*, int*);
 
-void fp32_cos(const struct ViewInstruction, single_float*);
-void fp16_cos(const struct ViewInstruction, fp16_t*);
-void fp8_cos(const struct ViewInstruction, fp8_t*);
-void int_cos(const struct ViewInstruction, int*);
+void fp32_cos(const struct ViewInstruction*, single_float*);
+void fp16_cos(const struct ViewInstruction*, fp16_t*);
+void fp8_cos(const struct ViewInstruction*, fp8_t*);
+void int_cos(const struct ViewInstruction*, int*);
 
-void fp32_tan(const struct ViewInstruction, single_float*);
-void fp16_tan(const struct ViewInstruction, fp16_t*);
-void fp8_tan(const struct ViewInstruction, fp8_t*);
-void int_tan(const struct ViewInstruction, int*);
+void fp32_tan(const struct ViewInstruction*, single_float*);
+void fp16_tan(const struct ViewInstruction*, fp16_t*);
+void fp8_tan(const struct ViewInstruction*, fp8_t*);
+void int_tan(const struct ViewInstruction*, int*);
 
 
-void fp32_copy(const struct ViewInstruction, const struct ViewInstruction, single_float*, single_float*);
-void fp16_copy(const struct ViewInstruction, const struct ViewInstruction, fp16_t*, fp16_t*);
-void fp8_copy(const struct ViewInstruction, const struct ViewInstruction, fp8_t*, fp8_t*);
-void int_copy(const struct ViewInstruction, const struct ViewInstruction, int*, int*);
+void fp32_copy(const struct ViewInstruction*, const struct ViewInstruction*, single_float*, single_float*);
+void fp16_copy(const struct ViewInstruction*, const struct ViewInstruction*, fp16_t*, fp16_t*);
+void fp8_copy(const struct ViewInstruction*, const struct ViewInstruction*, fp8_t*, fp8_t*);
+void int_copy(const struct ViewInstruction*, const struct ViewInstruction*, int*, int*);
 
 // Arithmetic Operations
-void fp32_add(const struct ViewInstruction, const struct ViewInstruction, single_float*, single_float*);
-void fp16_add(const struct ViewInstruction, const struct ViewInstruction, fp16_t*, fp16_t*);
-void fp8_add(const struct ViewInstruction, const struct ViewInstruction, fp8_t*, fp8_t*);
-void int_add(const struct ViewInstruction, const struct ViewInstruction, int*, int*);
+void fp32_add(const struct ViewInstruction*, const struct ViewInstruction*, single_float*, single_float*);
+void fp16_add(const struct ViewInstruction*, const struct ViewInstruction*, fp16_t*, fp16_t*);
+void fp8_add(const struct ViewInstruction*, const struct ViewInstruction*, fp8_t*, fp8_t*);
+void int_add(const struct ViewInstruction*, const struct ViewInstruction*, int*, int*);
 
 
 
-void fp32_sub(const struct ViewInstruction, const struct ViewInstruction, single_float*, single_float*);
-void fp16_sub(const struct ViewInstruction, const struct ViewInstruction, fp16_t*, fp16_t*);
-void fp8_sub(const struct ViewInstruction, const struct ViewInstruction, fp8_t*, fp8_t*);
-void int_sub(const struct ViewInstruction, const struct ViewInstruction, int*, int*);
+void fp32_sub(const struct ViewInstruction*, const struct ViewInstruction*, single_float*, single_float*);
+void fp16_sub(const struct ViewInstruction*, const struct ViewInstruction*, fp16_t*, fp16_t*);
+void fp8_sub(const struct ViewInstruction*, const struct ViewInstruction*, fp8_t*, fp8_t*);
+void int_sub(const struct ViewInstruction*, const struct ViewInstruction*, int*, int*);
 
 
-void fp32_mul(const struct ViewInstruction, const struct ViewInstruction, single_float*, single_float*);
-void fp16_mul(const struct ViewInstruction, const struct ViewInstruction, fp16_t*, fp16_t*);
-void fp8_mul(const struct ViewInstruction, const struct ViewInstruction, fp8_t*, fp8_t*);
-void int_mul(const struct ViewInstruction, const struct ViewInstruction, int*, int*);
+void fp32_mul(const struct ViewInstruction*, const struct ViewInstruction*, single_float*, single_float*);
+void fp16_mul(const struct ViewInstruction*, const struct ViewInstruction*, fp16_t*, fp16_t*);
+void fp8_mul(const struct ViewInstruction*, const struct ViewInstruction*, fp8_t*, fp8_t*);
+void int_mul(const struct ViewInstruction*, const struct ViewInstruction*, int*, int*);
 
 
 
-void fp32_div(const struct ViewInstruction, const struct ViewInstruction, single_float*, single_float*);
-void fp16_div(const struct ViewInstruction, const struct ViewInstruction, fp16_t*, fp16_t*);
-void fp8_div(const struct ViewInstruction, const struct ViewInstruction, fp8_t*, fp8_t*);
-void int_div(const struct ViewInstruction, const struct ViewInstruction, int*, int*);
+void fp32_div(const struct ViewInstruction*, const struct ViewInstruction*, single_float*, single_float*);
+void fp16_div(const struct ViewInstruction*, const struct ViewInstruction*, fp16_t*, fp16_t*);
+void fp8_div(const struct ViewInstruction*, const struct ViewInstruction*, fp8_t*, fp8_t*);
+void int_div(const struct ViewInstruction*, const struct ViewInstruction*, int*, int*);
 
 
-void fp32_scalar_add(const struct ViewInstruction, single_float*, single_float);
-void fp16_scalar_add(const struct ViewInstruction, fp16_t*, fp16_t);
-void fp8_scalar_add(const struct ViewInstruction, fp8_t*, fp8_t);
-void int_scalar_add(const struct ViewInstruction, int*, int);
+void fp32_scalar_add(const struct ViewInstruction*, single_float*, single_float);
+void fp16_scalar_add(const struct ViewInstruction*, fp16_t*, fp16_t);
+void fp8_scalar_add(const struct ViewInstruction*, fp8_t*, fp8_t);
+void int_scalar_add(const struct ViewInstruction*, int*, int);
 
-void fp32_scalar_mul(const struct ViewInstruction, single_float*, single_float);
-void fp16_scalar_mul(const struct ViewInstruction, fp16_t*, fp16_t);
-void fp8_scalar_mul(const struct ViewInstruction, fp8_t*, fp8_t);
-void int_scalar_mul(const struct ViewInstruction, int*, int);
+void fp32_scalar_mul(const struct ViewInstruction*, single_float*, single_float);
+void fp16_scalar_mul(const struct ViewInstruction*, fp16_t*, fp16_t);
+void fp8_scalar_mul(const struct ViewInstruction*, fp8_t*, fp8_t);
+void int_scalar_mul(const struct ViewInstruction*, int*, int);
 
-void fp32_fill(const struct ViewInstruction, single_float*, single_float);
-void fp16_fill(const struct ViewInstruction, fp16_t*, fp16_t);
-void fp8_fill(const struct ViewInstruction, fp8_t*, fp8_t);
-void int_fill(const struct ViewInstruction, int*, int);
+void fp32_fill(const struct ViewInstruction*, single_float*, single_float);
+void fp16_fill(const struct ViewInstruction*, fp16_t*, fp16_t);
+void fp8_fill(const struct ViewInstruction*, fp8_t*, fp8_t);
+void int_fill(const struct ViewInstruction*, int*, int);
 
 

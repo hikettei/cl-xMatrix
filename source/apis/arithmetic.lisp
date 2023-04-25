@@ -7,8 +7,8 @@
 
 (macrolet ((define-arithmetic-cfun (name dtype)
 	     `(defcfun ,name :void
-		(view1 (:struct ViewInstruction))
-		(view2 (:struct ViewInstruction))
+		(view1 :pointer)
+		(view2 :pointer)
 		(array1 (:pointer ,dtype))
 		(array2 (:pointer ,dtype)))))
   
@@ -74,7 +74,8 @@ Return:
 	  (fp8-add x-view x1-view (matrix-vec matrix) (matrix-vec matrix1)))
 	 (:int
 	  (int-add x-view x1-view (matrix-vec matrix) (matrix-vec matrix1)))))
-   :mat-operated-with matrix1)
+   :mat-operated-with matrix1
+   :direction :foreign)
   matrix)
 
 
@@ -106,7 +107,8 @@ Return:
 	  (fp8-sub  x-view x1-view (matrix-vec matrix) (matrix-vec matrix1)))
 	 (:int
 	  (int-sub  x-view x1-view (matrix-vec matrix) (matrix-vec matrix1)))))
-   :mat-operated-with matrix1)
+   :mat-operated-with matrix1
+   :direction :foreign)
   matrix)
 
 
@@ -139,7 +141,8 @@ Return:
 	  (fp8-mul  x-view x1-view (matrix-vec matrix) (matrix-vec matrix1)))
 	 (:int
 	  (int-mul  x-view x1-view (matrix-vec matrix) (matrix-vec matrix1)))))
-   :mat-operated-with matrix1)
+   :mat-operated-with matrix1
+   :direction :foreign)
   matrix)
 
 
@@ -172,7 +175,8 @@ Return:
 	  (fp8-div  x-view x1-view (matrix-vec matrix) (matrix-vec matrix1)))
 	 (:int
 	  (int-div  x-view x1-view (matrix-vec matrix) (matrix-vec matrix1)))))
-   :mat-operated-with matrix1)
+   :mat-operated-with matrix1
+   :direction :foreign)
   matrix)
 
 
@@ -205,7 +209,8 @@ Return:
 	  (fp8-copy x-view x1-view (matrix-vec matrix) (matrix-vec matrix1)))
 	 (:int
 	  (int-copy x-view x1-view (matrix-vec matrix) (matrix-vec matrix1)))))
-   :mat-operated-with matrix1)
+   :mat-operated-with matrix1
+   :direction :foreign)
   matrix1)
 
 
@@ -229,7 +234,7 @@ Return:
 
 (macrolet ((define-scalar-mat-cfun (name dtype)
 	     `(defcfun ,name :void
-		(view (:struct ViewInstruction))
+		(view :pointer)
 		(array (:pointer ,dtype))
 		(scalar ,dtype))))
   (define-scalar-mat-cfun "fp32_scalar_add" :float)
@@ -272,7 +277,8 @@ Return:
 		(:uint8
 		 (fp8-scalar-add x (matrix-vec matrix) scalar))
 		(:int
-		 (int-scalar-add x (matrix-vec matrix) scalar)))))
+		 (int-scalar-add x (matrix-vec matrix) scalar))))
+   :direction :foreign)
   matrix)
 
 (defun %scalar-sub (matrix scalar &aux (scalar (coerce scalar (dtype->lisp-type (matrix-dtype matrix)))))
@@ -316,7 +322,8 @@ Return:
 		(:uint8
 		 (fp8-scalar-mul x (matrix-vec matrix) scalar))
 		(:int
-		 (int-scalar-mul x (matrix-vec matrix) scalar)))))
+		 (int-scalar-mul x (matrix-vec matrix) scalar))))
+   :direction :foreign)
   matrix)
 
 (defun %scalar-div (matrix scalar)
@@ -357,6 +364,7 @@ Return:
 		(:uint8
 		 (fp8-fill x (matrix-vec matrix) scalar))
 		(:int
-		 (int-fill x (matrix-vec matrix) scalar)))))
+		 (int-fill x (matrix-vec matrix) scalar))))
+   :direction :foreign)
   matrix)
 

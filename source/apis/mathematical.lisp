@@ -19,7 +19,7 @@
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (macrolet ((define-elwise-cfun (name dtype)
 	       `(defcfun ,name :void
-		  (view (:struct ViewInstruction))
+		  (view :pointer)
 		  (array (:pointer ,dtype)))))
     
     (define-elwise-cfun "fp32_abs" :float)
@@ -75,7 +75,8 @@
 			 (:uint8
 			  (funcall #',(symb 'fp8- name) view (matrix-vec matrix)))
 			 (:int
-			  (funcall #',(symb 'int- name) view (matrix-vec matrix))))))
+			  (funcall #',(symb 'int- name) view (matrix-vec matrix)))))
+		   :direction :foreign)
 		  matrix)))
 
     (define-elwise-1dfunc %abs

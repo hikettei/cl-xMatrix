@@ -6,24 +6,24 @@
 
 #include <immintrin.h>
 /*
-+----------------+------------------------------------------------------------------------------------------+
-|     Header     |                                         Purpose                                          |
-+----------------+------------------------------------------------------------------------------------------+
-| x86intrin.h    | Everything, including non-vector x86 instructions like _rdtsc().                         |
-| mmintrin.h     | MMX (Pentium MMX!)                                                                       |
-| mm3dnow.h      | 3dnow! (K6-2) (deprecated)                                                               |
-| xmmintrin.h    | SSE + MMX (Pentium 3, Athlon XP)                                                         |
-| emmintrin.h    | SSE2 + SSE + MMX (Pentium 4, Athlon 64)                                                  |
-| pmmintrin.h    | SSE3 + SSE2 + SSE + MMX (Pentium 4 Prescott, Athlon 64 San Diego)                        |
-| tmmintrin.h    | SSSE3 + SSE3 + SSE2 + SSE + MMX (Core 2, Bulldozer)                                      |
-| popcntintrin.h | POPCNT (Nehalem (Core i7), Phenom)                                                       |
-| ammintrin.h    | SSE4A + SSE3 + SSE2 + SSE + MMX (AMD-only, starting with Phenom)                         |
-| smmintrin.h    | SSE4_1 + SSSE3 + SSE3 + SSE2 + SSE + MMX (Penryn, Bulldozer)                             |
-| nmmintrin.h    | SSE4_2 + SSE4_1 + SSSE3 + SSE3 + SSE2 + SSE + MMX (Nehalem (aka Core i7), Bulldozer)     |
-| wmmintrin.h    | AES (Core i7 Westmere, Bulldozer)                                                        |
-| immintrin.h    | AVX, AVX2, AVX512, all SSE+MMX (except SSE4A and XOP), popcnt, BMI/BMI2, FMA             |
-+----------------+------------------------------------------------------------------------------------------+
- */
+  +----------------+------------------------------------------------------------------------------------------+
+  |     Header     |                                         Purpose                                          |
+  +----------------+------------------------------------------------------------------------------------------+
+  | x86intrin.h    | Everything, including non-vector x86 instructions like _rdtsc().                         |
+  | mmintrin.h     | MMX (Pentium MMX!)                                                                       |
+  | mm3dnow.h      | 3dnow! (K6-2) (deprecated)                                                               |
+  | xmmintrin.h    | SSE + MMX (Pentium 3, Athlon XP)                                                         |
+  | emmintrin.h    | SSE2 + SSE + MMX (Pentium 4, Athlon 64)                                                  |
+  | pmmintrin.h    | SSE3 + SSE2 + SSE + MMX (Pentium 4 Prescott, Athlon 64 San Diego)                        |
+  | tmmintrin.h    | SSSE3 + SSE3 + SSE2 + SSE + MMX (Core 2, Bulldozer)                                      |
+  | popcntintrin.h | POPCNT (Nehalem (Core i7), Phenom)                                                       |
+  | ammintrin.h    | SSE4A + SSE3 + SSE2 + SSE + MMX (AMD-only, starting with Phenom)                         |
+  | smmintrin.h    | SSE4_1 + SSSE3 + SSE3 + SSE2 + SSE + MMX (Penryn, Bulldozer)                             |
+  | nmmintrin.h    | SSE4_2 + SSE4_1 + SSSE3 + SSE3 + SSE2 + SSE + MMX (Nehalem (aka Core i7), Bulldozer)     |
+  | wmmintrin.h    | AES (Core i7 Westmere, Bulldozer)                                                        |
+  | immintrin.h    | AVX, AVX2, AVX512, all SSE+MMX (except SSE4A and XOP), popcnt, BMI/BMI2, FMA             |
+  +----------------+------------------------------------------------------------------------------------------+
+*/
 
 #include <math.h>
 #include <stdio.h>
@@ -33,33 +33,33 @@
 
 int cpu_has_sse(void){
 #if defined(__SSE__)
-    return 1;
+  return 1;
 #else
-    return 0;
+  return 0;
 #endif
 }
 
 int cpu_has_avx(void){
 #if defined(__AVX__)
-    return 1;
+  return 1;
 #else
-    return 0;
+  return 0;
 #endif
 }
 
 int cpu_has_avx2(void){
 #if defined(__AVX2__)
-    return 1;
+  return 1;
 #else
-    return 0;
+  return 0;
 #endif
 }
 
 int cpu_has_avx512(void){
 #if defined(__AVX512__)
-    return 1;
+  return 1;
 #else
-    return 0;
+  return 0;
 #endif
 }
 
@@ -70,7 +70,7 @@ int cpu_has_avx512(void){
 
 // aligned_malloc is defined in C11, while MSVC doesn't.
 #if defined(_aligned_alloc)
-  #define aligned_alloc _aligned_alloc
+#define aligned_alloc _aligned_alloc
 #endif
 
 #if defined(__AVX2__)
@@ -129,14 +129,14 @@ int* int_allocate_aligned_mat(int size) {
 #define WITH_VIEW_ITER(view, index, stride, simd_operation, reminder)	\
   do {									\
     int last_ni_index_for_rem = 0;					\
-    for (int mi = view.offset2; mi < view.m; mi++) {    		\
-      for (int ni = view.offset1; ni < view.n; ni+=stride) {		\
+    for (int mi = view->offset2; mi < view->m; mi++) {    		\
+      for (int ni = view->offset1; ni < view->n; ni+=stride) {		\
 	last_ni_index_for_rem = ni+stride;				\
-	int index = view.offset + mi * view.stride2 * view.broadcast2 + ni * view.stride1 * view.broadcast1; \
+	int index = view->offset + mi * view->stride2 * view->broadcast2 + ni * view->stride1 * view->broadcast1; \
 	(simd_operation);						\
       }									\
-      for(int ni=last_ni_index_for_rem;ni<view.n;ni++) {		\
-	int index = view.offset + mi * view.stride2 * view.broadcast2 + ni * view.stride1 * view.broadcast1; \
+      for(int ni=last_ni_index_for_rem;ni<view->n;ni++) {		\
+	int index = view->offset + mi * view->stride2 * view->broadcast2 + ni * view->stride1 * view->broadcast1; \
 	(reminder);							\
       }									\
     }									\
@@ -147,22 +147,22 @@ int* int_allocate_aligned_mat(int size) {
 #define WITH_VIEW_OPS(view1, view2, index1, index2, stride, simd_operation, reminder) \
   do {									\
     int last_ni_index_for_rem = 0;					\
-    for (int mi = 0; mi < view1.m; mi++) {				\
-      int mi1 = mi + view1.offset2;					\
-      int mi2 = mi + view2.offset2;					\
-      for (int ni = 0; ni < view1.n; ni+=stride) {			\
+    for (int mi = 0; mi < view1->m; mi++) {				\
+      int mi1 = mi + view1->offset2;					\
+      int mi2 = mi + view2->offset2;					\
+      for (int ni = 0; ni < view1->n; ni+=stride) {			\
 	last_ni_index_for_rem = ni+stride;				\
-	int ni1 = ni + view1.offset1;					\
-	int ni2 = ni + view2.offset1;					\
-	int index1 = view1.offset + mi1 * view1.stride2 * view1.broadcast2 + ni1 * view1.stride1 * view1.broadcast1; \
-	int index2 = view2.offset + mi2 * view2.stride2 * view2.broadcast2 + ni2 * view2.stride1 * view2.broadcast1; \
+	int ni1 = ni + view1->offset1;					\
+	int ni2 = ni + view2->offset1;					\
+	int index1 = view1->offset + mi1 * view1->stride2 * view1->broadcast2 + ni1 * view1->stride1 * view1->broadcast1; \
+	int index2 = view2->offset + mi2 * view2->stride2 * view2->broadcast2 + ni2 * view2->stride1 * view2->broadcast1; \
 	(simd_operation);						\
       }									\
-      for(int ni=last_ni_index_for_rem;ni<view1.n;ni++) {		\
-	int ni1 = ni + view1.offset1;					\
-	int ni2 = ni + view2.offset1;					\
-	int index1 = view1.offset + mi1 * view1.stride2 * view1.broadcast2 + ni1 * view1.stride1 * view1.broadcast1; \
-	int index2 = view2.offset + mi2 * view2.stride2 * view2.broadcast2 + ni2 * view2.stride1 * view2.broadcast1; \
+      for(int ni=last_ni_index_for_rem;ni<view1->n;ni++) {		\
+	int ni1 = ni + view1->offset1;					\
+	int ni2 = ni + view2->offset1;					\
+	int index1 = view1->offset + mi1 * view1->stride2 * view1->broadcast2 + ni1 * view1->stride1 * view1->broadcast1; \
+	int index2 = view2->offset + mi2 * view2->stride2 * view2->broadcast2 + ni2 * view2->stride1 * view2->broadcast1; \
 	(reminder);							\
       }									\
     }									\
@@ -188,25 +188,25 @@ DEFINE_ABS_ELEMENTWISE(fp8_abs_scalarwise,  fp8_t);
 DEFINE_ABS_ELEMENTWISE(int_abs_scalarwise,  int);
 
 // To Add: RELU, SIGMOID, TANH etc...
-void fp32_abs(const struct ViewInstruction view, single_float* vec) {
+void fp32_abs(const struct ViewInstruction* view, single_float* vec) {
   __m256 sign_mask = _mm256_set1_ps(-0.0f);
   WITH_VIEW_ITER(view, i, FP32_SIMD_STEP,
-  	 fp32_abs_simd(vec, sign_mask, i),
+		 fp32_abs_simd(vec, sign_mask, i),
   		 fp32_abs_scalarwise(vec, i));
 }
 
 // f(x)
 #define WITH_ELWISE_VIEW(view, index, element_wise_operation)		\
   do {									\
-    for (int mi = 0; mi < view.m; mi++) {				\
-      int tmp = view.offset + mi * view.stride2 * view.broadcast2;	\
-      if (view.broadcast1 == 1) {					\
-	for (int ni = 0; ni < view.n; ni++) {				\
+    for (int mi = 0; mi < view->m; mi++) {				\
+      int tmp = view->offset + mi * view->stride2 * view->broadcast2;	\
+      if (view->broadcast1 == 1) {					\
+	for (int ni = 0; ni < view->n; ni++) {				\
 	  int index = tmp + ni;						\
 	  (element_wise_operation);					\
 	}								\
       } else {								\
-	for (int ni = 0; ni < view.n; ni++) {				\
+	for (int ni = 0; ni < view->n; ni++) {				\
 	  int index = tmp;						\
 	  (element_wise_operation);					\
 	}								\
@@ -225,278 +225,216 @@ void fp32_abs(const struct ViewInstruction view, single_float* vec) {
     int index1;								\
     int index2;								\
     int index1_maxlen;							\
-    if (view1.broadcast2 == 0) { mi1_stride = 0; } else { mi1_stride = view1.stride2; } \
-    if (view2.broadcast2 == 0) { mi2_stride = 0; } else { mi2_stride = view2.stride2; } \
-    int mi1 = view1.offset2 * mi1_stride;				\
-    int mi2 = view2.offset2 * mi2_stride;				\
-    for (int m_index=0;m_index<view1.m;m_index++, mi1+=mi1_stride, mi2+=mi2_stride) { \
-      if (view1.broadcast1 + view2.broadcast1 == 2) {			\
-        index1_maxlen = view1.offset + view1.offset1 + mi1 + view1.n;	\
-	for (index1=view1.offset + view1.offset1 + mi1, index2 = view2.offset + view2.offset1 + mi2;index1 < index1_maxlen; index1++,index2++) { \
+    if (view1->broadcast2 == 0) { mi1_stride = 0; } else { mi1_stride = view1->stride2; } \
+    if (view2->broadcast2 == 0) { mi2_stride = 0; } else { mi2_stride = view2->stride2; } \
+    int mi1 = view1->offset2 * mi1_stride;				\
+    int mi2 = view2->offset2 * mi2_stride;				\
+    for (int m_index=0;m_index<view1->m;m_index++, mi1+=mi1_stride, mi2+=mi2_stride) { \
+      if (view1->broadcast1 + view2->broadcast1 == 2) {			\
+        index1_maxlen = view1->offset + view1->offset1 + mi1 + view1->n; \
+	for (index1=view1->offset + view1->offset1 + mi1, index2 = view2->offset + view2->offset1 + mi2;index1 < index1_maxlen; index1++,index2++) { \
 	  (element_wise_operation);					\
 	}								\
-      } else if (view1.broadcast1 + view2.broadcast1 == 0) {	        \
-	index1 = view1.offset + mi1 + view1.offset1;			\
-	index2 = view2.offset + mi2 + view2.offset1;			\
-	for (int n_index=0;n_index<view1.n;n_index++) {			\
+      } else if (view1->broadcast1 + view2->broadcast1 == 0) {	        \
+	index1 = view1->offset + mi1 + view1->offset1;			\
+	index2 = view2->offset + mi2 + view2->offset1;			\
+	for (int n_index=0;n_index<view1->n;n_index++) {		\
 	  (element_wise_operation);					\
         }								\
-      }	else if (view1.broadcast1 == 0) {				\
-	index1 = view1.offset + view1.offset1 + mi1;			\
-	index1_maxlen = view2.offset + view2.offset1 + mi2 + view2.n;   \
-	for (index2=view2.offset + view2.offset1 + mi2;index2<index1_maxlen;index2++) { \
+      }	else if (view1->broadcast1 == 0) {				\
+	index1 = view1->offset + view1->offset1 + mi1;			\
+	index1_maxlen = view2->offset + view2->offset1 + mi2 + view2->n; \
+	for (index2=view2->offset + view2->offset1 + mi2;index2<index1_maxlen;index2++) { \
 	  (element_wise_operation);					\
 	}								\
-      }	else if (view2.broadcast1 == 0) {				\
-	index2 = view2.offset + view2.offset1 + mi2;			\
-	index1_maxlen = view1.offset + view1.offset1 + mi1 + view1.n;   \
-	for (index1=view1.offset + view1.offset1 + mi1;index1<index1_maxlen;index1++) { \
+      }	else if (view2->broadcast1 == 0) {				\
+	index2 = view2->offset + view2->offset1 + mi2;			\
+	index1_maxlen = view1->offset + view1->offset1 + mi1 + view1->n; \
+	for (index1=view1->offset + view1->offset1 + mi1;index1<index1_maxlen;index1++) { \
 	  (element_wise_operation);					\
 	}								\
       }									\
     }									\
   } while (0)
-  
-  
-// vec2 <- vec1
-static inline void fp32_simd_copy(single_float* vec1, single_float* vec2, int k, int m) {
-  XMAT_FP32_LOADU(vec1_r, &vec1[k]);
-  XMAT_FP32_STOREU(&vec2[m], vec1_r);
-}
-
-static inline void fp16_simd_copy(fp16_t* vec1, fp16_t* vec2, int k, int m) {
-  XMAT_FP16_LOADU(vec1_r, &vec1[k]);
-  XMAT_FP16_STOREU(&vec2[m], vec1_r);
-}
-
-static inline void fp8_simd_copy(fp8_t* vec1, fp8_t* vec2, int k, int m) {
-  XMAT_FP8_LOADU(vec1_r, &vec1[k]);
-  XMAT_FP8_STOREU(&vec2[m], vec1_r);
-}
 
 
 // TODO: Current Operations are temporary, make them SIMD.
-void fp32_copy(const struct ViewInstruction view, const struct ViewInstruction view1, single_float* vec1, single_float* vec2) {
-  //WITH_VIEW_OPS(view,
-  //		view1,
-  //		k,
-  //		m,
-  //		FP32_SIMD_STEP,
-  //		fp32_simd_copy(vec1, vec2, k, m),
-  //		vec2[m] = vec1[k]);
-
+void fp32_copy(const struct ViewInstruction* view, const struct ViewInstruction* view1, single_float* vec1, single_float* vec2) {
   WITH_ELWISE_OPS(view, view1, k, m, vec2[m] = vec1[k]);
 }
 
-void fp16_copy(const struct ViewInstruction view, const struct ViewInstruction view1, fp16_t* vec1, fp16_t* vec2) {
-  WITH_VIEW_OPS(view,
-		view1,
-		k,
-		m,
-		FP16_SIMD_STEP,
-		fp16_simd_copy(vec1, vec2, k, m),
-		vec2[m] = vec1[k]);
+void fp16_copy(const struct ViewInstruction* view, const struct ViewInstruction* view1, fp16_t* vec1, fp16_t* vec2) {
+  WITH_ELWISE_OPS(view, view1, k, m, vec2[m] = vec1[k]);
 }
 
-void fp8_copy(const struct ViewInstruction view, const struct ViewInstruction view1, fp8_t* vec1, fp8_t* vec2) {
-  WITH_VIEW_OPS(view,
-		view1,
-		k,
-		m,
-		FP8_SIMD_STEP,
-		fp8_simd_copy(vec1, vec2, k, m),
-		vec2[m] = vec1[k]);
+void fp8_copy(const struct ViewInstruction* view, const struct ViewInstruction* view1, fp8_t* vec1, fp8_t* vec2) {
+  WITH_ELWISE_OPS(view, view1, k, m, vec2[m] = vec1[k]);
 }
 
-void int_copy(const struct ViewInstruction view, const struct ViewInstruction view1, int* vec1, int* vec2) {
+void int_copy(const struct ViewInstruction* view, const struct ViewInstruction* view1, int* vec1, int* vec2) {
   WITH_ELWISE_OPS(view, view1, k, m, vec2[m] = vec1[k]);
 }
 
 
-static inline void fp32_simd_add(single_float* vec1, single_float* vec2, int k, int m) {
-  XMAT_FP32_LOADU(v_r1, &vec1[k]);
-  XMAT_FP32_LOADU(v_r2, &vec2[m]); 
-}
 
-void simd_test_f(const struct ViewInstruction view1, const struct ViewInstruction view2, single_float* vec1, single_float* vec2) {
-  register int mi1;
-  register int mi2;
 
-  int mi_max = view1.offset2 + view1.m;
-
-  register int ni1;
-  register int ni2;
-
-  int ni_max = view1.offset1 + view1.m;
-
-  // if broadcast=0, make stride=0
-
-  for (mi1=view1.offset2, mi2=view2.offset2;mi1<mi_max; mi1+=view1.stride2, mi2+=view2.stride2) {
-    if (view1.broadcast2 == 0){
-      for (ni1=view1.offset1, ni2=view2.offset1;ni1<ni_max;ni1++, ni2++){
-      int index = mi1 + ni1;
-      // ni++じゃないとダメみたい
-      vec1[index] += vec2[mi2 + ni2];
-    }
-    }
-  }
-}
-// TODO: SIMD
-void fp32_add(const struct ViewInstruction view, const struct ViewInstruction view1, single_float* vec1, single_float* vec2) {
+void fp32_add(const struct ViewInstruction* view, const struct ViewInstruction* view1, single_float* vec1, single_float* vec2) {
   WITH_ELWISE_OPS(view, view1, k, m, vec1[k] += vec2[m]);
 }
 
-void fp16_add(const struct ViewInstruction view, const struct ViewInstruction view1, fp16_t* vec1, fp16_t* vec2) {
+void fp16_add(const struct ViewInstruction* view, const struct ViewInstruction* view1, fp16_t* vec1, fp16_t* vec2) {
   WITH_ELWISE_OPS(view, view1, k, m, vec1[k] += vec2[m]);
 }
 
-void fp8_add(const struct ViewInstruction view, const struct ViewInstruction view1, fp8_t* vec1, fp8_t* vec2) {
+void fp8_add(const struct ViewInstruction* view, const struct ViewInstruction* view1, fp8_t* vec1, fp8_t* vec2) {
   WITH_ELWISE_OPS(view, view1, k, m, vec1[k] += vec2[m]);
 }
 
-void int_add(const struct ViewInstruction view, const struct ViewInstruction view1, int* vec1, int* vec2) {
+void int_add(const struct ViewInstruction* view, const struct ViewInstruction* view1, int* vec1, int* vec2) {
   WITH_ELWISE_OPS(view, view1, k, m, vec1[k] += vec2[m]);
 }
 
 
 
 
-void fp32_sub(const struct ViewInstruction view, const struct ViewInstruction view1, single_float* vec1, single_float* vec2) {
+void fp32_sub(const struct ViewInstruction* view, const struct ViewInstruction* view1, single_float* vec1, single_float* vec2) {
   WITH_ELWISE_OPS(view, view1, k, m, vec1[k] -= vec2[m]);
 }
 
-void fp16_sub(const struct ViewInstruction view, const struct ViewInstruction view1, fp16_t* vec1, fp16_t* vec2) {
+void fp16_sub(const struct ViewInstruction* view, const struct ViewInstruction* view1, fp16_t* vec1, fp16_t* vec2) {
   WITH_ELWISE_OPS(view, view1, k, m, vec1[k] -= vec2[m]);
 }
 
-void fp8_sub(const struct ViewInstruction view, const struct ViewInstruction view1, fp8_t* vec1, fp8_t* vec2) {
+void fp8_sub(const struct ViewInstruction* view, const struct ViewInstruction* view1, fp8_t* vec1, fp8_t* vec2) {
   WITH_ELWISE_OPS(view, view1, k, m, vec1[k] -= vec2[m]);
 }
 
-void int_sub(const struct ViewInstruction view, const struct ViewInstruction view1, int* vec1, int* vec2) {
+void int_sub(const struct ViewInstruction* view, const struct ViewInstruction* view1, int* vec1, int* vec2) {
   WITH_ELWISE_OPS(view, view1, k, m, vec1[k] -= vec2[m]);
 }
 
 
-void fp32_mul(const struct ViewInstruction view, const struct ViewInstruction view1, single_float* vec1, single_float* vec2) {
+
+
+void fp32_mul(const struct ViewInstruction* view, const struct ViewInstruction* view1, single_float* vec1, single_float* vec2) {
   WITH_ELWISE_OPS(view, view1, k, m, vec1[k] *= vec2[m]);
 }
 
-void fp16_mul(const struct ViewInstruction view, const struct ViewInstruction view1, fp16_t* vec1, fp16_t* vec2) {
+void fp16_mul(const struct ViewInstruction* view, const struct ViewInstruction* view1, fp16_t* vec1, fp16_t* vec2) {
   WITH_ELWISE_OPS(view, view1, k, m, vec1[k] *= vec2[m]);
 }
 
-void fp8_mul(const struct ViewInstruction view, const struct ViewInstruction view1, fp8_t* vec1, fp8_t* vec2) {
+void fp8_mul(const struct ViewInstruction* view, const struct ViewInstruction* view1, fp8_t* vec1, fp8_t* vec2) {
   WITH_ELWISE_OPS(view, view1, k, m, vec1[k] *= vec2[m]);
 }
 
-void int_mul(const struct ViewInstruction view, const struct ViewInstruction view1, int* vec1, int* vec2) {
+void int_mul(const struct ViewInstruction* view, const struct ViewInstruction* view1, int* vec1, int* vec2) {
   WITH_ELWISE_OPS(view, view1, k, m, vec1[k] *= vec2[m]);
 }
 
 
 // I guess they're dangerous
-void fp32_div(const struct ViewInstruction view, const struct ViewInstruction view1, single_float* vec1, single_float* vec2) {
+void fp32_div(const struct ViewInstruction* view, const struct ViewInstruction* view1, single_float* vec1, single_float* vec2) {
   // Vec2 has no any offsets. So i must be absolute
   WITH_ELWISE_OPS(view, view1, k, m, vec1[k] /= vec2[m]);
 }
 
-void fp16_div(const struct ViewInstruction view, const struct ViewInstruction view1, fp16_t* vec1, fp16_t* vec2) {
+void fp16_div(const struct ViewInstruction* view, const struct ViewInstruction* view1, fp16_t* vec1, fp16_t* vec2) {
   WITH_ELWISE_OPS(view, view1, k, m, vec1[k] /= vec2[m]);
 }
 
-void fp8_div(const struct ViewInstruction view, const struct ViewInstruction view1, fp8_t* vec1, fp8_t* vec2) {
+void fp8_div(const struct ViewInstruction* view, const struct ViewInstruction* view1, fp8_t* vec1, fp8_t* vec2) {
   WITH_ELWISE_OPS(view, view1, k, m, vec1[k] /= vec2[m]);
 }
 
-void int_div(const struct ViewInstruction view, const struct ViewInstruction view1, int* vec1, int* vec2) {
+void int_div(const struct ViewInstruction* view, const struct ViewInstruction* view1, int* vec1, int* vec2) {
   WITH_ELWISE_OPS(view, view1, k, m, vec1[k] /= vec2[m]);
 }
 
 
 
 
-void fp32_scalar_add(const struct ViewInstruction view, single_float* vec1, single_float scal) {
+void fp32_scalar_add(const struct ViewInstruction* view, single_float* vec1, single_float scal) {
   WITH_ELWISE_VIEW(view, k, vec1[k] += scal);
 }
 
-void fp16_scalar_add(const struct ViewInstruction view, fp16_t* vec1, fp16_t scal) {
+void fp16_scalar_add(const struct ViewInstruction* view, fp16_t* vec1, fp16_t scal) {
   WITH_ELWISE_VIEW(view, k, vec1[k] += scal);
 }
 
-void fp8_scalar_add(const struct ViewInstruction view, fp8_t* vec1, fp8_t scal) {
+void fp8_scalar_add(const struct ViewInstruction* view, fp8_t* vec1, fp8_t scal) {
   WITH_ELWISE_VIEW(view, k, vec1[k] += scal);
 }
 
-void int_scalar_add(const struct ViewInstruction view, int* vec1, int scal) {
+void int_scalar_add(const struct ViewInstruction* view, int* vec1, int scal) {
   WITH_ELWISE_VIEW(view, k, vec1[k] += scal);
 }
 
 
-void fp32_scalar_mul(const struct ViewInstruction view, single_float* vec1, single_float scal) {
+void fp32_scalar_mul(const struct ViewInstruction* view, single_float* vec1, single_float scal) {
   WITH_ELWISE_VIEW(view, k, vec1[k] *= scal);
 }
 
-void fp16_scalar_mul(const struct ViewInstruction view, fp16_t* vec1, fp16_t scal) {
+void fp16_scalar_mul(const struct ViewInstruction* view, fp16_t* vec1, fp16_t scal) {
   WITH_ELWISE_VIEW(view, k, vec1[k] *= scal);
 }
 
-void fp8_scalar_mul(const struct ViewInstruction view, fp8_t* vec1, fp8_t scal) {
+void fp8_scalar_mul(const struct ViewInstruction* view, fp8_t* vec1, fp8_t scal) {
   WITH_ELWISE_VIEW(view, k, vec1[k] *= scal);
 }
 
-void int_scalar_mul(const struct ViewInstruction view, int* vec1, int scal) {
+void int_scalar_mul(const struct ViewInstruction* view, int* vec1, int scal) {
   WITH_ELWISE_VIEW(view, k, vec1[k] *= scal);
 }
 
 
-void fp32_fill(const struct ViewInstruction view, single_float* vec1, single_float scal) {
+void fp32_fill(const struct ViewInstruction* view, single_float* vec1, single_float scal) {
   WITH_ELWISE_VIEW(view, k, vec1[k] = scal);
 }
 
-void fp16_fill(const struct ViewInstruction view, fp16_t* vec1, fp16_t scal) {
+void fp16_fill(const struct ViewInstruction* view, fp16_t* vec1, fp16_t scal) {
   WITH_ELWISE_VIEW(view, k, vec1[k] = scal);
 }
 
-void fp8_fill(const struct ViewInstruction view, fp8_t* vec1, fp8_t scal) {
+void fp8_fill(const struct ViewInstruction* view, fp8_t* vec1, fp8_t scal) {
   WITH_ELWISE_VIEW(view, k, vec1[k] = scal);
 }
 
-void int_fill(const struct ViewInstruction view, int* vec1, int scal) {
+void int_fill(const struct ViewInstruction* view, int* vec1, int scal) {
   WITH_ELWISE_VIEW(view, k, vec1[k] = scal);
 }
 
 
-void fp32_sin(const struct ViewInstruction view, single_float* vec) {
+void fp32_sin(const struct ViewInstruction* view, single_float* vec) {
   WITH_ELWISE_VIEW(view, k, vec[k] = sin(vec[k]));
 }
 
-void fp16_sin(const struct ViewInstruction view, fp16_t* vec) {
+void fp16_sin(const struct ViewInstruction* view, fp16_t* vec) {
   WITH_ELWISE_VIEW(view, k, vec[k] = sin(vec[k]));
 }
 
-void fp8_sin(const struct ViewInstruction view, fp8_t* vec) {
+void fp8_sin(const struct ViewInstruction* view, fp8_t* vec) {
   WITH_ELWISE_VIEW(view, k, vec[k] = sin(vec[k]));
 }
 
-void int_sin(const struct ViewInstruction view, int* vec) {
+void int_sin(const struct ViewInstruction* view, int* vec) {
   WITH_ELWISE_VIEW(view, k, vec[k] = sin(vec[k]));
 }
 
 
-void fp32_cos(const struct ViewInstruction view, single_float* vec) {
+void fp32_cos(const struct ViewInstruction* view, single_float* vec) {
   WITH_ELWISE_VIEW(view, k, vec[k] = cos(vec[k]));
 }
 
-void fp16_cos(const struct ViewInstruction view, fp16_t* vec) {
+void fp16_cos(const struct ViewInstruction* view, fp16_t* vec) {
   WITH_ELWISE_VIEW(view, k, vec[k] = cos(vec[k]));
 }
 
-void fp8_cos(const struct ViewInstruction view, fp8_t* vec) {
+void fp8_cos(const struct ViewInstruction* view, fp8_t* vec) {
   WITH_ELWISE_VIEW(view, k, vec[k] = cos(vec[k]));
 }
 
-void int_cos(const struct ViewInstruction view, int* vec) {
+void int_cos(const struct ViewInstruction* view, int* vec) {
   WITH_ELWISE_VIEW(view, k, vec[k] = cos(vec[k]));
 }
 
