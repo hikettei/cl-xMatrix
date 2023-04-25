@@ -103,33 +103,68 @@
 ;;-----------------------------------------------------------
 ;;    20.834 |      0.047 | 2,785,844,512 | 2,379 |            | Total
 
-;;seconds  |     gc     |    consed   |   calls   |  sec/call  |  name  
-;;-------------------------------------------------------------
-;;     0.321 |      0.000 |   8,633,792 |    36,095 |   0.000009 | CL-XMATRIX::FP32-SCALAR-ADD
-;;     0.288 |      0.000 |   8,894,768 |    36,238 |   0.000008 | CL-XMATRIX::FP32-SCALAR-MUL
-;;     0.185 |      0.000 |   7,201,472 |    26,406 |   0.000007 | CL-XMATRIX::FP32-COPY
-;;     0.126 |      0.000 |   2,222,672 |    18,368 |   0.000007 | CL-XMATRIX::FP32-ADD
-;;     0.125 |      0.000 |   3,894,352 |    18,335 |   0.000007 | CL-XMATRIX::FP32-MUL
-;;     0.044 |      0.000 |           0 | 1,667,225 |   0.000000 | CL-XMATRIX::INDEX-P
-;;     0.025 |      0.000 |   2,015,744 |    73,953 |   0.000000 | CL-XMATRIX::COMPUTE-ABSOLUTE-SUBSCRIPTS
-;;     0.025 |      0.000 |           0 |   178,700 |   0.000000 | CL-XMATRIX::VIEW-ENDINDEX
-;;     0.019 |      0.000 |           0 |   147,906 |   0.000000 | CL-XMATRIX::DIMS
-;;     0.019 |      0.000 |   8,843,264 |    73,953 |   0.000000 | CL-XMATRIX::PARSE-BROADCAST-SUBSCRIPTS
-;;     0.018 |      0.000 |           0 |   178,700 |   0.000000 | CL-XMATRIX::VIEW-STARTINDEX
-;;     0.017 |      0.000 |   2,374,096 |       951 |   0.000018 | CL-XMATRIX::ALLOCATE-MAT
-;;     0.012 |      0.000 |           0 |    73,953 |   0.000000 | CL-XMATRIX::SUBSCRIPT-P
-;;     0.012 |      0.000 |           0 |   199,043 |   0.000000 | CL-XMATRIX::TRANSCRIPT-VIEW
-;;     0.010 |      0.000 |   3,901,440 |    89,384 |   0.000000 | CL-XMATRIX::COMPUTE-VISIBLE-AND-BROADCASTED-SHAPE
-;;     0.009 |      0.000 |           0 |   186,436 |   0.000000 | CL-XMATRIX:SHAPE
-;;     0.008 |      0.000 |      65,024 |    73,953 |   0.000000 | CL-XMATRIX::PARSE-AND-REPLACE-TFLIST-SUBSCRIPTS
-;;     0.007 |      0.000 |     943,328 |    17,804 |   0.000000 | CL-XMATRIX:1D-MAT-AREF
-;;     0.004 |      0.000 |           0 |    73,414 |   0.000000 | CL-XMATRIX::DTYPE->LISP-TYPE
-;;     0.002 |      0.000 |     422,816 |     4,504 |   0.000000 | (SETF CL-XMATRIX:1D-MAT-AREF)
-;;     0.001 |      0.000 |           0 |     2,314 |   0.000001 | CL-XMATRIX::GET-STRIDE
-;;     0.001 |      0.000 |      65,536 |       229 |   0.000005 | CL-XMATRIX::FP32-SUB
-;;     0.001 |      0.000 |           0 |       280 |   0.000004 | CL-XMATRIX:FREE-MAT
-;;     0.001 |      0.000 |           0 |     1,007 |   0.000001 | CL-XMATRIX::COERCE-TO-DTYPE
-;;     0.001 |      0.000 |           0 |     1,908 |   0.000000 | CL-XMATRIX::DTYPE-P
+;; compute-absolute-subscripts -> 最適化 ( enormerous cases, large iter)
+;; alloc-mat -> with-cache
+;; 1d-mat-aref -> Lisp定義 -> C with SIMDで定義
+;; index-p -> ??? いらんくね
+;; view周りの関数 -> 命令数を減らす
+
+;;  seconds  |     gc     |    consed   |    calls   |  sec/call  |  name  
+;;--------------------------------------------------------------
+;;     1.101 |      0.000 |  10,521,296 |    436,745 |   0.000003 | CL-XMATRIX::COMPUTE-ABSOLUTE-SUBSCRIPTS
+;;     0.209 |      0.000 |  36,380,928 |    732,045 |   0.000000 | 1D-MAT-AREF
+;;     0.189 |      0.000 |  43,940,016 |      1,481 |   0.000128 | CL-XMATRIX::ALLOCATE-MAT
+;;     0.169 |      0.000 |           0 |  9,345,822 |   0.000000 | CL-XMATRIX::INDEX-P
+;;     0.112 |      0.000 |           0 |  1,644,763 |   0.000000 | CL-XMATRIX::VIEW-ENDINDEX
+;;     0.108 |      0.000 |           0 |  1,644,763 |   0.000000 | CL-XMATRIX::VIEW-STARTINDEX
+;;     0.092 |      0.000 |           0 |  2,945,993 |   0.000000 | CL-XMATRIX::TRANSCRIPT-VIEW
+;;     0.090 |      0.000 |  12,679,696 |    297,306 |   0.000000 | (SETF 1D-MAT-AREF)
+;;     0.065 |      0.000 |           0 |    873,490 |   0.000000 | CL-XMATRIX::DIMS
+;;     0.062 |      0.000 |           0 |  2,615,625 |   0.000000 | SHAPE
+;;     0.059 |      0.000 |           0 |    652,524 |   0.000000 | CL-XMATRIX::FP32-ADD
+;;     0.047 |      0.000 |           0 |    436,745 |   0.000000 | CL-XMATRIX::SUBSCRIPT-P
+;;     0.045 |      0.008 |  55,563,008 |    436,745 |   0.000000 | CL-XMATRIX::PARSE-BROADCAST-SUBSCRIPTS
+;;     0.040 |      0.000 |   1,040,384 |    436,745 |   0.000000 | CL-XMATRIX::PARSE-AND-REPLACE-TFLIST-SUBSCRIPTS
+;;     0.022 |      0.000 |           0 |    435,017 |   0.000000 | CL-XMATRIX::FP32-SCALAR-MUL
+;;     0.022 |      0.000 |           0 |    384,807 |   0.000000 | CL-XMATRIX::FP32-COPY
+;;     0.019 |      0.000 |  25,164,288 |    822,367 |   0.000000 | CL-XMATRIX::COMPUTE-VISIBLE-AND-BROADCASTED-SHAPE
+;;     0.019 |      0.000 |           0 |    217,647 |   0.000000 | CL-XMATRIX::FP32-MUL
+;;     0.017 |      0.000 |           0 |    436,872 |   0.000000 | CL-XMATRIX::DTYPE->LISP-TYPE
+;;     0.001 |      0.000 |           0 |      1,607 |   0.000001 | COERCE-TO-DTYPE
+;;     0.001 |      0.000 |           0 |      3,635 |   0.000000 | CL-XMATRIX::GET-STRIDE
+;;     0.001 |      0.000 |           0 |      2,976 |   0.000000 | CL-XMATRIX::DTYPE-P
+;;     0.001 |      0.000 |           0 |        394 |   0.000002 | FREE-MAT
+;;     0.000 |      0.000 |     227,584 |      3,635 |   0.000000 | CL-XMATRIX::FILL-WITH-D
+;;    0.000 |      0.000 |           0 |        431 |   0.000000 | CL-XMATRIX::FP32-SUB
+;;     0.000 |      0.000 |           0 |         80 |   0.000001 | CL-XMATRIX::FP32-SCALAR-ADD
+;;     0.000 |      0.000 |           0 |        394 |   0.000000 | CL-XMATRIX::MATRIX-FREEP
+;;     0.000 |      0.000 |           0 |        394 |   0.000000 | (SETF CL-XMATRIX::MATRIX-FREEP)
+;;     0.000 |      0.000 |           0 |        331 |   0.000000 | CL-XMATRIX::MATRIX-VEC
+;;     0.000 |      0.000 |           0 |         78 |   0.000000 | CL-XMATRIX::FP32-FILL
+;;     0.000 |      0.000 |           0 |        126 |   0.000000 | CL-XMATRIX::MATRIX-DTYPE
+;;     0.000 |      0.000 |           0 |         17 |   0.000001 | %SUMUP
+;;     0.000 |      0.000 |           0 |        283 |   0.000000 | DTYPE
+;;     0.000 |      0.000 |      32,512 |      1,810 |   0.000000 | CL-XMATRIX::C;;ALC-STRIDES
+;;     0.000 |      0.000 |           0 |         14 |   0.000000 | CL-XMATRIX::RESHAPE
+;;     0.000 |      0.000 |  66,244,304 |    820,872 |   0.000000 | CL-XMATRIX::VIEW-OF-MATRIX
+;;     0.000 |      0.000 |  26,139,648 |    822,367 |   0.000000 | CL-XMATRIX::VISIBLE-SHAPE
+;;     0.000 |      0.000 |           0 |        126 |   0.000000 | CL-XMATRIX::COERCE-TO-MAT-DTYPE
+;;     0.000 |      0.001 |  22,628,352 |    436,745 |   0.000000 | CL-XMATRIX::STRAIGHTEN-UP-SUBSCRIPTS
+;;     0.000 |      0.000 |  13,590,016 |        315 |   0.000000 | CL-XMATRIX::CALL-WITH-VISIBLE-AREA-AND-EXTOPE
+;;     0.000 |      0.000 |           0 |        168 |   0.000000 | %SCALAR-DIV
+;;     0.000 |      0.000 |      65,504 |    218,175 |   0.000000 | %MOVE
+;;     0.000 |      0.000 |     978,368 |        254 |   0.000000 | CONVERT-INTO-LISP-ARRAY
+;;     0.000 |      0.000 |           0 |         78 |   0.000000 | %FILL
+;;     0.000 |      0.028 | 449,686,624 |  1,908,477 |   0.000000 | CALL-WITH-VISIBLE-AREA
+;;     0.000 |      0.000 |           0 |        589 |   0.000000 | %COPY
+;;     0.000 |      0.000 |     145,648 |    652,524 |   0.000000 | %ADDS
+;;     0.000 |      0.000 |           0 |         64 |   0.000000 | %FILTER
+;;     0.000 |      0.000 |           0 |        341 |   0.000000 | %SQUARE
+;;     0.000 |      0.000 |  13,785,088 |    436,745 |   0.000000 | VIEW
+;;     0.000 |      0.000 |      32,512 |      1,481 |   0.000000 | MATRIX
+;;     0.000 |      0.000 |     163,776 |    217,647 |   0.000000 | %MULS
+;;     0.000 |      0.000 |           0 |         63 |   0.000000 | %SATISFIES
+
 (deftype index () `(or fixnum))
 
 (defstruct (MSBucket ;; Bucket
@@ -410,15 +445,13 @@ Input: X [N D]
 Output: Cumsses [N D]"
   (declare (optimize (speed 3))
 	   (type index N D))
-  ;; ここが遅い Cachingする
+  ;; ここが遅い Cachingする -> withi-cache
   ;; 結局 ... Viewのポインタ割り当てとAllocの時間
   ;; speed 3宣言下を検知して最適化の警告を出すべき
   (let ((cumsses    (matrix `(,N ,D) :dtype dtype))
 	(cumX-cols  (matrix `(1 ,D) :dtype dtype))
 	(cumx2-cols (matrix `(1 ,D) :dtype dtype)))
 
-    (setq *cumX-cols-cache* cumx-cols)
-    (setq *cumX2-cols-cache* cumx2-cols)
     ;; cumsses ... each N's Loss
 
     ;; First Step (n=0), (for initializing)
@@ -426,18 +459,20 @@ Output: Cumsses [N D]"
     ;;       0.0000406   (NUMBA)
     ;;       0.00003194  (NUMBA)
     ;;       0.000005    (call-with-visible-area) * 1
+
     (time 
+    (progn
     (with-views ((cxc cumX-cols 0 t)
 		 (cxc2 cumX2-cols 0 t)
 		 (x* x 0 t))
 	(%move x* cxc)
 	(%move x* cxc2)
-	(%square cxc2)))
+	(%square cxc2))
 
     ;; 0.004 sec
     ;; (speed 3), (view matrix 1 2 3) <- Detect it and warning.
     ;; Todo: Make view faster.
-    (time 
+    
     (dotimes (i N)
       (let ((lr (/ (+ 2.0 i))))
 	(with-views ((cs cumsses i t)
@@ -450,7 +485,7 @@ Output: Cumsses [N D]"
 		 (mx    (%muls meanX cumX-cols))
 		 (mx    (%scalar-mul mx -1.0)))
 	    (%move cumX2-cols cs)
-	    (%adds cs mx))))))
+	    (%adds cs mx)))))))
     
     (free-mat cumX-cols) ;; (Heap Corruption...) To Add: GCable CFFI Pointer?
     (free-mat cumx2-cols)
