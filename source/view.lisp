@@ -95,19 +95,19 @@ ViewInstruction is basically created only for 2d-matrix operation, functions mus
   (broadcast1 :int))
 
 (defmethod translate-from-foreign (ptr (type viewinstruction-lisp))
+  "CFFI ptr -> Lisp ViewInstruction"
   (declare (optimize (speed 3)))
   (with-foreign-slots ((offset actualoffset stride2 stride1 offset2 offset1 m n broadcast2 broadcast1) ptr (:struct ViewInstruction))
     (view-instruction offset actualoffset m n stride2 stride1 offset2 offset1 broadcast2 broadcast1)))
 
+;; Inlining Version.
 (defmethod expand-from-foreign (ptr (type c-ViewInstruction))
+  "CFFI prt -> Lisp ViewInstruction"
   `(with-foreign-slots ((offset actualoffset stride2 stride1 offset2 offset1 m n broadcast2 broadcast1) ,ptr (:struct ViewInstruction))
      (view-instruction offset actualoffset m n stride2 stride1 offset2 offset1 broadcast2 broadcast1)))
 
-(defmethod translate-into-foreign-memory (value (type c-viewinstruction) ptr)
-  (transcript-view value ptr))
-
 (defun transcript-view (value ptr)
-  (declare (optimize (speed 3)))
+  (declare (optimize (speed 3) (safety 0)))
   (with-foreign-slots ((offset actualoffset stride2 stride1 offset2 offset1 m n broadcast2 broadcast1) ptr (:struct ViewInstruction))
     (setf offset
 	  (viewinstruction-lisp-offset value)
@@ -130,6 +130,14 @@ ViewInstruction is basically created only for 2d-matrix operation, functions mus
 	  broadcast1
 	  (viewinstruction-lisp-broadcast-1 value))
     ptr))
+
+(defmethod translate-into-foreign-memory (value (type c-viewinstruction) ptr)
+  "Lisp ViewInstruction -> CFFI Pointer"
+  (declare (inline transcript-view))
+  (transcript-view value ptr))
+
+(defmethod expand-into-foreign-memory (value (type c-viewinstruction) ptr)
+  `(transcript-view ,value ,ptr))
 
 (defmacro with-expanding-view-object (view &body body)
   "Note: this macro is depcrecated"
@@ -341,6 +349,9 @@ Legal Subscript -> fixnum/list/t, (external-option ~)"
 
 (defun compute-absolute-subscripts (orig-mat subscripts)
   "Translate view-subscription into the format which is compatiable with orig-mat"
+  (declare (optimize (speed 3) (safety 0))
+	   (type list subscripts)
+	   (type matrix orig-mat))
   (if (matrix-projected-p orig-mat)
       ;; View-Object -> (view) -> View-Object
       (progn
@@ -355,7 +366,7 @@ Legal Subscript -> fixnum/list/t, (external-option ~)"
 		     (typecase view
 		       (index
 			;; M[2][0]
-			(+ view sub))
+			(the index (+ view (the index sub))))
 		       (list
 			(typecase (car view)
 			  (keyword
@@ -367,7 +378,8 @@ Legal Subscript -> fixnum/list/t, (external-option ~)"
 			     (:broadcast 0)))
 			  (index
 			   ;; M[2:4].view(1)
-			   (+ (car view) sub))
+			   (the index
+				(+ (the index (car view)) (the index sub))))
 			  (T
 			   (view-indexing-error "Can't handle with this instruction: ~a" view))))
 		       (t
@@ -396,8 +408,8 @@ Legal Subscript -> fixnum/list/t, (external-option ~)"
 			  (index
 			   ;; M[2:10][1:2] -> M[3:5]
 			   ;; Todo: Detect out of range.
-			   `(,(+ (car view) (car sub))
-			     ,(+ (car view) (second sub))))
+			   `(,(the index (+ (the index (car view)) (the index (car sub))))
+			     ,(the index (+ (the index (car view)) (the index (second sub))))))
 			  (T
 			   (view-indexing-error "Cant handle this subscript: ~a" view))))
 		       (t sub)))
@@ -413,7 +425,7 @@ Legal Subscript -> fixnum/list/t, (external-option ~)"
 			   ;; M[:indices 1 2 3][:indices 0 1]
 			   (case (car view)
 			     (:broadcast
-			      `(:indices ,@(loop for i upfrom 0 below (second sub) collect 0)))
+			      `(:indices ,@(loop for i upfrom 0 below (the index (second sub)) collect 0)))
 			     (:indices
 			      `(:indices ,@(map
 					    'list
@@ -445,14 +457,14 @@ Legal Subscript -> fixnum/list/t, (external-option ~)"
 			  (keyword
 			   ;; M[:indices 0 1 2 3][:broadcast 10]
 			   ;; M[:broadcast 10][:broadcast 10]
-			   (if (and (= (length (car view)) 1)
+			   (if (and (= (length (the list (cdr view))) 1)
 				    (eql (car view) :indices))
 			       ;; Only after [:indices m]
 			       sub
 			       (view-indexing-error "view: ~a and ~a couldn't broadcasted together. The axis to be broadcasted, must be 1. Also, M[:broadcast 1][:broadcast 1] is prohibited. (Make a copy of matrix and try it again plz.)" view sub)))
 			  (index
 			   ;; M[0:10][:broadcast 10]
-			   (if (= (- (second view) (car view)) 1)
+			   (if (= (- (the index (second view)) (the index (car view))) 1)
 			       sub
 			       (view-indexing-error "view: ~a and ~a couldn't broadcasted together. The axis to be broadcasted, must be 1." view sub)))
 			  (T
@@ -636,7 +648,7 @@ Done: Straighten-up subscripts
       Relative-Indexing
      :tflist"
   
-  (declare (optimize (speed 3))
+  (declare (optimize (speed 3) (safety 0))
 	   (type matrix matrix))
 
   (subscript-p subscripts matrix)
@@ -756,7 +768,6 @@ Done: Straighten-up subscripts
       (T
        (error "Can't handle with unknown ext-operation ~a" external-operation))))
   nil)
-
 
 (defun call-with-visible-area (matrix function
 			       &key
@@ -973,6 +984,15 @@ Returns - nil"
       nil)))
 
 ;; Inlining
+(defparameter *resume-compute* nil)
+;; これで遅延評価?
+;; Viewのポインタの割り当てが一番遅いみたい
+;; トップレベルで自作 + 領域をうまく使い回す +
+;; (-> (x y)
+;;     (%move x y)
+;;     (%adds x y))
+;; こういうのはインライン化してコードの量を減らせるように
+;; 並列化, CPU使用率がひくい
 (defmacro -> ())
 
 ;; (disassemble #'matrix-visible-row-major-index)

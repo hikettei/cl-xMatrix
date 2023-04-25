@@ -399,6 +399,7 @@ Memo: Spelling Inconsistency -> threshold and val."
 
 
 ;; Todo Benchmark
+;; 目標 0.0000406
 (defun cumsse-cols (x
 		    &aux
 		      (N (car (shape x)))
@@ -409,6 +410,9 @@ Input: X [N D]
 Output: Cumsses [N D]"
   (declare (optimize (speed 3))
 	   (type index N D))
+  ;; ここが遅い Cachingする
+  ;; 結局 ... Viewのポインタ割り当てとAllocの時間
+  ;; speed 3宣言下を検知して最適化の警告を出すべき
   (let ((cumsses    (matrix `(,N ,D) :dtype dtype))
 	(cumX-cols  (matrix `(1 ,D) :dtype dtype))
 	(cumx2-cols (matrix `(1 ,D) :dtype dtype)))
@@ -416,34 +420,38 @@ Output: Cumsses [N D]"
     (setq *cumX-cols-cache* cumx-cols)
     (setq *cumX2-cols-cache* cumx2-cols)
     ;; cumsses ... each N's Loss
-    ;; Compared to Numba JIT, this is ridiculously slow...
-    ;;
 
     ;; First Step (n=0), (for initializing)
+    ;; ここ, 0.000059 sec 100.00% CPU.
+    ;;       0.0000406   (NUMBA)
+    ;;       0.00003194  (NUMBA)
+    ;;       0.000005    (call-with-visible-area) * 1
+    (time 
     (with-views ((cxc cumX-cols 0 t)
 		 (cxc2 cumX2-cols 0 t)
 		 (x* x 0 t))
 	(%move x* cxc)
 	(%move x* cxc2)
-	(%square cxc2))
+	(%square cxc2)))
 
+    ;; 0.004 sec
+    ;; (speed 3), (view matrix 1 2 3) <- Detect it and warning.
+    ;; Todo: Make view faster.
+    (time 
     (dotimes (i N)
       (let ((lr (/ (+ 2.0 i))))
-	(dotimes (j D)
-	  (with-views ((cs cumsses i j)
-		       (cxc cumX-cols 0 j)
-		       (cxc2 cumX2-cols 0 j)
-		       (x* x i j))
-	    (%scalar-add cxc (%sumup x*))
-	    (%scalar-add cxc2
-			 (locally (declare (optimize (speed 1)))
-			   (expt (%sumup x*) 2)))
+	(with-views ((cs cumsses i t)
+		     (x* x i t))
+	  
+	  (%adds cumX-cols x*)
+	  (%adds cumX2-cols x*)
 
-	    (let* ((meanX (%scalar-mul cxc lr))
-		   (mx    (%muls meanX cxc)) ;; Amadur
-		   (mx    (%scalar-mul mx -1.0)))
-	      (%move cxc2 cs) ;; cs = cxc2
-	      (%adds cs mx))))))
+	  (let* ((meanX (%scalar-mul cumX-cols lr))
+		 (mx    (%muls meanX cumX-cols))
+		 (mx    (%scalar-mul mx -1.0)))
+	    (%move cumX2-cols cs)
+	    (%adds cs mx))))))
+    
     (free-mat cumX-cols) ;; (Heap Corruption...) To Add: GCable CFFI Pointer?
     (free-mat cumx2-cols)
     cumsses))

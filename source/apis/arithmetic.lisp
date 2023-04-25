@@ -56,7 +56,8 @@ SideEffects:
 Return:
   - modified matrix."
   (declare (optimize (speed 3))
-	   (type matrix matrix matrix1))
+	   (type matrix matrix matrix1)
+	   (inline call-with-visible-area))
 
   (assert-dtype matrix matrix1)
   (assure-dimensions matrix matrix1)

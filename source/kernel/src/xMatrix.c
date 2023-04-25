@@ -191,14 +191,11 @@ DEFINE_ABS_ELEMENTWISE(int_abs_scalarwise,  int);
 void fp32_abs(const struct ViewInstruction view, single_float* vec) {
   __m256 sign_mask = _mm256_set1_ps(-0.0f);
   WITH_VIEW_ITER(view, i, FP32_SIMD_STEP,
-		 fp32_abs_simd(vec, sign_mask, i),
-		 fp32_abs_scalarwise(vec, i));
+  	 fp32_abs_simd(vec, sign_mask, i),
+  		 fp32_abs_scalarwise(vec, i));
 }
 
-
-
-
-// f(x) Depcrecated
+// f(x)
 #define WITH_ELWISE_VIEW(view, index, element_wise_operation)		\
   do {									\
     for (int mi = 0; mi < view.m; mi++) {				\
