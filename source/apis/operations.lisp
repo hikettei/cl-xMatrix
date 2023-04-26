@@ -68,6 +68,18 @@
 	 (setf (1d-mat-aref matrix i) (funcall function (1d-mat-aref matrix i))))))
   matrix)
 
+(defun %index (matrix function)
+  ""
+  (declare (optimize (speed 3) (safety 0))
+	   (type matrix matrix)
+	   (type function function))
+  (call-with-visible-area
+   matrix
+   #'(lambda (view)
+       (with-view-object (i view)
+	 (setf (1d-mat-aref matrix i) (funcall function i)))))
+  matrix)
+
 (defun %satisfies (matrix function)
   ""
   (declare (optimize (speed 3) (safety 0))

@@ -106,6 +106,8 @@ ViewInstruction is basically created only for 2d-matrix operation, functions mus
   `(with-foreign-slots ((offset actualoffset stride2 stride1 offset2 offset1 m n broadcast2 broadcast1) ,ptr (:struct ViewInstruction))
      (view-instruction offset actualoffset m n stride2 stride1 offset2 offset1 broadcast2 broadcast1)))
 
+#+sbcl(declaim (ftype (function (ViewInstruction-Lisp sb-sys:system-area-pointer) sb-sys:system-area-pointer) transcript-view))
+(declaim (inline transcript-view))
 (defun transcript-view (value ptr)
   (declare (optimize (speed 3) (safety 0)))
   (with-foreign-slots ((offset actualoffset stride2 stride1 offset2 offset1 m n broadcast2 broadcast1) ptr (:struct ViewInstruction))
@@ -130,6 +132,67 @@ ViewInstruction is basically created only for 2d-matrix operation, functions mus
 	  broadcast1
 	  (viewinstruction-lisp-broadcast-1 value))
     ptr))
+
+(defun maybe-overwrite-view (ptr
+			     offset
+			     actual-offset
+			     m
+			     n
+			     stride2
+			     stride1
+			     offset2
+			     offset1
+			     broadcast2
+			     broadcast1)
+  "Overwrites ptr with view-instruction, otherwise creates ViewInstruction-Lisp"
+  (declare #+sbcl(type (or null sb-sys:system-area-pointer) ptr)
+	   (type fixnum
+		 offset
+		 actual-offset
+		 stride2
+		 stride1
+		 offset2
+		 offset1
+		 m
+		 n
+		 broadcast2
+		 broadcast1)
+	   (optimize (speed 3) (safety 0))
+	   (inline view-instruction))
+  (if (null ptr)
+      (view-instruction
+       offset
+       actual-offset
+       m
+       n
+       stride2
+       stride1
+       offset2
+       offset1
+       broadcast2
+       broadcast1)
+      (progn
+	(setf (foreign-slot-value ptr '(:struct ViewInstruction) 'offset)
+	      offset
+	      (foreign-slot-value ptr '(:struct ViewInstruction) 'actualoffset)
+	      actual-offset
+	      (foreign-slot-value ptr '(:struct ViewInstruction) 'stride2)
+	      stride2
+	      (foreign-slot-value ptr '(:struct ViewInstruction) 'stride1)
+	      stride1
+	      (foreign-slot-value ptr '(:struct ViewInstruction) 'offset2)
+	      offset2
+	      (foreign-slot-value ptr '(:struct ViewInstruction) 'offset1)
+	      offset1
+	      (foreign-slot-value ptr '(:struct ViewInstruction) 'm)
+	      m
+	      (foreign-slot-value ptr '(:struct ViewInstruction) 'n)
+	      n
+	      (foreign-slot-value ptr '(:struct ViewInstruction) 'broadcast2)
+	      broadcast2
+	      (foreign-slot-value ptr '(:struct ViewInstruction) 'broadcast1)
+	      broadcast1)
+	ptr)))
 
 (defmethod translate-into-foreign-memory (value (type c-viewinstruction) ptr)
   "Lisp ViewInstruction -> CFFI Pointer"
@@ -347,6 +410,7 @@ Legal Subscript -> fixnum/list/t, (external-option ~)"
 	     (write-string r str))))
 	t)))
 
+;; Slow
 (defun compute-absolute-subscripts (orig-mat subscripts)
   "Translate view-subscription into the format which is compatiable with orig-mat"
   (declare (optimize (speed 3) (safety 0))
@@ -771,6 +835,7 @@ Done: Straighten-up subscripts
        (error "Can't handle with unknown ext-operation ~a" external-operation))))
   nil)
 
+;; f(args) -> f(offsets, args)
 (defun call-with-visible-area (matrix function
 			       &key
 				 (mat-operated-with nil)
@@ -782,20 +847,25 @@ function - #'(lambda (lisp-structure) body)
 
 matrix shouldn't possess broadcasted axis while mat-operated-with is ok.
 
-Returns - nil"
+Returns - nil
+
+Constraints: matrix.dims == mat-operated-with.dims, matrix.dims >= 2."
   (declare (optimize (speed 3) (safety 0))
 	   (type matrix matrix)
 	   (type function function)
 	   (type fixnum first-offset)
-	   (type keyword direction))
+	   (type keyword direction)
+	   (inline transcript-view))
+
+  ;; TODO: Assert matrix.dims >= 2 (otherwise reshape and recursive it)
 
   (unless (or (eql direction :lisp)
 	      (eql direction :foreign))
     (error "Unknwon direction ~a. Available directions: :lisp :foreign" direction))
   
   ;; Assert matrix doesn't have broadcast
-
-  ;; check if matrix's subscript include :indices
+  ;; check if matrix's subscript include :indices (not :broadcast)
+  
   (when (let ((op (matrix-external-operation matrix)))
 	  (and
 	   op
@@ -803,6 +873,8 @@ Returns - nil"
     (let ((mat (if (and mat-operated-with
 			(matrix-external-operation mat-operated-with))
 		   (progn
+
+		     ;; Under (speed 3) declartion
 		     (format t "Warning: call-with-visible-area copied mat-operated-with~%")
 		     (%copy mat-operated-with))
 		   mat-operated-with)))
@@ -812,8 +884,10 @@ Returns - nil"
 	 function
 	 :mat-operated-with mat
 	 :direction direction))))
+
   
-  (let ((dims (matrix-shape matrix))
+  (let ((number-of-dims (dims matrix))
+	(dims (matrix-shape matrix))
 	(views (matrix-view matrix))
 	(strides (matrix-strides matrix))
 	(broadcasts (matrix-broadcasts matrix))
@@ -821,12 +895,95 @@ Returns - nil"
 			 (matrix-broadcasts mat-operated-with)
 			 nil))
 	(view-ptr1 (if (eql direction :foreign)
-		       (foreign-alloc '(:struct ViewInstruction))))
+		       (foreign-alloc '(:struct ViewInstruction))
+		       (view-instruction 0 0 0 0 0 0 0 0 0 0)))
 	(view-ptr2 (if (and (not (null mat-operated-with))
 			    (eql direction :foreign))
-		       (foreign-alloc '(:struct ViewInstruction)))))
+		       (foreign-alloc '(:struct ViewInstruction))
+		       (unless (null mat-operated-with)
+			 (view-instruction 0 0 0 0 0 0 0 0 0 0)))))
 
-    (labels ((explore-batch (total-offset  ;; Offsets considered broadcast
+    ;; To Reduce MOV
+    ;; offset actual-offset stride2 stride1 offset2 offset1 broadcast2 broadcast1 m n
+    ;; offset actual-offset, offset2, offset1, <- dynamically compute
+    ;; stride, offsets, bc, m n <- Already known
+
+    ;; cache view-instruction?
+    ;; Precompute known params: stride2 stride1 offset2 offset1 broadcast2 broadcast1 m n.
+    (labels ((initialize-views (view-ptr matrix)
+	       (let* ((m-axis (- number-of-dims 2))
+		      (n-axis (- number-of-dims 1))
+		      (stride2 (nth m-axis (matrix-strides matrix)))
+		      (stride1 (nth n-axis (matrix-strides matrix)))
+		      (m       (nth m-axis (shape matrix)))
+		      (n       (nth n-axis (shape matrix)))
+		      (bc2     (nth m-axis (matrix-broadcasts matrix)))
+		      (bc1     (nth n-axis (matrix-broadcasts matrix)))
+		      (offset2 (view-startindex (nth m-axis (matrix-view matrix)) 0))
+		      (offset1 (view-startindex (nth n-axis (matrix-view matrix)) 0)))
+		 ;; Match up Broadcasted dims. (e.g.: visible=(10, 10) -> Real: (1, 10))
+		 (if bc2 (setq m bc2))
+		 (if bc1 (setq n bc1))
+
+		 (if (eql direction :lisp)
+		     (setf (viewinstruction-lisp-stride2 view-ptr)
+			   stride2
+			   (viewinstruction-lisp-stride1 view-ptr)
+			   stride1
+			   (viewinstruction-lisp-m view-ptr)
+			   m
+			   (viewinstruction-lisp-n view-ptr)
+			   n
+			   (viewinstruction-lisp-offset2 view-ptr)
+			   offset2
+			   (viewinstruction-lisp-offset1 view-ptr)
+			   offset1
+			   (viewinstruction-lisp-broadcast-2 view-ptr)
+			   (if bc2
+			       0
+			       1)
+			   (viewinstruction-lisp-broadcast-1 view-ptr)
+			   (if bc1
+			       0
+			       1))
+		     (setf (foreign-slot-value view-ptr `(:struct ViewInstruction) 'stride2)
+			   stride2
+			   (foreign-slot-value view-ptr `(:struct ViewInstruction) 'stride1)
+			   stride1
+			   (foreign-slot-value view-ptr `(:struct ViewInstruction) 'm)
+			   m
+			   (foreign-slot-value view-ptr `(:struct ViewInstruction) 'n)
+			   n
+			   (foreign-slot-value view-ptr `(:struct ViewInstruction) 'offset2)
+			   offset2
+			   (foreign-slot-value view-ptr `(:struct ViewInstruction) 'offset1)
+			   offset1
+			   (foreign-slot-value view-ptr `(:struct ViewInstruction) 'broadcast2)
+			   (if bc2
+			       0
+			       1)
+			   (foreign-slot-value view-ptr `(:struct ViewInstruction) 'broadcast1)
+			   (if bc1
+			       0
+			       1))))))
+      ;; Lisp -> 600 cycles
+      ;; CFFI -> 1,006 cycles.
+
+      (initialize-views view-ptr1 matrix)
+      (unless (null mat-operated-with)
+	(initialize-views view-ptr2 mat-operated-with)))
+
+    (labels ((inject-offsets (view-ptr offset actual-offset)
+	       (if (eql direction :lisp)
+		   (setf (viewinstruction-lisp-offset view-ptr)
+			 offset
+			 (viewinstruction-lisp-actual-offset view-ptr)
+			 actual-offset)
+		   (setf (foreign-slot-value view-ptr `(:struct ViewInstruction) 'offset)
+			 offset
+			 (foreign-slot-value view-ptr `(:struct ViewInstruction) 'actualoffset)
+			 actual-offset)))
+	     (explore-batch (total-offset  ;; Offsets considered broadcast
 			     actual-offset ;; No broadcast (for output)
 			     dim-indicator
 			     rest-dims)
@@ -887,108 +1044,19 @@ Returns - nil"
 				 ;; ActualOffsets incrementing forcibly.
 				 (incf actual-offsets stride))))))
 		 ((= rest-dims 2)
-		  (let* ((dim (nth dim-indicator dims))
-			 (1+dim (nth (1+ dim-indicator) dims))
-			 (view-point (nth dim-indicator views))
-			 (1+view-point (nth (1+ dim-indicator) views))
-			 (offset2 (view-startindex view-point 0))
-			 (offset1 (view-startindex 1+view-point 1+dim))
-			 (offset2e (view-endindex view-point dim))
-			 (offset1e (view-endindex 1+view-point 1+dim))
-			 (repeat2 (if broadcasts
-				      (nth dim-indicator broadcasts)
-				      nil))
-			 (repeat1 (if broadcasts
-				      (nth (1+ dim-indicator) broadcasts)
-				      nil))
-			 (stride2 (nth dim-indicator strides))
-			 (stride1 (nth (1+ dim-indicator) strides))
-			 (shape2 (the index (- offset2e offset2)))
-			 (shape1 (the index (- offset1e offset1))))
+		  ;; Instruction1 -> total-offset actual-offset
+		  ;; Instruction2 -> actual-offset, actual-offset
 
-		    (if repeat2
-			(setq shape2 repeat2))
-		    (if repeat1
-			(setq shape1 repeat1))
+		  (inject-offsets view-ptr1 total-offset actual-offset)
+		  (unless (null mat-operated-with)
+		    (inject-offsets view-ptr2 actual-offset actual-offset))
 
-		    (let ((instruction (view-instruction
-					total-offset
-					actual-offset
-					shape2
-					shape1
-					stride2
-					stride1
-					offset2
-					offset1
-					(if repeat2
-					    0
-					    1)
-					(if repeat1
-					    0
-					    1))))
-		      ;; (when (= 1+dim 1)
-		      ;;       transpose ~~~)
-		      ;; (M 1) -> (1 M) (M 1 fails to SIMD)
-
-		      (if mat-operated-with
-			  (let* ((t-views (matrix-view mat-operated-with))
-				 (t-dims (matrix-shape mat-operated-with))
-				 (tstrides (matrix-strides mat-operated-with))
-				 (t-view-point (nth dim-indicator t-views))
-				 (t-view-point+1 (nth (1+ dim-indicator) t-views))
-				 (t-dim (nth dim-indicator t-dims))
-				 (t-dim+1 (nth (1+ dim-indicator) t-dims))
-				 
-				 (t-offset2 (view-startindex t-view-point 0))
-				 (t-offset1 (view-startindex t-view-point+1 t-dim+1))
-				 (t-offset2e (view-endindex t-view-point t-dim))
-				 (t-offset1e (view-endindex t-view-point+1 t-dim+1))
-				 (trepeat2 (if broadcasts1
-					       (nth dim-indicator broadcasts1)
-					       nil))
-				 (trepeat1 (if broadcasts1 
-					       (nth (1+ dim-indicator) broadcasts1)
-					       nil))
-				 (tstrides2 (nth dim-indicator tstrides))
-				 (tstrides1 (nth (1+ dim-indicator) tstrides))
-				 (tshape2 (the index (- t-offset2e t-offset2)))
-				 (tshape1 (the index (- t-offset1e t-offset1))))
-			    
-			    (if trepeat2
-				(setq tshape2 trepeat2))
-			    (if trepeat1
-				(setq tshape1 trepeat1))
-
-			    (let ((instruction1
-				    (view-instruction
-				     actual-offset
-				     actual-offset
-				     tshape2
-				     tshape1
-				     tstrides2
-				     tstrides1
-				     t-offset2
-				     t-offset1
-				     (if trepeat2
-					 0
-					 1)
-				     (if trepeat1
-					 0
-					 1))))
-			      (when (eql direction :foreign)
-				(transcript-view instruction view-ptr1)
-				(transcript-view instruction1 view-ptr2))
-			      (if (eql direction :foreign)
-				  (funcall function view-ptr1 view-ptr2)
-				  (funcall function instruction instruction1))))
-			  (progn
-			    (when (eql direction :foreign)
-			      (transcript-view instruction view-ptr1))
-			    (if (eql direction :foreign)
-				(funcall function view-ptr1)
-				(funcall function instruction)))))))
+		  (if (null mat-operated-with)
+		      (funcall function view-ptr1)
+		      (funcall function view-ptr1 view-ptr2)))
 		 ((= rest-dims 1)
 		  ;; Reshaping `(M) into `(1 M) and regard it as 2d MAT
+		  (error "Not Supported (TODO)")
 		  (setq dims `(1 ,@dims))
 		  (setq views `(t ,@views))
 		  (setq strides (calc-strides dims))
@@ -999,8 +1067,7 @@ Returns - nil"
 		   2))
 		 (T (error "Scalar value fell through.")))
 	       nil))
-
-      ;; getting ugly ><
+      
       (explore-batch
        0
        first-offset

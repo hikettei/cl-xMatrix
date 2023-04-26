@@ -41,6 +41,8 @@
   `(and keyword
 	(satisfies dtype-p)))
 
+(declaim (ftype (function (fixnum) boolean) index-p)
+	 (inline index-p))
 (defun index-p (x)
   (declare (type fixnum x)
 	   (optimize (speed 3) (safety 0)))
@@ -50,6 +52,7 @@
   "x >= 0"
   `(and (or fixnum)
 	(satisfies index-p)))
+
 
 (eval-when (:compile-toplevel :execute :load-toplevel)
   (macrolet ((define-allocate-cfun (fname dtype)
@@ -228,6 +231,8 @@
 ;; Accessors
 
 (declaim (ftype (function (matrix) index) dims))
+(declaim (ftype (function (matrix) list) shape))
+(declaim (inline dims shape))
 (defun dims (matrix)
   "Returns the length of matrix's dimensions."
   (declare (type matrix matrix)
@@ -235,6 +240,8 @@
   (length (the list (matrix-visible-shape matrix))))
 
 (defun shape (matrix)
+  (declare (optimize (speed 3))
+	   (type matrix matrix))
   (matrix-visible-shape matrix))
 
 (defun dtype (matrix)

@@ -93,6 +93,7 @@
   ;; Compares
   (:export
    #:%filter
+   #:%index
    #:%satisfies
    #:%compare
    #:%all?

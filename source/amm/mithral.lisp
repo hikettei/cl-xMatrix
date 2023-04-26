@@ -433,8 +433,30 @@ Memo: Spelling Inconsistency -> threshold and val."
     x))
 
 
+;;measuring PROFILE overhead..done
+;;  seconds  |     gc     |   consed   |  calls  |  sec/call  |  name  
+;;----------------------------------------------------------
+;;     0.324 |      0.238 | 11,014,800 |      28 |   0.011564 | CL-XMATRIX::ALLOCATE-MAT
+;;     0.013 |      0.000 |  1,603,808 |   6,314 |   0.000002 | CL-XMATRIX:CALL-WITH-VISIBLE-AREA
+;;     0.003 |      0.000 |          0 |  23,807 |   0.000000 | CL-XMATRIX::INDEX-P
+;;     0.002 |      0.000 |          0 |  10,808 |   0.000000 | CL-XMATRIX::TRANSCRIPT-VIEW
+;;     0.001 |      0.000 |          0 |  10,871 |   0.000000 | CL-XMATRIX:SHAPE
+;;     0.001 |      0.000 |          0 |   3,654 |   0.000000 | CL-XMATRIX::DIMS
+;;     0.001 |      0.000 |          0 |   3,710 |   0.000000 | CL-XMATRIX::VIEW-STARTINDEX
+;;     0.001 |      0.000 |          0 |   3,710 |   0.000000 | CL-XMATRIX::VIEW-ENDINDEX
+;;     0.001 |      0.000 |          0 |   1,827 |   0.000000 | CL-XMATRIX::SUBSCRIPT-P
+;;     0.001 |      0.000 |          0 |   2,688 |   0.000000 | CL-XMATRIX::FP32-ADD
+;;     0.001 |      0.000 |    357,632 |   1,827 |   0.000000 | CL-XMATRIX::PARSE-BROADCAST-SUBSCRIPTS
+;;     0.000 |      0.000 |          0 |   1,827 |   0.000000 | CL-XMATRIX::PARSE-AND-REPLACE-TFLIST-SUBSCRIPTS
+;;     0.000 |      0.000 |          0 |   1,792 |   0.000000 | CL-XMATRIX::FP32-SCALAR-MUL
+
 ;; Todo Benchmark
 ;; 目標 0.0000406
+
+;;0.025 |      0.000 | 3,998,976 |     15 |   0.001677 | ALLOCATE-MAT
+;;0.003 |      0.000 | 1,113,488 |  4,495 |   0.000001 | CALL-WITH-VISIBLE-AREA
+;; 0.000 |      0.000 |   195,072 |  1,295 |   0.000000 | PARSE-BROADCAST-SUBSCRIPTS
+
 (defun cumsse-cols (x
 		    &aux
 		      (N (car (shape x)))
@@ -443,14 +465,14 @@ Memo: Spelling Inconsistency -> threshold and val."
   "Computes SSE (Sum of Square Errors) column-wise.
 Input: X [N D]
 Output: Cumsses [N D]"
+  ;; with-static 形状が実行前に決まっていたら、それ以降はUnrollして展開
+  ;; Achieved by ->
   (declare (optimize (speed 3))
 	   (type index N D))
-  ;; ここが遅い Cachingする -> withi-cache
-  ;; 結局 ... Viewのポインタ割り当てとAllocの時間
-  ;; speed 3宣言下を検知して最適化の警告を出すべき
+  ;; To reduce alloc-mat: -> with-cache
   (let ((cumsses    (matrix `(,N ,D) :dtype dtype))
-	(cumX-cols  (matrix `(1 ,D) :dtype dtype))
-	(cumx2-cols (matrix `(1 ,D) :dtype dtype)))
+	(cumX-cols  (matrix `(1 ,D)  :dtype dtype))
+	(cumx2-cols (matrix `(1 ,D)  :dtype dtype)))
 
     ;; cumsses ... each N's Loss
 
@@ -460,19 +482,22 @@ Output: Cumsses [N D]"
     ;;       0.00003194  (NUMBA)
     ;;       0.000005    (call-with-visible-area) * 1
 
-    (time 
-    (progn
+    ;; 0.000013~0.000009 sec
+    
+    (time (progn
     (with-views ((cxc cumX-cols 0 t)
 		 (cxc2 cumX2-cols 0 t)
 		 (x* x 0 t))
-	(%move x* cxc)
-	(%move x* cxc2)
-	(%square cxc2))
+      (%move x* cxc)
+      (%move x* cxc2)
+      (%square cxc2))
 
     ;; 0.004 sec
     ;; (speed 3), (view matrix 1 2 3) <- Detect it and warning.
     ;; Todo: Make view faster.
-    
+
+    ;; f(cumsses[i, :], x[i, :])
+
     (dotimes (i N)
       (let ((lr (/ (+ 2.0 i))))
 	(with-views ((cs cumsses i t)
