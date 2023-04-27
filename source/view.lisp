@@ -343,6 +343,8 @@ Legal Subscript -> fixnum/list/t, (external-option ~)"
 	     (write-string r str))))
 	t)))
 
+(declaim (ftype (function (fixnum subscript-t fixnum) list) find-subscript-error)
+	 (inline find-subscript-error))
 (defun find-subscript-error (i sub dim &aux (reports nil))
   "Finding view-indexing-error in advance.
 Args:
@@ -351,7 +353,9 @@ Args:
 - dim   shape[axis]
 
 Return: List (Consisted of strings which records error log)"
-  (declare (optimize (speed 3) (safety 0)))
+  (declare (optimize (speed 3) (safety 0))
+	   (type fixnum i dim)
+	   (type subscript-t sub))
   (typecase sub
     (fixnum
      (if (< (the fixnum sub) (the fixnum dim))
@@ -767,6 +771,7 @@ Return: List (Consisted of strings which records error log)"
 	   (view-indexing-error ":tflist got invaild argument: ~a. :tflist can be described by list or matrix" (type-of (second tflist-args))))))
       subscripts))
 
+(declaim (ftype (function (fixnum subscript-t matrix fixnum) (values subscript-t subscript-t)) parse-broadcast))
 (defun parse-broadcast (orig-shape subscript matrix axis)
   "If subscript is broadcast. Returns the broadcasted shape and new-subscript. do nothing otherwise."
   (declare (optimize (speed 3) (safety 0)) 
@@ -852,6 +857,8 @@ Example:
 
 
 
+(declaim (ftype (function (fixnum subscript-t) subscript-t) replace-tflist)
+	 (inline replace-tflist))
 (defun replace-tflist (orig-shape subscript)
   "Replace :tflist into :indices if exists, otherwise do nothing."
   (declare (optimize (speed 3) (safety 0))
@@ -885,6 +892,9 @@ Example:
 	 (view-indexing-error "The type ~a cannot be used as :tflist's arguments." (type-of (second subscript)))))
       subscript))
 
+(declaim (ftype (function (subscript-t) (values subscript-t subscript-t))
+		parse-external-operation)
+	 (inline parse-external-operation))
 (defun parse-external-operation (subscript)
   "Parses :indices if exists otherwise do nothing."
   (declare (type subscript-t subscript)
@@ -894,6 +904,7 @@ Example:
       (values subscript subscript)
       (values subscript nil)))
 
+(declaim (ftype (function (fixnum subscript-t) subscript-t)))
 (defun parse-relative-position (orig-shape sub)
   "Parses relatie-position like: -1, -2..."
   (declare (optimize (speed 3) (safety 0))
@@ -910,30 +921,6 @@ Example:
     (list
      (map 'list #'(lambda (x) (parse-relative-position orig-shape x)) sub))
     (T sub)))
-
-;; n = 12800
-;; view ... 0.002 sec
-;; Straighten-up-subscripts ... 0.00030
-;; parse-broadcast-subscripts ... 0.0006
-;; compute-absolute-subscripts ... 0.0001
-
-;; view-of-matrix -> make-matrix
-;; Optim above.
-;; matomete yaru 
-
-;; 事前にOrig-mat <-> Viewの距離を求めておく
-;; 仮に個々の計算が0秒だったらNumbaと変わらんのになぁ〜
-;; Fixme: x = A[10, 3][:indices 1 2 3, t] + B[1, 3][:indices 1 2 3, t]
-
-;; F(mat, sub) -> broadcasts, intercepted-view, new-visible-shape
-
-;; let gensym (mvind ... nest ... (list hogehoge) (list hogehoge)
-
-;; (time (dotimes (i 12800) (unroll-maplist (i 3) (values (sin i) (sin i) (sin i) (sin i) (sin i)))))
-;;Evaluation took:
-;;  0.000 seconds of real time
-;;  0.000010 seconds of total run time (0.000009 user, 0.000001 system)
-;;  100.00% CPU
 
 (defmacro unroll-maplist ((var iter-num) &body body)
   (labels ((mkstr (&rest args)
@@ -966,6 +953,8 @@ Example:
 		   ,(retain-objects 'error-str iter-num)))))
     (step-iter (1- iter-num))))
 
+(declaim (inline compute-visible-size)
+	 (ftype (function (subscript-t subscript-t) fixnum) compute-visible-size))
 (defun compute-visible-size (shape view)
   (declare (optimize (speed 3) (safety 0)))
   (the fixnum
@@ -979,7 +968,8 @@ Example:
 			   (or fixnum list null t)
 			   boolean)
 			  (values t t t t t t))
-		parse-subscript-by-axis))
+		parse-subscript-by-axis)
+	 (inline parse-subscript-by-axis))
 (defun parse-subscript-by-axis (axis
 				matrix
 				orig-shape
@@ -1032,31 +1022,20 @@ Example:
 		 axis)
 	     (find-subscript-error axis subscript orig-shape)))))))
 
-;; #'subscript-parser-by-axisで軸ごとに処理
-;; Unroll
-;; 
-;; (time (dotimes (i 12800) (list (sin i) (sin (1+ i)) (cos (+ 2 i)))))
-;; (time (dotimes (i 12800)
-;;		    (loop for k fixnum upfrom 0 below 2
-;;			  collect (sin i))))
-;; (time (dotimes (i 12800) (unroll-iter (i 2) (sin i)))) <- faster
-
-;; The latter is much slower.
-
-;; Inlining
+;; Optimize: The case when subscript contains :indices/:tflist
 (defun parse-subscripts (matrix
-			     subscripts
-			     &aux
-			       (orig-shape (shape matrix))
-			       (orig-view  (matrix-view  matrix))
-			       (dimensions (dims matrix))
-			       (subscript-len (length subscripts)))
+			 subscripts
+			 &aux
+			   (orig-shape (shape matrix))
+			   (orig-view  (matrix-view  matrix))
+			   (dimensions (dims matrix))
+			   (subscript-len (length subscripts)))
   (declare (optimize (speed 3) (safety 0))
 	   (type matrix matrix)
 	   (type list subscripts orig-shape orig-view)
 	   (type fixnum dimensions))
   ;; Assertion: (100% as long as created by matrix) (length orig-shape) == (length orig-view)
-
+  
   (unless (>= dimensions subscript-len)
     (view-indexing-error
      "The length of subscripts is too large for the given matrix.~%Matrix:     ~a~%Subscripts: ~a"
