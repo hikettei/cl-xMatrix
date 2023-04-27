@@ -235,7 +235,8 @@
   (broadcasts broadcasts :type list)
   (strides strides :type cons)
   (view-foreign-ptr nil) ;; Todo: Free by free-mat.
-  (view-lisp-ptr nil))
+  (view-lisp-ptr nil)
+  (offset 0 :type fixnum))
 
 
 ;; Accessors
@@ -257,10 +258,12 @@
   (matrix-dtype matrix))
 
 
+(declaim (inline initialize-views inject-offsets))
 (defun initialize-views (view-ptr matrix direction
 			 &aux (number-of-dims (dims matrix)))
   ""
-  (declare (optimize (speed 3)))
+  (declare (optimize (speed 3) (safety 0))
+	   (type t view-ptr))
   (let* ((m-axis (- number-of-dims 2))
 	 (n-axis (- number-of-dims 1))
 	 (stride2 (nth m-axis (matrix-strides matrix)))
@@ -320,7 +323,7 @@
 
 (defun inject-offsets (view-ptr direction offset actual-offset)
   ""
-  (declare (optimize (speed 3)))
+  (declare (optimize (speed 3) (safety 0)))
   (if (eql direction :lisp)
       (setf (viewinstruction-lisp-offset view-ptr)
 	    offset

@@ -83,6 +83,8 @@ ViewInstruction is basically created only for 2d-matrix operation, functions mus
 
 (declaim (inline view-instruction))
 
+;; offset, actualoffset -> Determined when call-with-visible-area is called.
+;; others -> Determined when view/matrix is created.
 (defcstruct (ViewInstruction :class c-viewinstruction)
   (offset :int)
   (actualoffset :int)
@@ -723,8 +725,9 @@ Done: Straighten-up subscripts
 
   (multiple-value-bind (broadcasts subscripts) (parse-broadcast-subscripts matrix subscripts)
     (declare (type list broadcasts subscripts))
-    (let* ((subscripts (parse-and-replace-tflist-subscripts matrix subscripts))
-	   (subscripts (compute-absolute-subscripts matrix subscripts)))
+    
+    (let* ((subscripts (parse-and-replace-tflist-subscripts matrix subscripts)) ;; :tflist -> :indices
+	   (subscripts (compute-absolute-subscripts matrix subscripts))) ;; (View -> View) -> (Matrix -> View)
       (declare (type list subscripts))
 
       (labels ((external-operations-p (sub)
@@ -752,26 +755,37 @@ Done: Straighten-up subscripts
 			external-operation-dim)
 		  view-to-return))
 	      ;; Otherwise creates view-object normally.
-	      (apply #'view-of-matrix matrix broadcasts subscripts)))))))
+	      (let ((view-to-return (apply #'view-of-matrix matrix broadcasts subscripts)))
+		(if *unsafe-compute-view*
+		    (prog1
+			view-to-return
+		      )
+		    view-to-return))))))))
 
 
 (defmacro with-view ((var matrix &rest subscripts)
 		     &body body
 		     &aux (idx (intern (symbol-name (gensym "Cache")) "KEYWORD")))
-  "Caches matrix"
-  ;; declare type
+  "Creates a view object (in term of performance, using this notation will produce benefits because ...
+
+Tips
+
+(debug 0) will aaa ... (TODO: Write Docs)"
   `(with-internal-system-caching (,var ,idx)
        (:if-exists ((if (equal (matrix-vec ,var) ;; both view belongs to the same matrix?
 			       (matrix-vec ,matrix))
-			;; TODO: modify-view-of-matrix
-			;; TODO: Recomputable?
-			;; KEEP: modify + recomputable-p <<<< view-of-matrix
-			;; recompute-p <- KEEP
-			;; TODO FIX HERE.
+			;; To Add: When safety=0, make it t.
+			;; or debug=0
+			;; Just Adding offsets to ,var
 
-			(if (matrix-projected-p ,matrix)
-			    (view ,matrix ,@subscripts)
-			    (view ,matrix ,@subscripts))
+			;; (:iter x) Specifying, only when fixnum list
+			;; -> Reusing the ,var but incf offsets.
+			;;(let ((*unsafe-compute-view* t))
+			;;  (view ,matrix ,@subscripts))
+			(progn
+			  ;;(incf (matrix-offset ,var) 128)
+			  ,var ;; Fix Here: JUST ADD OFFSET TO VAR
+			  )
 			;; Otherwise re-create
 			(overwrite (view ,matrix ,@subscripts))))
 	:otherwise ((overwrite (view ,matrix ,@subscripts))))
@@ -858,6 +872,10 @@ Done: Straighten-up subscripts
        (error "Can't handle with unknown ext-operation ~a" external-operation))))
   nil)
 
+;; Had I had but a strongly statically typed language like Coalton!
+;; I could inline call-with-visible-area... (It remains to be optimized, since it could unrolled and compield by SBCL.)
+;; Note: To reduce call-with-visible-area's overheads ultimately, we would need the information about the shape and viewi information about the array to be computed. Fortunately, view/broadcasting's definition make it ez if only i have coalton.
+
 ;; f(args) -> f(offsets, args)
 (defun call-with-visible-area (matrix function
 			       &key
@@ -933,24 +951,24 @@ Constraints: matrix.dims == mat-operated-with.dims, matrix.dims >= 2."
 			   matrix
 			   direction)
 			  ptr))))
-	(view-ptr2 (if (and (not (null mat-operated-with))
-			    (eql direction :foreign))
-		       (or
-			(matrix-view-foreign-ptr mat-operated-with)
-			(let ((ptr (foreign-alloc '(:struct ViewInstruction))))
-			  (initialize-views
-			   ptr
-			   mat-operated-with
-			   direction)
-			  ptr))
-		       (unless (null mat-operated-with)
+	(view-ptr2 (when (not (null mat-operated-with))
+		     (if (eql direction :foreign)
+			 (or
+			  (matrix-view-foreign-ptr mat-operated-with)
+			  (let ((ptr (foreign-alloc '(:struct ViewInstruction))))
+			    (initialize-views
+			     ptr
+			     mat-operated-with
+			     direction)
+			    ptr))
 			 (or
 			  (matrix-view-lisp-ptr mat-operated-with)
 			  (let ((ptr (view-instruction 0 0 0 0 0 0 0 0 0 0)))
 			    (initialize-views
 			     ptr
 			     mat-operated-with
-			     direction)))))))
+			     direction)
+			    ptr))))))
     (labels ((explore-batch (total-offset  ;; Offsets considered broadcast
 			     actual-offset ;; No broadcast (for output)
 			     dim-indicator
@@ -1037,7 +1055,7 @@ Constraints: matrix.dims == mat-operated-with.dims, matrix.dims >= 2."
 	       nil))
       
       (explore-batch
-       0
+       (matrix-offset matrix)
        first-offset
        0
        (length dims))

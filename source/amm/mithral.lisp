@@ -493,42 +493,29 @@ Output: Cumsses [N D]"
 	    ;; Optimize: view-of-matrix
     ;; Cache   : Computed Offsets
 
+;;    (print N)
 
-    (time (dotimes (i 10)
-    (with-views ((cxc cumX-cols 0 t)
-		 (cxc2 cumX2-cols 0 t)
-		 (x* x 0 t))
-      (%move x* cxc)
-      (%move x* cxc2)
-      (%square cxc2))
+    (time
+     (dotimes (i 100)
+       (with-views ((cxc cumX-cols 0 t)
+		    (cxc2 cumX2-cols 0 t)
+		    (x* x 0 t))
+	 (%move x* cxc)
+	 (%move x* cxc2)
+	 (%square cxc2))
 
-    ;; 0.004 sec
-    ;; (speed 3), (view matrix 1 2 3) <- Detect it and warning.
-    ;; Todo: Make view faster.
+       (dotimes (i N)
+	 (with-views ((cs cumsses 0 t)
+		      (x* x 0 t))
+	   (let ((lr (/ (+ 2.0 i))))
+	     (%adds cumX-cols x*)
+	     (%adds cumX2-cols x*)
 
-    ;; f(cumsses[i, :], x[i, :])
-
-    ;; with-views 128 times -> 0.000239sec 287, 604 cycles.
-    ;; with-views 実行時にtotal-offsetsがわかればあとは値を使いまわせる
-    ;; LLVMのようにJITしなくても、
-    ;; 128X Times slow
-
-    ;; TODO:
-    ;; Fix: with-views -> call-with-visible-areaのテコ入れ
-
-    (dotimes (i N)
-      (let ((lr (/ (+ 2.0 i))))
-	(with-views ((cs cumsses i t)
-		     (x* x i t))
-	  
-	  (%adds cumX-cols x*)
-	  (%adds cumX2-cols x*)
-
-	  (let* ((meanX (%scalar-mul cumX-cols lr))
-		 (mx    (%muls meanX cumX-cols))
-		 (mx    (%scalar-mul mx -1.0)))
-	    (%move cumX2-cols cs)
-	    (%adds cs mx)))))))
+	     (let* ((meanX (%scalar-mul cumX-cols lr))
+		    (mx    (%muls meanX cumX-cols))
+		    (mx    (%scalar-mul mx -1.0)))
+	       (%move cumX2-cols cs)
+	       (%adds cs mx)))))))
     
 
     ;;(sb-profile:report)
