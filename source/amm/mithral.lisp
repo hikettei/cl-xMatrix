@@ -467,8 +467,9 @@ Input: X [N D]
 Output: Cumsses [N D]"
   ;; with-static 形状が実行前に決まっていたら、それ以降はUnrollして展開
   ;; Achieved by ->
-  (declare (optimize (speed 3))
-	   (type index N D))
+  (declare (optimize (speed 3) (safety 0))
+	   (type index N D)
+	   (type matrix x))
   ;; To reduce alloc-mat: -> with-cache
   (let ((cumsses    (matrix `(,N ,D) :dtype dtype))
 	(cumX-cols  (matrix `(1 ,D)  :dtype dtype))
@@ -483,8 +484,16 @@ Output: Cumsses [N D]"
     ;;       0.000005    (call-with-visible-area) * 1
 
     ;; 0.000013~0.000009 sec
-    
-    (time (progn
+
+    (sb-profile:profile "CL-XMATRIX")
+
+
+    ;; The Goal: 0.0005 -> 0.0002
+    (time (dotimes (m 10)
+	    ;; Optimize: view-of-matrix
+    ;; Cache   : Computed Offsets
+
+	    
     (with-views ((cxc cumX-cols 0 t)
 		 (cxc2 cumX2-cols 0 t)
 		 (x* x 0 t))
@@ -497,6 +506,14 @@ Output: Cumsses [N D]"
     ;; Todo: Make view faster.
 
     ;; f(cumsses[i, :], x[i, :])
+
+    ;; with-views 128 times -> 0.000239sec 287, 604 cycles.
+    ;; with-views 実行時にtotal-offsetsがわかればあとは値を使いまわせる
+    ;; LLVMのようにJITしなくても、
+    ;; 128X Times slow
+
+    ;; TODO:
+    ;; Fix: with-views -> call-with-visible-areaのテコ入れ
 
     (dotimes (i N)
       (let ((lr (/ (+ 2.0 i))))
@@ -512,9 +529,30 @@ Output: Cumsses [N D]"
 	    (%move cumX2-cols cs)
 	    (%adds cs mx)))))))
     
-    (free-mat cumX-cols) ;; (Heap Corruption...) To Add: GCable CFFI Pointer?
+
+    (sb-profile:report)
+    (sb-profile:unprofile "CL-XMATRIX")
+    
+    (free-mat cumX-cols)
     (free-mat cumx2-cols)
     cumsses))
+
+;; (time (dotimes (i 10) (bench v v1 a b))) <- これでNumbaと同等 or 2x times faster
+;; The fastest (theorically)
+(defun bench (view view1 a b &aux (a (matrix-vec a)) (b (matrix-vec b)))
+  (declare (optimize (speed 3)))
+  (fp32-copy view view a a)
+  (fp32-copy view view a a)
+  (fp32-mul view view a a)
+  (loop for i fixnum upfrom 0 below 128
+	do (progn ;; offset足していけばおk
+	     (fp32-add view1 view1 b b)
+	     (fp32-add view1 view1 b b)
+	     (fp32-scalar-mul view1 b 1.0)
+	     (fp32-mul view1 view1 b b)
+	     (fp32-scalar-mul view1 b -1.0)
+	     (fp32-copy view1 view1 b b)
+	     (fp32-add view1 view1 b b))))
 
 ;; This function is O(N)
 (declaim (ftype (function (matrix index) (values matrix matrix)) compute-optimal-split-val))
