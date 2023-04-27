@@ -987,7 +987,7 @@ Example:
 				subscript
 				padding-subscript)
   "Returning -> (values parsed-subscript[sub] broadcast[Fixnum] visible-shape[fixnum] external-operation[null or list]) external-operation-dim-num[fixnum] Errors[null or string]"
-  (declare (optimize (speed 3))
+  (declare (optimize (speed 3) (safety 0))
 	   (type fixnum orig-shape)
 	   (type boolean padding-subscript)
 	   (type (or fixnum list t) orig-view subscript))
@@ -1043,6 +1043,7 @@ Example:
 
 ;; The latter is much slower.
 
+;; Inlining
 (defun parse-subscripts (matrix
 			     subscripts
 			     &aux
@@ -1136,8 +1137,34 @@ Example:
 	(nth i subscripts)
 	(>= i subscript-len))))
     (T
-     nil)
-    ))
+     (let ((subs)
+	   (bcs)
+	   (vshapes)
+	   (ext-opes)
+	   (ext-dims)
+	   (error-list))
+       (dotimes (i dimensions)
+	 (multiple-value-bind
+	       (subscript
+		broadcast
+		visible-shape
+		external-operation
+		ext-ope-num
+		err)
+	     (parse-subscript-by-axis i matrix (nth i orig-shape) (nth i orig-view) (nth i subscripts) (>= i subscript-len))
+	   (push subscript subs)
+	   (push broadcast bcs)
+	   (push visible-shape vshapes)
+	   (push external-operation ext-opes)
+	   (push ext-ope-num ext-dims)
+	   (push err error-list)))
+       (values
+	(reverse subs)
+	(reverse bcs)
+	(reverse vshapes)
+	(reverse ext-opes)
+	(reverse ext-dims)
+	(reverse error-list))))))
 
 (defun view (matrix &rest subscripts
 	     &aux
