@@ -9,6 +9,7 @@
 ;; View-Indexing-Error Shaping-Error
 ;;
 
+(defparameter *unsafe-compute-view* nil)
 
 (define-condition Indexing-Error (simple-error)
   ((content :initarg :content))
@@ -716,7 +717,9 @@ Done: Straighten-up subscripts
   (declare (optimize (speed 3) (safety 0))
 	   (type matrix matrix))
 
-  (subscript-p subscripts matrix)
+  (unless *unsafe-compute-view*
+    (subscript-p subscripts matrix))
+  
 
   (multiple-value-bind (broadcasts subscripts) (parse-broadcast-subscripts matrix subscripts)
     (declare (type list broadcasts subscripts))
@@ -751,8 +754,27 @@ Done: Straighten-up subscripts
 	      ;; Otherwise creates view-object normally.
 	      (apply #'view-of-matrix matrix broadcasts subscripts)))))))
 
-(defmacro with-view ((var matrix &rest subscripts) &body body)
-  `(let ((,var (view ,matrix ,@subscripts)))
+
+(defmacro with-view ((var matrix &rest subscripts)
+		     &body body
+		     &aux (idx (intern (symbol-name (gensym "Cache")) "KEYWORD")))
+  "Caches matrix"
+  ;; declare type
+  `(with-internal-system-caching (,var ,idx)
+       (:if-exists ((if (equal (matrix-vec ,var) ;; both view belongs to the same matrix?
+			       (matrix-vec ,matrix))
+			;; TODO: modify-view-of-matrix
+			;; TODO: Recomputable?
+			;; KEEP: modify + recomputable-p <<<< view-of-matrix
+			;; recompute-p <- KEEP
+			;; TODO FIX HERE.
+
+			(let ((*unsafe-compute-view* t)) ;; Skip Some Steps
+			  (view ,matrix ,@subscripts))
+			  
+			;; Otherwise re-create
+			(overwrite (view ,matrix ,@subscripts))))
+	:otherwise ((overwrite (view ,matrix ,@subscripts))))
      ,@body))
 
 (defmacro with-views ((&rest forms) &body body)
@@ -765,14 +787,15 @@ Done: Straighten-up subscripts
     (expand-views forms body)))
        
 
-(declaim (ftype (function (t fixnum) index) view-startindex view-endindex)
+(declaim (ftype (function (t fixnum) fixnum) view-startindex view-endindex)
 	 (inline view-startindex view-endindex))
 (defun view-startindex (view _)
-  (declare (ignore _))
+  (declare (optimize (speed 3) (safety 0))
+	   (ignore _))
   (typecase view
     (list
      (typecase (car view)
-       (index (the index (car view)))
+       (fixnum (the fixnum (car view)))
        (keyword
 	(case (car view)
 	  (:indices 0)
@@ -780,17 +803,17 @@ Done: Straighten-up subscripts
 	  (T
 	   (error "view-startindex: unknown keyword"))))
        (T (error "view-startindex: invaild view-instruction fell through"))))
-    (index
-     (the index view))
+    (fixnum
+     (the fixnum view))
     (t
-     (the index 0))))
+     (the fixnum 0))))
 
 (defun view-endindex (view shape)
-  (declare (optimize (safety 0)))
+  (declare (optimize (speed 3) (safety 0)))
   (typecase view
     (list
      (typecase (car view)
-       (index (the index (second view)))
+       (fixnum (the fixnum (second view)))
        (keyword
 	(case (car view)
 	  (:indices (1- (length view)))
@@ -798,10 +821,10 @@ Done: Straighten-up subscripts
 	  (T
 	   (error "view-endindex: unknown keyword"))))
        (T (error "view-endindex: unknown view-instruction fell through"))))
-    (index
-     (the index (1+ view)))
+    (fixnum
+     (the fixnum (1+ view)))
     (t
-     (the index shape))))
+     (the fixnum shape))))
 
 (defun call-with-visible-area-and-extope (matrix function &key (mat-operated-with nil) (direction :lisp))
   "Handles the external operation of matrix"

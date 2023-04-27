@@ -12,12 +12,13 @@
   :description "matrix operation library for common lisp"
   :pathname "source"
   :serial t
-  :depends-on (:cffi :cffi-libffi)
+  :depends-on (:cffi :cffi-libffi #:trivial-garbage #:bordeaux-threads #:alexandria)
   :components ((:file "package")
 	       (:file "matrix")
 	       (:file "render")
 	       (:file "view")
 	       (:file "quantize")
+	       (:file "cache")
 
 	       (:file "apis/arithmetic")
 	       (:file "apis/mathematical")

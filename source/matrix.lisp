@@ -115,6 +115,7 @@
 			subscripts
 			shape))))
 
+;; Optim it.
 (declaim (ftype (function (list) list) calc-strides))
 (defun calc-strides (shapes)
   (declare (optimize (speed 3))
@@ -122,16 +123,22 @@
   (loop for i fixnum upfrom 0 below (length shapes)
 	collect (get-stride shapes i)))
 
+;;(disassemble #'visible-shape) Optimized
 (declaim (ftype (function (list t) list) visible-shape))
 (defun visible-shape (orig-shape view)
-  "Computes the shape of visible area."
-  (declare (optimize (speed 3))
-	   (type list orig-shape))
-  (loop for i fixnum upfrom 0 below (length (the list orig-shape))
-	collect (the index (- (view-endindex (nth i view)
-					     (nth i orig-shape))
-			      (view-startindex (nth i view) (nth i orig-shape))))))
+  "Computes a visible area of orig-shape considering view."
+  (declare (optimize (speed 3) (safety 0))
+	   (type list orig-shape view))
+  (map
+   'list
+   #'(lambda (view orig-shape)
+       (the fixnum
+	    (- (view-endindex view orig-shape)
+	       (view-startindex view 0))))
+   view orig-shape))
 
+
+;; TODO OPTIMIZE IT
 (defun compute-visible-and-broadcasted-shape (shape broadcasts &key (for-print nil))
   (declare (optimize (speed 3)))
   (if broadcasts
@@ -190,9 +197,9 @@
 				broadcasts
 				&rest view
 				&aux
-				  (shape (matrix-shape matrix))
-				  (dtype (matrix-dtype matrix))
-				  (strides (matrix-strides matrix))
+				  (shape      (matrix-shape matrix))
+				  (dtype      (matrix-dtype matrix))
+				  (strides    (matrix-strides matrix))
 				  (matrix-vec (matrix-vec matrix))
 				  (projected-p t)
 				  (broadcasts
@@ -224,12 +231,14 @@
   (view view :type cons) ;; view instruction
   (external-operation nil)
   (external-operation-dim nil)
+  ;; Optimize (compute-visible-and-broadcasted-shape (visible-shape shape view) broadcasts)
+  ;; 0.161sec
+  ;; visible-shape
   (visible-shape (compute-visible-and-broadcasted-shape (visible-shape shape view) broadcasts) :type cons) ;; visible area's shape following viewinstruction
   (broadcasts broadcasts :type list)
   (strides strides :type cons))
 
 ;; Accessors
-
 (declaim (ftype (function (matrix) index) dims))
 (declaim (ftype (function (matrix) list) shape))
 (declaim (inline dims shape))
