@@ -1145,6 +1145,23 @@ Example:
 	(reverse ext-dims)
 	(reverse error-list))))))
 
+;; 2x times faster compared to old definition
+(declaim (ftype (function (matrix &rest subscript-t) matrix) view1))
+(defun view1 (matrix &rest subscripts)
+  ""
+  (declare (optimize (speed 3))
+	   (type matrix matrix)
+	   (type list subscripts))
+  (multiple-value-bind (subscripts
+			broadcasts
+			visible-shape
+			external-operation
+			external-dims
+			errors)
+      (parse-subscripts matrix subscripts)
+    (apply #'view-of-matrix-with-shape matrix broadcasts visible-shape subscripts)
+    ))
+
 (defun view (matrix &rest subscripts
 	     &aux
 	       (subscripts (straighten-up-subscripts matrix subscripts)))

@@ -180,7 +180,8 @@
 			  (matrix-vec (allocate-mat (apply #'* shape) :dtype dtype))
 			  (broadcasts nil)
 			  (projected-p nil)
-			  (strides (calc-strides shape))))
+			  (strides (calc-strides shape))
+			  (visible-shape (compute-visible-and-broadcasted-shape (visible-shape shape view) broadcasts))))
 	    (:constructor
 		reshape (matrix shape
 			 &aux
@@ -190,8 +191,8 @@
 			   (projected-p nil)
 			   (broadcasts nil)
 			   (view (loop repeat (length (the list shape))
-				       collect t))))
-			 
+				       collect t))
+			   (visible-shape (compute-visible-and-broadcasted-shape (visible-shape shape view) broadcasts))))
 	    (:constructor
 		view-of-matrix (matrix
 				broadcasts
@@ -205,7 +206,24 @@
 				  (broadcasts
 				   (if broadcasts
 				       broadcasts
-				       (matrix-broadcasts matrix)))))
+				       (matrix-broadcasts matrix)))
+				  (visible-shape (compute-visible-and-broadcasted-shape (visible-shape shape view) broadcasts))))
+	    (:constructor
+		view-of-matrix-with-shape
+		(matrix
+		 broadcasts
+		 visible-shape
+		 &rest view
+		 &aux
+		   (shape      (matrix-shape matrix))
+		   (dtype      (matrix-dtype matrix))
+		   (strides    (matrix-strides matrix))
+		   (matrix-vec (matrix-vec matrix))
+		   (projected-p t)
+		   (broadcasts
+		    (if broadcasts
+			broadcasts
+			(matrix-broadcasts matrix)))))
 	    (:constructor
 		;; Todo: Debug (for view ga ayasii)
 		quantize-matrix (matrix
@@ -222,7 +240,8 @@
 					       collect t))
 				   (broadcasts nil)
 				   (projected-p
-				    (matrix-projected-p matrix)))))
+				    (matrix-projected-p matrix))
+				   (visible-shape (compute-visible-and-broadcasted-shape (visible-shape shape view) broadcasts)))))
   (freep nil :type boolean)
   (projected-p projected-p :type boolean) ;; Is view-object?
   (vec matrix-vec) ;; The ORIGINAL Matrix's CFFI Pointer
@@ -231,7 +250,7 @@
   (view view :type cons) ;; view instruction
   (external-operation nil)
   (external-operation-dim nil)
-  (visible-shape (compute-visible-and-broadcasted-shape (visible-shape shape view) broadcasts) :type cons) ;; visible area's shape following viewinstruction
+  (visible-shape visible-shape :type cons) ;; visible area's shape following viewinstruction
   (broadcasts broadcasts :type list)
   (strides strides :type cons)
   (view-foreign-ptr nil) ;; Todo: Free by free-mat.
