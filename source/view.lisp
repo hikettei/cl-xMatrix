@@ -675,8 +675,125 @@ Example:
 	  do (setf (nth i result) (parse-relative-position i s)))
     result))
 
+;; n = 12800
+;; view ... 0.002 sec
+;; Straighten-up-subscripts ... 0.00030
+;; parse-broadcast-subscripts ... 0.0006
+;; compute-absolute-subscripts ... 0.0001
 
+;; view-of-matrix -> make-matrix
+;; Optim above.
+;; matomete yaru 
+
+;; 事前にOrig-mat <-> Viewの距離を求めておく
+;; 仮に個々の計算が0秒だったらNumbaと変わらんのになぁ〜
 ;; Fixme: x = A[10, 3][:indices 1 2 3, t] + B[1, 3][:indices 1 2 3, t]
+
+;; F(mat, sub) -> broadcasts, intercepted-view, new-visible-shape
+
+;; let gensym (mvind ... nest ... (list hogehoge) (list hogehoge)
+
+;; (time (dotimes (i 12800) (unroll-maplist (i 3) (values (sin i) (sin i) (sin i) (sin i) (sin i)))))
+;;Evaluation took:
+;;  0.000 seconds of real time
+;;  0.000010 seconds of total run time (0.000009 user, 0.000001 system)
+;;  100.00% CPU
+
+(defmacro unroll-maplist ((var iter-num) &body body)
+  (labels ((mkstr (&rest args)
+	     (with-output-to-string (s)
+	       (dolist (a args) (princ a s))))
+	   
+	   (symb (&rest args)
+	     (values (intern (apply #'mkstr args))))
+	   
+	   (retain-objects (name i)
+	     `(list ,@(loop for k fixnum upfrom 0 below i
+			    collect (symb name k))))
+	   (step-iter (i)
+	     (if (>= i 0)
+		 `(multiple-value-bind
+			(,(symb 'subscript i)
+			 ,(symb 'broadcast i)
+			 ,(symb 'visible-shape i)
+			 ,(symb 'external-operation i)
+			 ,(symb 'external-operation-dim i))
+		      (let ((,var ,i)) ,@body)
+		    ,(step-iter (1- i)))
+		 `(values
+		   ,(retain-objects 'subscript iter-num)
+		   ,(retain-objects 'broadcast iter-num)
+		   ,(retain-objects 'visible-shape iter-num)
+		   ,(retain-objects 'external-operation iter-num)
+		   ,(retain-objects 'external-operation-dim iter-num)))))
+    (step-iter (1- iter-num))))
+
+(declaim (ftype (function (fixnum (or fixnum list t) (or fixnum list t) (or fixnum list null t) boolean) (values t t t t t))))
+(defun parse-subscript-by-axis (axis
+				orig-shape
+				orig-view
+				subscript
+				padding-subscript)
+  "Returning -> (values parsed-subscript[sub] broadcast[Fixnum] visible-shape[fixnum] external-operation[null or list]) external-operation-dim-num[fixnum]"
+  (declare (type fixnum orig-shape)
+	   (type boolean padding-subscript)
+	   (type (or fixnum list t) orig-view subscript))
+
+  ;; Works:
+  ;; Detect View error
+  ;; compute visible-shape
+  ;; compute absolute view
+  ;; Separate Broadcasting
+  ;; compute ext-ops (:indices) (:tflist)
+
+  (cond
+    ((or (null padding-subscript)
+	 (eql subscript t))
+     ;; The axis specified, is just t. (View<->Matrix is the same)
+     (values t nil orig-shape nil nil))
+
+    ))
+
+;; #'subscript-parser-by-axisで軸ごとに処理
+;; Unroll
+;; 
+;; (time (dotimes (i 12800) (list (sin i) (sin (1+ i)) (cos (+ 2 i)))))
+;; (time (dotimes (i 12800)
+;;		    (loop for k fixnum upfrom 0 below 2
+;;			  collect (sin i))))
+;; (time (dotimes (i 12800) (unroll-iter (i 2) (sin i)))) <- faster
+
+;; The latter is much slower.
+
+(defun intercept-subscripts (matrix
+			     subscripts
+			     &aux
+			       (orig-shape (matrix-shape matrix))
+			       (orig-view  (matrix-view  matrix))
+			       (dimensions (dims matrix))
+			       (subscript-len (length subscripts)))
+  (declare (optimize (speed 3))
+	   (type matrix matrix)
+	   (type list subscripts orig-shape orig-view)
+	   (type fixnum dimensions))
+  ;; Assertion: (100% as long as created by matrix) (length orig-shape) == (length orig-view)
+
+  (unless (>= dimensions subscript-len)
+    (view-indexing-error
+       "The length of subscripts is too large for the given matrix.~%Matrix:     ~a~%Subscripts: ~a"
+       (matrix-visible-shape matrix) subscripts))
+
+  (dotimes (i dimensions)
+    (parse-subscript-by-axis i (nth i orig-shape) (nth i orig-view) (nth i subscripts) (>= i subscript-len)))
+
+  
+
+  ;; (case dimensions
+  ;; 1 (dotimes-unroll (i 3) ~)
+  ;; 2 (dotimes-unroll (i 2) ~)
+
+  )
+
 (defun view (matrix &rest subscripts
 	     &aux
 	       (subscripts (straighten-up-subscripts matrix subscripts)))
@@ -756,12 +873,11 @@ Done: Straighten-up subscripts
 		  view-to-return))
 	      ;; Otherwise creates view-object normally.
 	      (let ((view-to-return (apply #'view-of-matrix matrix broadcasts subscripts)))
-		(if *unsafe-compute-view*
-		    (prog1
-			view-to-return
-		      )
-		    view-to-return))))))))
+		view-to-return)))))))
 
+(defun unsafe-view (view-of-matrix &rest subscripts)
+
+  )
 
 (defmacro with-view ((var matrix &rest subscripts)
 		     &body body
@@ -771,6 +887,7 @@ Done: Straighten-up subscripts
 Tips
 
 (debug 0) will aaa ... (TODO: Write Docs)"
+  ;; Judge if subscripts are reducible for dotimes/loop
   `(with-internal-system-caching (,var ,idx)
        (:if-exists ((if (equal (matrix-vec ,var) ;; both view belongs to the same matrix?
 			       (matrix-vec ,matrix))
@@ -783,8 +900,10 @@ Tips
 			;;(let ((*unsafe-compute-view* t))
 			;;  (view ,matrix ,@subscripts))
 			(progn
-			  ;;(incf (matrix-offset ,var) 128)
-			  ,var ;; Fix Here: JUST ADD OFFSET TO VAR
+			  ;;(setf (matrix-offset ,var) 128)
+			  ;;,var ;; Fix Here: JUST ADD OFFSET TO VAR
+			  (let ((*unsafe-compute-view* t))
+			    (view ,matrix ,@subscripts))
 			  )
 			;; Otherwise re-create
 			(overwrite (view ,matrix ,@subscripts))))
