@@ -769,9 +769,9 @@ Done: Straighten-up subscripts
 			;; recompute-p <- KEEP
 			;; TODO FIX HERE.
 
-			(let ((*unsafe-compute-view* t)) ;; Skip Some Steps
-			  (view ,matrix ,@subscripts))
-			  
+			(if (matrix-projected-p ,matrix)
+			    (view ,matrix ,@subscripts)
+			    (view ,matrix ,@subscripts))
 			;; Otherwise re-create
 			(overwrite (view ,matrix ,@subscripts))))
 	:otherwise ((overwrite (view ,matrix ,@subscripts))))
@@ -909,8 +909,7 @@ Constraints: matrix.dims == mat-operated-with.dims, matrix.dims >= 2."
 	 :direction direction))))
 
   
-  (let ((number-of-dims (dims matrix))
-	(dims (matrix-shape matrix))
+  (let ((dims (matrix-shape matrix))
 	(views (matrix-view matrix))
 	(strides (matrix-strides matrix))
 	(broadcasts (matrix-broadcasts matrix))
@@ -918,95 +917,41 @@ Constraints: matrix.dims == mat-operated-with.dims, matrix.dims >= 2."
 			 (matrix-broadcasts mat-operated-with)
 			 nil))
 	(view-ptr1 (if (eql direction :foreign)
-		       (foreign-alloc '(:struct ViewInstruction))
-		       (view-instruction 0 0 0 0 0 0 0 0 0 0)))
+		       (or
+			(matrix-view-foreign-ptr matrix)
+			(let ((ptr (foreign-alloc '(:struct ViewInstruction))))
+			  (initialize-views
+			   ptr
+			   matrix
+			   direction)
+			  ptr))
+		       (or
+			(matrix-view-lisp-ptr matrix)
+			(let ((ptr (view-instruction 0 0 0 0 0 0 0 0 0 0)))
+			  (initialize-views
+			   ptr
+			   matrix
+			   direction)
+			  ptr))))
 	(view-ptr2 (if (and (not (null mat-operated-with))
 			    (eql direction :foreign))
-		       (foreign-alloc '(:struct ViewInstruction))
+		       (or
+			(matrix-view-foreign-ptr mat-operated-with)
+			(let ((ptr (foreign-alloc '(:struct ViewInstruction))))
+			  (initialize-views
+			   ptr
+			   mat-operated-with
+			   direction)
+			  ptr))
 		       (unless (null mat-operated-with)
-			 (view-instruction 0 0 0 0 0 0 0 0 0 0)))))
-
-    ;; To Reduce MOV
-    ;; offset actual-offset stride2 stride1 offset2 offset1 broadcast2 broadcast1 m n
-    ;; offset actual-offset, offset2, offset1, <- dynamically compute
-    ;; stride, offsets, bc, m n <- Already known
-
-    ;; cache view-instruction?
-    ;; Precompute known params: stride2 stride1 offset2 offset1 broadcast2 broadcast1 m n.
-    (labels ((initialize-views (view-ptr matrix)
-	       (let* ((m-axis (- number-of-dims 2))
-		      (n-axis (- number-of-dims 1))
-		      (stride2 (nth m-axis (matrix-strides matrix)))
-		      (stride1 (nth n-axis (matrix-strides matrix)))
-		      (m       (nth m-axis (shape matrix)))
-		      (n       (nth n-axis (shape matrix)))
-		      (bc2     (nth m-axis (matrix-broadcasts matrix)))
-		      (bc1     (nth n-axis (matrix-broadcasts matrix)))
-		      (offset2 (view-startindex (nth m-axis (matrix-view matrix)) 0))
-		      (offset1 (view-startindex (nth n-axis (matrix-view matrix)) 0)))
-		 ;; Match up Broadcasted dims. (e.g.: visible=(10, 10) -> Real: (1, 10))
-		 (if bc2 (setq m bc2))
-		 (if bc1 (setq n bc1))
-
-		 (if (eql direction :lisp)
-		     (setf (viewinstruction-lisp-stride2 view-ptr)
-			   stride2
-			   (viewinstruction-lisp-stride1 view-ptr)
-			   stride1
-			   (viewinstruction-lisp-m view-ptr)
-			   m
-			   (viewinstruction-lisp-n view-ptr)
-			   n
-			   (viewinstruction-lisp-offset2 view-ptr)
-			   offset2
-			   (viewinstruction-lisp-offset1 view-ptr)
-			   offset1
-			   (viewinstruction-lisp-broadcast-2 view-ptr)
-			   (if bc2
-			       0
-			       1)
-			   (viewinstruction-lisp-broadcast-1 view-ptr)
-			   (if bc1
-			       0
-			       1))
-		     (setf (foreign-slot-value view-ptr `(:struct ViewInstruction) 'stride2)
-			   stride2
-			   (foreign-slot-value view-ptr `(:struct ViewInstruction) 'stride1)
-			   stride1
-			   (foreign-slot-value view-ptr `(:struct ViewInstruction) 'm)
-			   m
-			   (foreign-slot-value view-ptr `(:struct ViewInstruction) 'n)
-			   n
-			   (foreign-slot-value view-ptr `(:struct ViewInstruction) 'offset2)
-			   offset2
-			   (foreign-slot-value view-ptr `(:struct ViewInstruction) 'offset1)
-			   offset1
-			   (foreign-slot-value view-ptr `(:struct ViewInstruction) 'broadcast2)
-			   (if bc2
-			       0
-			       1)
-			   (foreign-slot-value view-ptr `(:struct ViewInstruction) 'broadcast1)
-			   (if bc1
-			       0
-			       1))))))
-      ;; Lisp -> 600 cycles
-      ;; CFFI -> 1,006 cycles.
-
-      (initialize-views view-ptr1 matrix)
-      (unless (null mat-operated-with)
-	(initialize-views view-ptr2 mat-operated-with)))
-
-    (labels ((inject-offsets (view-ptr offset actual-offset)
-	       (if (eql direction :lisp)
-		   (setf (viewinstruction-lisp-offset view-ptr)
-			 offset
-			 (viewinstruction-lisp-actual-offset view-ptr)
-			 actual-offset)
-		   (setf (foreign-slot-value view-ptr `(:struct ViewInstruction) 'offset)
-			 offset
-			 (foreign-slot-value view-ptr `(:struct ViewInstruction) 'actualoffset)
-			 actual-offset)))
-	     (explore-batch (total-offset  ;; Offsets considered broadcast
+			 (or
+			  (matrix-view-lisp-ptr mat-operated-with)
+			  (let ((ptr (view-instruction 0 0 0 0 0 0 0 0 0 0)))
+			    (initialize-views
+			     ptr
+			     mat-operated-with
+			     direction)))))))
+    (labels ((explore-batch (total-offset  ;; Offsets considered broadcast
 			     actual-offset ;; No broadcast (for output)
 			     dim-indicator
 			     rest-dims)
@@ -1070,9 +1015,9 @@ Constraints: matrix.dims == mat-operated-with.dims, matrix.dims >= 2."
 		  ;; Instruction1 -> total-offset actual-offset
 		  ;; Instruction2 -> actual-offset, actual-offset
 
-		  (inject-offsets view-ptr1 total-offset actual-offset)
+		  (inject-offsets view-ptr1 direction total-offset actual-offset)
 		  (unless (null mat-operated-with)
-		    (inject-offsets view-ptr2 actual-offset actual-offset))
+		    (inject-offsets view-ptr2 direction actual-offset actual-offset))
 
 		  (if (null mat-operated-with)
 		      (funcall function view-ptr1)
@@ -1096,6 +1041,17 @@ Constraints: matrix.dims == mat-operated-with.dims, matrix.dims >= 2."
        first-offset
        0
        (length dims))
+
+      (inject-offsets view-ptr1 direction 0 0)
+      (if (eql direction :foreign)
+	  (setf (matrix-view-foreign-ptr matrix) view-ptr1)
+	  (setf (matrix-view-lisp-ptr    matrix) view-ptr1))
+
+      (when mat-operated-with
+	(inject-offsets view-ptr2 direction 0 0)
+	(if (eql direction :foreign)
+	    (setf (matrix-view-foreign-ptr mat-operated-with) view-ptr2)
+	    (setf (matrix-view-lisp-ptr    mat-operated-with) view-ptr2)))
       nil)))
 
 ;; (disassemble #'matrix-visible-row-major-index)

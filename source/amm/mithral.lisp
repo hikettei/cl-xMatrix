@@ -485,15 +485,16 @@ Output: Cumsses [N D]"
 
     ;; 0.000013~0.000009 sec
 
-    (sb-profile:profile "CL-XMATRIX")
+    ;;(sb-profile:profile "CL-XMATRIX")
 
 
     ;; The Goal: 0.0005 -> 0.0002
-    (time (dotimes (m 10)
+    ;;(time (dotimes (m 10)
 	    ;; Optimize: view-of-matrix
     ;; Cache   : Computed Offsets
 
-	    
+
+    (time (dotimes (i 10)
     (with-views ((cxc cumX-cols 0 t)
 		 (cxc2 cumX2-cols 0 t)
 		 (x* x 0 t))
@@ -530,8 +531,8 @@ Output: Cumsses [N D]"
 	    (%adds cs mx)))))))
     
 
-    (sb-profile:report)
-    (sb-profile:unprofile "CL-XMATRIX")
+    ;;(sb-profile:report)
+    ;;(sb-profile:unprofile "CL-XMATRIX")
     
     (free-mat cumX-cols)
     (free-mat cumx2-cols)
@@ -539,13 +540,18 @@ Output: Cumsses [N D]"
 
 ;; (time (dotimes (i 10) (bench v v1 a b))) <- これでNumbaと同等 or 2x times faster
 ;; The fastest (theorically)
+
 (defun bench (view view1 a b &aux (a (matrix-vec a)) (b (matrix-vec b)))
   (declare (optimize (speed 3)))
+
   (fp32-copy view view a a)
   (fp32-copy view view a a)
   (fp32-mul view view a a)
+  
   (loop for i fixnum upfrom 0 below 128
 	do (progn ;; offset足していけばおk
+	     ;; (incf view total-offset ~)
+	     (view a 0)
 	     (fp32-add view1 view1 b b)
 	     (fp32-add view1 view1 b b)
 	     (fp32-scalar-mul view1 b 1.0)

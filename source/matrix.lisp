@@ -231,12 +231,12 @@
   (view view :type cons) ;; view instruction
   (external-operation nil)
   (external-operation-dim nil)
-  ;; Optimize (compute-visible-and-broadcasted-shape (visible-shape shape view) broadcasts)
-  ;; 0.161sec
-  ;; visible-shape
   (visible-shape (compute-visible-and-broadcasted-shape (visible-shape shape view) broadcasts) :type cons) ;; visible area's shape following viewinstruction
   (broadcasts broadcasts :type list)
-  (strides strides :type cons))
+  (strides strides :type cons)
+  (view-foreign-ptr nil) ;; Todo: Free by free-mat.
+  (view-lisp-ptr nil))
+
 
 ;; Accessors
 (declaim (ftype (function (matrix) index) dims))
@@ -255,6 +255,81 @@
 
 (defun dtype (matrix)
   (matrix-dtype matrix))
+
+
+(defun initialize-views (view-ptr matrix direction
+			 &aux (number-of-dims (dims matrix)))
+  ""
+  (declare (optimize (speed 3)))
+  (let* ((m-axis (- number-of-dims 2))
+	 (n-axis (- number-of-dims 1))
+	 (stride2 (nth m-axis (matrix-strides matrix)))
+	 (stride1 (nth n-axis (matrix-strides matrix)))
+	 (m       (nth m-axis (shape matrix)))
+	 (n       (nth n-axis (shape matrix)))
+	 (bc2     (nth m-axis (matrix-broadcasts matrix)))
+	 (bc1     (nth n-axis (matrix-broadcasts matrix)))
+	 (offset2 (view-startindex (nth m-axis (matrix-view matrix)) 0))
+	 (offset1 (view-startindex (nth n-axis (matrix-view matrix)) 0)))
+    ;; Match up Broadcasted dims. (e.g.: visible=(10, 10) -> Real: (1, 10))
+    (if bc2 (setq m bc2))
+    (if bc1 (setq n bc1))
+
+    (if (eql direction :lisp)
+	(setf (viewinstruction-lisp-stride2 view-ptr)
+	      stride2
+	      (viewinstruction-lisp-stride1 view-ptr)
+	      stride1
+	      (viewinstruction-lisp-m view-ptr)
+	      m
+	      (viewinstruction-lisp-n view-ptr)
+	      n
+	      (viewinstruction-lisp-offset2 view-ptr)
+	      offset2
+	      (viewinstruction-lisp-offset1 view-ptr)
+	      offset1
+	      (viewinstruction-lisp-broadcast-2 view-ptr)
+	      (if bc2
+		  0
+		  1)
+	      (viewinstruction-lisp-broadcast-1 view-ptr)
+	      (if bc1
+		  0
+		  1))
+	(setf (foreign-slot-value view-ptr `(:struct ViewInstruction) 'stride2)
+	      stride2
+	      (foreign-slot-value view-ptr `(:struct ViewInstruction) 'stride1)
+	      stride1
+	      (foreign-slot-value view-ptr `(:struct ViewInstruction) 'm)
+	      m
+	      (foreign-slot-value view-ptr `(:struct ViewInstruction) 'n)
+	      n
+	      (foreign-slot-value view-ptr `(:struct ViewInstruction) 'offset2)
+	      offset2
+	      (foreign-slot-value view-ptr `(:struct ViewInstruction) 'offset1)
+	      offset1
+	      (foreign-slot-value view-ptr `(:struct ViewInstruction) 'broadcast2)
+	      (if bc2
+		  0
+		  1)
+	      (foreign-slot-value view-ptr `(:struct ViewInstruction) 'broadcast1)
+	      (if bc1
+		  0
+		  1))))
+  nil)
+
+(defun inject-offsets (view-ptr direction offset actual-offset)
+  ""
+  (declare (optimize (speed 3)))
+  (if (eql direction :lisp)
+      (setf (viewinstruction-lisp-offset view-ptr)
+	    offset
+	    (viewinstruction-lisp-actual-offset view-ptr)
+	    actual-offset)
+      (setf (foreign-slot-value view-ptr `(:struct ViewInstruction) 'offset)
+	    offset
+	    (foreign-slot-value view-ptr `(:struct ViewInstruction) 'actualoffset)
+	    actual-offset)))
 
 (defun dtype-as-lisp (matrix)
   (dtype->lisp-type (dtype matrix)))
