@@ -1288,6 +1288,22 @@ Tips
     (expand-views forms body)))
 
 
+(defmacro with-view1 ((var matrix &rest subscripts)
+		      &body body)
+  `(let ((,var (view1 ,matrix ,@subscripts)))
+     ,@body))
+
+
+(defmacro with-views1 ((&rest forms) &body body)
+  "(with-view a1 (with-view a2 ... ))"
+  (labels ((expand-views (binding-specs body)
+	     (if (endp binding-specs)
+		 `(progn ,@body)
+		 `(with-view1 ,(first binding-specs)
+		    ,(expand-views (cdr binding-specs) body)))))
+    (expand-views forms body)))
+
+
 (declaim (ftype (function (t fixnum) fixnum) view-startindex view-endindex)
 	 (inline view-startindex view-endindex))
 (defun view-startindex (view _)

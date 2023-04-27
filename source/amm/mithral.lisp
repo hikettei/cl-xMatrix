@@ -493,11 +493,16 @@ Output: Cumsses [N D]"
 	    ;; Optimize: view-of-matrix
     ;; Cache   : Computed Offsets
 
-;;    (print N)
+    ;;    (print N)
+
+    ;; Numba n=1000
+    ;; 0.05 sec
+    ;; cl-xmatrix n=1000
+    ;; 0.141 sec.
 
     (time
-     (dotimes (i 100)
-       (with-views ((cxc cumX-cols 0 t)
+     (dotimes (i 1000)
+       (cl-xmatrix::with-views1 ((cxc cumX-cols 0 t)
 		    (cxc2 cumX2-cols 0 t)
 		    (x* x 0 t))
 	 (%move x* cxc)
@@ -505,8 +510,8 @@ Output: Cumsses [N D]"
 	 (%square cxc2))
 
        (dotimes (i N)
-	 (with-views ((cs cumsses 0 t)
-		      (x* x 0 t))
+	 (cl-xmatrix::with-views1 ((cs cumsses i t)
+		      (x* x i t))
 	   (let ((lr (/ (+ 2.0 i))))
 	     (%adds cumX-cols x*)
 	     (%adds cumX2-cols x*)
