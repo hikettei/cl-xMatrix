@@ -350,7 +350,7 @@ Legal Subscript -> fixnum/list/t, (external-option ~)"
 Args:
 - i     the axis
 - sub   subscripts[axis]
-- dim   shape[axis]
+- dim   visible-shape[axis]
 
 Return: List (Consisted of strings which records error log)"
   (declare (optimize (speed 3) (safety 0))
@@ -446,7 +446,7 @@ Return: List (Consisted of strings which records error log)"
   "Translate view-subscription into the format which is compatiable with orig-mat"
   (declare (optimize (speed 3) (safety 0))
 	   (type subscript-t old-view subscript))
-  
+
   (labels ((handle-ext-index (view sub)
 	     ;; note: don't return sub directly, add view.
 	     (typecase view
@@ -557,7 +557,7 @@ Return: List (Consisted of strings which records error log)"
 		   (view-indexing-error "Cant handle this subscript: ~a" view))))
 	       ;; M[T][:indices 1 2 3]
 	       (t sub))))
-
+    
     (typecase subscript
       (index (handle-ext-index old-view subscript))
       (list
@@ -1010,7 +1010,8 @@ Example:
 	       external-operation
 	       (if external-operation
 		   axis)
-	       (find-subscript-error axis subscript orig-shape)))
+	       ;; Error check will be done in: Original-Mat <-> View
+	       (find-subscript-error axis subscript (nth axis (matrix-shape matrix)))))
 	    ;; Simply, matrix -> View
 	    (values
 	     subscript
@@ -1336,34 +1337,9 @@ Done: Straighten-up subscripts
 		view-to-return)))))))
 
 (defmacro with-view ((var matrix &rest subscripts)
-		     &body body
-		     &aux (idx (intern (symbol-name (gensym "Cache")) "KEYWORD")))
-  "Creates a view object (in term of performance, using this notation will produce benefits because ...
-
-Tips
-
-(debug 0) will aaa ... (TODO: Write Docs)"
-  ;; Judge if subscripts are reducible for dotimes/loop
-  `(with-internal-system-caching (,var ,idx)
-       (:if-exists ((if (equal (matrix-vec ,var) ;; both view belongs to the same matrix?
-			       (matrix-vec ,matrix))
-			;; To Add: When safety=0, make it t.
-			;; or debug=0
-			;; Just Adding offsets to ,var
-
-			;; (:iter x) Specifying, only when fixnum list
-			;; -> Reusing the ,var but incf offsets.
-			;;(let ((*unsafe-compute-view* t))
-			;;  (view ,matrix ,@subscripts))
-			(progn
-			  ;;(setf (matrix-offset ,var) 128)
-			  ;;,var ;; Fix Here: JUST ADD OFFSET TO VAR
-			  (let ((*unsafe-compute-view* t))
-			    (view ,matrix ,@subscripts))
-			  )
-			;; Otherwise re-create
-			(overwrite (view ,matrix ,@subscripts))))
-	:otherwise ((overwrite (view ,matrix ,@subscripts))))
+		     &body body)
+  ""
+  `(let ((,var (view ,matrix ,@subscripts)))
      ,@body))
 
 (defmacro with-views ((&rest forms) &body body)

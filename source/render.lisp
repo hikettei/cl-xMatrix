@@ -106,8 +106,12 @@ The result sequence MUST not over max-length.
 			      (dotimes (k (1+ indent-size))
 				(write-string " " stream))))))
 	     ;; Displays first and last vector
+
+	     ;; First vector
 	     (let ((matrix1 (apply #'view matrix `(,@args 0))))
 	       (render-column matrix1 T))
+
+	     ;; Newline
 	     (if newline
 		 (progn
 		   (write-char #\newline stream)
@@ -119,18 +123,20 @@ The result sequence MUST not over max-length.
 		   (write-char #\newline stream)
 		   (dotimes (k (1+ indent-size))
 		     (write-string " " stream))))
+
+	     ;; Last Vector
 	     (let ((matrix1 (apply #'view matrix `(,@args ,(1- (nth dim-indicator (matrix-visible-shape matrix)))))))
 	       (render-column
 		matrix1
 		NIL))
 	     (write-string ")" stream)))))))
 
-  (defun render-matrix (matrix &key (indent 0))
-    "Renders :vec parts"
-    (with-pointer-barricade
-      (with-output-to-string (out)
-	(let ((*matrix-element-displaying-size*
-		(+ 3 (loop for i fixnum upfrom 0 below (apply #'* (matrix-visible-shape matrix))
-			   maximize (length (format nil "~a" (1d-mat-aref matrix i)))))))
-	  (pprint-vector out (%copy matrix) t indent)
-	  out))))
+(defun render-matrix (matrix &key (indent 0))
+  "Renders :vec parts"
+  (with-pointer-barricade
+    (with-output-to-string (out)
+      (let ((*matrix-element-displaying-size*
+	      (+ 3 (loop for i fixnum upfrom 0 below (apply #'* (matrix-visible-shape matrix))
+			 maximize (length (format nil "~a" (1d-mat-aref matrix i)))))))
+	(pprint-vector out (%copy matrix) t indent)
+	out))))
