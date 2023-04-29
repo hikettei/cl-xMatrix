@@ -187,6 +187,31 @@ ViewInstruction is basically created only for 2d-matrix operation, functions mus
 	 (declare (ignorable ,absolute))
 	 ,@body))))
 
+(defmacro with-view-visible-strides ((index view &key (absolute (gensym)))
+				     &body body &aux
+						  (mi (gensym))
+						  (ni (gensym)))
+  ;; Todo: Optimize And Inline, Docs
+  "Given view, iterates body with index.
+  :absolute <- index based on the matrix but offset isn't considered."
+  `(dotimes (,mi (viewinstruction-lisp-m ,view))
+     (dotimes (,ni (viewinstruction-lisp-n ,view))
+       (declare (type index ,mi ,ni))
+       (let* ((,index (%+ (viewinstruction-lisp-offset ,view)
+			  (%*
+			   (%*
+			    (viewinstruction-lisp-stride2 ,view)
+			    (viewinstruction-lisp-broadcast-2 ,view))
+			   (+ ,mi (viewinstruction-lisp-offset2 ,view)))
+			  (%*
+			   (%*
+			    (viewinstruction-lisp-stride1 ,view)
+			    (viewinstruction-lisp-broadcast-1 ,view))
+			   (%+ ,ni (viewinstruction-lisp-offset1 ,view))))) ;; (2 3 4 ...)
+	      (,absolute (%+ (%* (viewinstruction-lisp-n ,view) ,mi) ,ni))) ;; (0 1 2 ...)
+	 (declare (ignorable ,absolute))
+	 ,@body))))
+
 (defmacro with-two-of-views (((index1 view1) (index2 view2) &key (absolute (gensym)))
 			     &body
 			       body
@@ -786,7 +811,7 @@ Return: List (Consisted of strings which records error log)"
 	  (view-indexing-error "Invaild Operation ~a. :broadcast is given in this format:~% `(:broadcast num) num = t or positive fixnum" subscript))
 	(unless (= orig-shape 1)
 	  (view-indexing-error "Can't Broadcast the matrix~%because the axis to be broadcasted is not 1: ~a at axis=~a" (shape matrix) axis))
-	(values t orig-shape))
+	(values t (second subscript)))
       (values subscript nil)))
 
 
@@ -1151,8 +1176,8 @@ Example:
 ;; Unroll and JIT g
 (declaim (ftype (function (matrix &rest subscript-t) matrix) view))
 (defun view (matrix &rest subscripts)
-  ""
-  (declare (optimize (speed 3) (safety 0))
+  "Todo: Docstring"
+  (declare (optimize (speed 3))
 	   (type matrix matrix)
 	   (type list subscripts))
   (multiple-value-bind (subscripts
@@ -1177,7 +1202,6 @@ Example:
 	 (format out "~%The target matrix's visible area:~% -> ~a~%The subscripts:~% -> ~a~%"
 		 (shape matrix)
 		 subscripts))))
-    
     (let ((place (find-if #'(lambda (x) x) external-dims)))
       (if place
 	  (let ((external-operation (nth place external-operation))
@@ -1247,7 +1271,7 @@ Todo: Example"
 
 (defun reset-offsets! (matrix)
   "Todo :docs"
-  (declare (optimize (speed 3) (safety 0))
+  (declare (optimize (speed 3))
 	   (type matrix matrix))
   (setf (matrix-created-offsets matrix) nil
 	(matrix-offset matrix) 0)
@@ -1446,8 +1470,7 @@ Constraints: matrix.dims == mat-operated-with.dims, matrix.dims >= 2."
 	   (type matrix matrix)
 	   (type function function)
 	   (type fixnum first-offset)
-	   (type keyword direction)
-	   (inline transcript-view))
+	   (type keyword direction))
 
   ;; TODO: Assert matrix.dims >= 2 (otherwise reshape and recursive it)
 
@@ -1619,7 +1642,7 @@ Constraints: matrix.dims == mat-operated-with.dims, matrix.dims >= 2."
 	  (setf (matrix-view-foreign-ptr matrix) view-ptr1)
 	  (setf (matrix-view-lisp-ptr    matrix) view-ptr1))
 
-      (when mat-operated-with
+      (when (not (null mat-operated-with))
 	(inject-offsets view-ptr2 direction 0 0)
 	(if (eql direction :foreign)
 	    (setf (matrix-view-foreign-ptr mat-operated-with) view-ptr2)
@@ -1663,12 +1686,15 @@ Usage:
 			  (apply #'* (shape matrix))
 			  :element-type t ;; FixMe
 			  )))
-    (call-with-visible-area matrix #'(lambda (x)
-				       (with-view-object (index x :absolute index1)
-					 (setf (aref returning-array index1)
-					       (mem-aref (matrix-vec matrix)
-							 (matrix-dtype matrix)
-							 index)))))
+    (with-pointer-barricade
+      (call-with-visible-area
+       matrix
+       #'(lambda (x)
+	   (with-view-visible-strides (index x :absolute index1)
+	     (setf (aref returning-array index1)
+		   (mem-aref (matrix-vec matrix)
+			     (matrix-dtype matrix)
+			     index))))))
     (if freep
 	(free-mat matrix))
     returning-array))
