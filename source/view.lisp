@@ -1146,10 +1146,10 @@ Example:
 	(reverse error-list))))))
 
 ;; 2x times faster compared to old definition
-(declaim (ftype (function (matrix &rest subscript-t) matrix) view1))
-(defun view1 (matrix &rest subscripts)
+(declaim (ftype (function (matrix &rest subscript-t) matrix) view))
+(defun view (matrix &rest subscripts)
   ""
-  (declare (optimize (speed 3))
+  (declare (optimize (speed 3) (safety 0))
 	   (type matrix matrix)
 	   (type list subscripts))
   (multiple-value-bind (subscripts
@@ -1159,11 +1159,45 @@ Example:
 			external-dims
 			errors)
       (parse-subscripts matrix subscripts)
-    (apply #'view-of-matrix-with-shape matrix broadcasts visible-shape subscripts)
-    ))
+    (declare (type list subscripts visible-shape external-dims external-operation errors))
 
-(defun view (matrix &rest subscripts
-	     &aux
+    (when (find-if #'(lambda (x) x) errors)
+      (view-indexing-error
+       "~a"
+       (with-output-to-string (out)
+	 (format out "~%Creating a new view object was failed because:~%")
+	 (dolist (errors-per-axis errors)
+	   (dolist (err errors-per-axis)
+	     (when err
+	       (princ "   " out)
+	       (princ err out))))
+	 (format out "~%The target matrix's visible area:~% -> ~a~%The subscripts:~% -> ~a~%"
+		 (shape matrix)
+		 subscripts))))
+    
+    (let ((place (find-if #'(lambda (x) x) external-dims)))
+      (if place
+	  (let ((external-operation (nth place external-operation))
+		(view-to-return (apply #'view-of-matrix-with-shape
+				       matrix
+				       broadcasts
+				       visible-shape
+				       subscripts)))
+	    (unless (= (count-if #'(lambda (x) x) external-dims) 1)
+	      (view-indexing-error "The keyword :tflist, :indices can be used at once in one view's subscripts."))
+	    (setf (matrix-external-operation view-to-return) external-operation
+		  (matrix-external-operation-dim view-to-return) place)
+	    view-to-return)
+	  (progn
+	    (apply #'view-of-matrix-with-shape matrix broadcasts visible-shape subscripts))))))
+
+(defun (setf view) (value tensor &rest dims)
+  "The function (setf view) modifies the tensor's visible areas destructively."
+
+  )
+
+(defun view* (matrix &rest subscripts
+	      &aux
 	       (subscripts (straighten-up-subscripts matrix subscripts)))
   "Creates a view-object
 subscript is following:
@@ -1243,10 +1277,6 @@ Done: Straighten-up subscripts
 	      (let ((view-to-return (apply #'view-of-matrix matrix broadcasts subscripts)))
 		view-to-return)))))))
 
-(defun unsafe-view (view-of-matrix &rest subscripts)
-
-  )
-
 (defmacro with-view ((var matrix &rest subscripts)
 		     &body body
 		     &aux (idx (intern (symbol-name (gensym "Cache")) "KEYWORD")))
@@ -1284,22 +1314,6 @@ Tips
 	     (if (endp binding-specs)
 		 `(progn ,@body)
 		 `(with-view ,(first binding-specs)
-		    ,(expand-views (cdr binding-specs) body)))))
-    (expand-views forms body)))
-
-
-(defmacro with-view1 ((var matrix &rest subscripts)
-		      &body body)
-  `(let ((,var (view1 ,matrix ,@subscripts)))
-     ,@body))
-
-
-(defmacro with-views1 ((&rest forms) &body body)
-  "(with-view a1 (with-view a2 ... ))"
-  (labels ((expand-views (binding-specs body)
-	     (if (endp binding-specs)
-		 `(progn ,@body)
-		 `(with-view1 ,(first binding-specs)
 		    ,(expand-views (cdr binding-specs) body)))))
     (expand-views forms body)))
 
