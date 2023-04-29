@@ -28,6 +28,9 @@
    #:view
    #:with-view
    #:with-views
+
+   #:incf-offsets!
+   #:reset-offsets!
    
    #:call-with-visible-area
    #:with-view-object

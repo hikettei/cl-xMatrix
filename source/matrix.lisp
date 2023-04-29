@@ -255,6 +255,7 @@
   (strides strides :type cons)
   (view-foreign-ptr nil) ;; Todo: Free by free-mat.
   (view-lisp-ptr nil)
+  (created-offsets nil :type list)
   (offset 0 :type fixnum))
 
 

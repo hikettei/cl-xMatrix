@@ -1191,10 +1191,73 @@ Example:
 	  (progn
 	    (apply #'view-of-matrix-with-shape matrix broadcasts visible-shape subscripts))))))
 
-(defun (setf view) (value tensor &rest dims)
-  "The function (setf view) modifies the tensor's visible areas destructively."
+(defun view! (matrix &rest subscripts)
+  "The function view! modifies the tensor's visible areas destructively.
+   (view! matrix `(10 10))"
+  (declare (optimize (speed 3) (safety 0))
+	   (type matrix matrix)
+	   (type list subscripts))
 
+  ;; todo: make it.
+  
   )
+
+;; Todo: :indices lambda(x), :tflist lambda(x)
+;; Is there a bug?
+(defun incf-offsets! (matrix &rest increments)
+  "The function incf-view is the faster way to modify matrices' visible area.
+Todo: Example"
+  (declare (optimize (speed 3))
+           (type matrix matrix)
+	   (type list increments))
+
+  (unless (matrix-projected-p matrix)
+    (warn "incf-offsets! received an un-viewed matrix."))
+  
+  (let ((total 0)
+	(created-offsets (or (matrix-created-offsets matrix)
+			     (setf (matrix-created-offsets matrix)
+				   (loop for i fixnum upfrom 0 below (dims matrix)
+					 collect 0)))))
+    (declare (type fixnum total))
+    
+    (mapc
+     #'(lambda (orig-size
+		visible-size
+		existing-offset
+		stride
+		incr &aux (updated-size (the fixnum (+ visible-size existing-offset incr))))
+	 (declare (type fixnum orig-size visible-size existing-offset stride incr))
+	 (let ((increment (* stride incr)))
+	   (declare (type fixnum increment))
+	   (unless (and
+		    (<= updated-size (the fixnum (1+ orig-size)))
+		    (>= updated-size 0))
+	     (view-indexing-error "incf-offsets! couldn't update the matrix's offsets~%because adding a new increments ~a into the created offsets ~a~%would exceed the range of matrix's shape. ~a" increments created-offsets (shape matrix)))
+	   (incf total increment)))
+     (matrix-shape matrix)
+     (shape matrix)
+     created-offsets
+     (matrix-strides matrix)
+     increments)
+
+    (dotimes (i (dims matrix))
+      (let ((incr (nth i increments)))
+	(when incr
+	  (incf (the fixnum (nth i created-offsets))
+		(the fixnum incr)))))
+
+    (incf (matrix-offset matrix) total)
+    
+    (matrix-offset matrix)))
+
+(defun reset-offsets! (matrix)
+  "Todo :docs"
+  (declare (optimize (speed 3) (safety 0))
+	   (type matrix matrix))
+  (setf (matrix-created-offsets matrix) nil
+	(matrix-offset matrix) 0)
+  nil)
 
 (defun view* (matrix &rest subscripts
 	      &aux
