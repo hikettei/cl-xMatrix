@@ -8,34 +8,52 @@
 ;;        :uint8
 ;;        available-transfer :retained-by ~~)
 
+(annot:enable-annot-syntax)
+
+@export
 (defparameter *available-dtypes*
   `(:uint8
     :uint16
     :float
-    :int))
+    :int)
+  "An list of available dtypes for Matrix.")
 
 (defparameter *pinned-matrices* nil "A list of matrices, created in with-pointer-barricade")
 
+@export
 (defun dtype-p (x)
+  "Returns t if the x (given as keyword) is available as dtype, otherwise nil."
+  (declare (type keyword x))
   (if (find x *available-dtypes*)
       t
       nil))
 
+@export
 (defun dtype->lisp-type (dtype)
+  "This function converts the given dtype keyword into a common lisp one."
+  (declare (type keyword dtype))
   (case dtype
     (:float
      'single-float)
     (:int 'fixnum)
     (:uint8 'fixnum)  ;;'(integer -256 256))
     (:uint16 'fixnum) ;;'(integer -65536 65536))
-    (T (error "Unknown type ~a" dtype))))
+    (T (error "The given type is unknown:~a.~% Available dtype is following: ~a" dtype *available-dtypes*))))
 
+@export
 (defun coerce-to-dtype (element dtype)
+  "This function coerces the given element (type of number) into dtype.
+
+Example:
+    (coerce 1 :float) ;; => 1.0"
   (coerce element (dtype->lisp-type dtype)))
 
+@export
 (defun coerce-to-mat-dtype (element matrix)
+  "This functio coerces the given element into matrix's dtype."
   (coerce-to-dtype element (matrix-dtype matrix)))
 
+@export
 (deftype matrix-dtype ()
   "The type of available dtypes."
   `(and keyword
@@ -266,17 +284,21 @@
 (declaim (ftype (function (matrix) index) dims))
 (declaim (ftype (function (matrix) list) shape))
 (declaim (inline dims shape))
+
+@export
 (defun dims (matrix)
   "Returns the length of matrix's dimensions."
   (declare (type matrix matrix)
 	   (optimize (speed 3)))
   (length (the list (matrix-visible-shape matrix))))
 
+@export
 (defun shape (matrix)
   (declare (optimize (speed 3))
 	   (type matrix matrix))
   (matrix-visible-shape matrix))
 
+@export
 (defun dtype (matrix)
   (matrix-dtype matrix))
 
@@ -373,6 +395,7 @@
 	   (matrix-dtype ,matrix1)
 	   (matrix-dtype ,matrix2)))
 
+@export
 (defmacro with-pointer-barricade (&body body)
   "All matrices created in this form, are automatically freed."
   `(let ((*pinned-matrices* `(t)))

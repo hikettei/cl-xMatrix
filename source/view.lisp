@@ -2,17 +2,17 @@
 (in-package :cl-xmatrix)
 
 
+(deftype subscript-t ()
+  "An list of types which is allowed to become subscripts of the function view."
+  `(or fixnum list null t))
+
+
 ;; Conditions Related To Indexing
 ;;
 ;;          Indexing-Error (Simple-error)
 ;;         /                |    
 ;; View-Indexing-Error Shaping-Error
 ;;
-
-(defparameter *unsafe-compute-view* nil)
-
-(deftype subscript-t ()
-  `(or fixnum list null t))
 
 (define-condition Indexing-Error (simple-error)
   ((content :initarg :content))
@@ -49,10 +49,11 @@
 			  :content (format nil ,content ,@args))))
 
 (defmacro assure-dimensions (mat1 mat2)
-  "Do nothing if mat1 and mat2 are the same shape, otherwise throw shaping-error"
+  "Do nothing if mat1 and mat2 are the same shape, otherwise throw shaping-error."
   `(if (equal (the list (shape ,mat1)) (the list (shape ,mat2)))
        t
        (shaping-error "Two matrices: ~a and ~a couldn't operated together." (shape ,mat1) (shape ,mat2))))
+
 
 (defun print-view (view stream depth)
   (declare (ignore depth))
@@ -64,6 +65,7 @@
 	  (viewinstruction-lisp-offset1 view)
 	  (viewinstruction-lisp-m view)
 	  (viewinstruction-lisp-n view)))
+
 
 (defstruct (ViewInstruction-Lisp
 	    (:print-function print-view)
@@ -86,8 +88,12 @@ ViewInstruction is basically created only for 2d-matrix operation, functions mus
 
 (declaim (inline view-instruction))
 
+
+;; Memos:
 ;; offset, actualoffset -> Determined when call-with-visible-area is called.
 ;; others -> Determined when view/matrix is created.
+
+;; An alias of ViewInstruction for CFFI.
 (defcstruct (ViewInstruction :class c-viewinstruction)
   (offset :int)
   (actualoffset :int)
@@ -149,11 +155,13 @@ ViewInstruction is basically created only for 2d-matrix operation, functions mus
   `(transcript-view ,value ,ptr))
 
 (defmacro %* (&rest args)
+  "Utils"
   `(the fixnum (* ,@(map 'list #'(lambda (x)
 				  `(the fixnum ,x))
 			 args))))
 
 (defmacro %+ (&rest args)
+  "Utils"
   `(the fixnum (+ ,@(map 'list #'(lambda (x)
 				  `(the fixnum ,x))
 			args))))

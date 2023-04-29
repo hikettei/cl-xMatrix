@@ -7,12 +7,22 @@
 
   ;; Utils for shared library
   (:export
-   :load-xmatrix)
+   #:load-xmatrix
+   #:cpu-information)
 
+  ;; Caching
+  (:export
+   #:with-internal-system-caching
+   #:with-cache)
+
+  (:export
+   #:*available-dtypes*)
+  
   ;; Matrix APIs
   (:export
    #:matrix
    #:shape
+   #:dims
    #:convert-into-lisp-array
    #:free-mat
    #:dtype

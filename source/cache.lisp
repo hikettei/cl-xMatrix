@@ -45,26 +45,10 @@
 					   (otherwise nil))
 					&body
 					  body)
+  "TODO: DOC"
   `(let ((,var (read-thread-cached-object ,place-key)))
      (macrolet ((overwrite (value)
 		  `(set-thread-cached-object ,,place-key ,value)))
-       (if (null ,var)
-	   (setq ,var (progn ,@otherwise))
-	   (setq ,var (progn ,@if-exists)))
-       ,@body)))
-
-(defmacro with-internal-system-caching1 ((var place-key)
-				 	 (&key
-					    (if-exists nil)
-					    (otherwise nil))
-					 &body
-					   body
-					 &aux (place (intern (symbol-name place-key))))
-  `(progn
-     (if (boundp ',place)
-	 (setq ,place nil))
-     (macrolet ((overwrite (value)
-		  `(setf ,,(intern (symbol-name place-key)) ,value)))
        (if (null ,var)
 	   (setq ,var (progn ,@otherwise))
 	   (setq ,var (progn ,@if-exists)))

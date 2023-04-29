@@ -23,8 +23,6 @@
 	      (setq stride (* stride *size*)))))
 
 
-;; 手動で書く
-
 (defun test-view (matrix subscripts total)
   (let ((view (apply #'view matrix subscripts)))
     (unless (= (round (%sumup view)) (round total))
@@ -57,16 +55,21 @@
       (with-view (m* m* `(1 3) `(1 3))
 	(test-view m* `(t t) 110)))
     
-    ;; indices
+    ;; indices (List)
 
     (test-view matrix `((:indices 0 1 2)) 435)
-
     (test-view matrix `((:indices 0 1 2) 0) 30)
+
+    ;; indices (Matrix)
     
 
-    ;; tflist
+    
+    ;; tflist (List)
+    
+    (test-view matrix `((:tflist t t t)) 435)
 
-
+    ;; tflist (Matrix)
+    
     ;; by -1
 
 
