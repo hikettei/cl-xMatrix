@@ -498,11 +498,35 @@ Output: Cumsses [N D]"
     ;; Numba n=1000
     ;; 0.05 sec
     ;; cl-xmatrix n=1000
-    ;; 0.141 sec.
-
+    ;; 0.087 sec.
+    
+    (time
+    (with-views ((cxc cumX-cols 0 t)
+		 (cxc2 cumX2-cols 0 t)
+		 (x* x 0 t)
+		 (cs cumsses 0 t))
+      (dotimes (i 1000)
+	(%move x* cxc)
+	(%move x* cxc2)
+	(%square cxc2)
+	(dotimes (i N)
+	  (let ((lr (/ (+ 2.0 i))))
+	    
+	    (%adds cumX-cols x*)
+	    (%adds cumX2-cols x*)
+	    (let* ((meanX (%scalar-mul cumX-cols lr))
+		   (mx    (%muls meanX cumX-cols))
+		   (mx    (%scalar-mul mx -1.0)))
+	      (%move cumX2-cols cs)
+	      (%adds cs mx)))
+	  (incf-offsets! x* 1 0)
+	  (incf-offsets! cs 1 0))
+	(reset-offsets! x*)
+	(reset-offsets! cs))))
+    
     (time
      (dotimes (i 1000)
-       (cl-xmatrix::with-views1 ((cxc cumX-cols 0 t)
+       (with-views ((cxc cumX-cols 0 t)
 		    (cxc2 cumX2-cols 0 t)
 		    (x* x 0 t))
 	 (%move x* cxc)
@@ -510,7 +534,7 @@ Output: Cumsses [N D]"
 	 (%square cxc2))
 
        (dotimes (i N)
-	 (cl-xmatrix::with-views1 ((cs cumsses i t)
+	 (with-views ((cs cumsses i t)
 		      (x* x i t))
 	   (let ((lr (/ (+ 2.0 i))))
 	     (%adds cumX-cols x*)

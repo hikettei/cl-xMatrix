@@ -1636,7 +1636,10 @@ Constraints: matrix.dims == mat-operated-with.dims, matrix.dims >= 2."
       
       (explore-batch
        (matrix-offset matrix)
-       first-offset
+       (if mat-operated-with
+	   (+ (matrix-offset mat-operated-with)
+	      first-offset)
+	   first-offset)
        0
        (length dims))
 
