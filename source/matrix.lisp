@@ -158,7 +158,7 @@
 (defun print-matrix (matrix stream depth)
   (declare (ignore depth))
   ;; Considering Broadcasts: (1 10) (10 nil) -> (10 10)
-  (format stream "<Matrix :~(~a~) :shape ~a :view ~a :visible-shape ~a ~% :vec ~a>"
+  (format stream "<Matrix :~(~a~) :shape ~a :view ~a :visible-shape ~a ~a ~% :vec ~a>"
 	  (matrix-dtype matrix)
 	  (matrix-shape matrix)
 	  (matrix-view matrix)
@@ -166,6 +166,9 @@
 	   (matrix-visible-shape matrix)
 	   (matrix-broadcasts matrix)
 	   :for-print t)
+	  (if (= (matrix-offset matrix) 0)
+	      ""
+	      (format nil ":offset ~a" (matrix-offset matrix)))
 	  (render-matrix matrix :indent 6))) ; TODO: more infos
 
 ;; Note: view-of-matrix is NOT ALLOWED to use the view-object's information

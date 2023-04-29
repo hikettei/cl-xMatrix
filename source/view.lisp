@@ -761,9 +761,9 @@ Return: List (Consisted of strings which records error log)"
 	   (let* ((mat (car tflist-args))
 		  (indices (loop for i fixnum upfrom 0
 				   below (nth candiates (shape mat))
-				 if (= 1 (round
-					  ;; Fixme 1d-mat-aref's return type is unknown.
-					  (1d-mat-aref mat i)))
+				 if (locally (declare (optimize (speed 1)))
+				      (= 1 (round
+					    (1d-mat-aref mat i))))
 				   collect i)))
 	     (setf (nth candiates subscripts) `(:indices ,@indices))
 	     subscripts))
@@ -883,9 +883,9 @@ Example:
 	 (let* ((mat (second subscript))
 		(indices (loop for i fixnum upfrom 0
 				 below orig-shape
-			       if (= 1 (round
-					;; Fixme 1d-mat-aref's return type is unknown.
-					(1d-mat-aref mat i)))
+			       if (locally (declare (optimize (speed 1)))
+				    (= 1 (round
+					  (1d-mat-aref mat i))))
 				 collect i)))
 	   `(:indices ,@indices)))
 	(t
@@ -1146,6 +1146,8 @@ Example:
 	(reverse error-list))))))
 
 ;; 2x times faster compared to old definition
+;; Memo: f(x: A∈R^(m n)) -> g(offsets, B∈R^(1 n))
+;; Unroll and JIT g
 (declaim (ftype (function (matrix &rest subscript-t) matrix) view))
 (defun view (matrix &rest subscripts)
   ""
@@ -1191,16 +1193,7 @@ Example:
 	  (progn
 	    (apply #'view-of-matrix-with-shape matrix broadcasts visible-shape subscripts))))))
 
-(defun view! (matrix &rest subscripts)
-  "The function view! modifies the tensor's visible areas destructively.
-   (view! matrix `(10 10))"
-  (declare (optimize (speed 3) (safety 0))
-	   (type matrix matrix)
-	   (type list subscripts))
-
-  ;; todo: make it.
-  
-  )
+;; TODO: (defun view! (hoge) ..)
 
 ;; Todo: :indices lambda(x), :tflist lambda(x)
 ;; Is there a bug?
@@ -1259,6 +1252,8 @@ Todo: Example"
 	(matrix-offset matrix) 0)
   nil)
 
+
+;; for debugging
 (defun view* (matrix &rest subscripts
 	      &aux
 	       (subscripts (straighten-up-subscripts matrix subscripts)))
