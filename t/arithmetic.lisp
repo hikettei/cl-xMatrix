@@ -5,7 +5,7 @@
 
 (defparameter *dtype* :float)
 
-
+;; Note Eigen: row-major order
 
 ;; Testing Arithmetic(Matrix, Matrix)
 
@@ -74,6 +74,7 @@
 (test arithmetic-matrix-scalar-fp32
   (is (test-arithmetic-dtype-matrix-scalar :float)))
 
+;; Fix the C's definition
 (test arithmetic-matrix-scalar-fp16
   (is (test-arithmetic-dtype-matrix-scalar :uint16)))
 
