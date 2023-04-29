@@ -264,110 +264,6 @@ ViewInstruction is basically created only for 2d-matrix operation, functions mus
 		  (ignorable ,absolute))
 	   ,@body)))))
 
-;; Support Repeat -> More Conditions -> Optimize
-
-(defun subscript-p (subscripts matrix &aux (shape (shape matrix)))
-  "Returns t if the format of subscripts are correct.
-Legal Subscript -> fixnum/list/t, (external-option ~)"
-  (declare (optimize (speed 3)))
-  (let ((reports))
-    (loop for i fixnum upfrom 0
-	  for dim in shape
-	  for sub in subscripts
-	  do (typecase sub
-	       (fixnum
-		(if (< (the fixnum sub) (the fixnum dim))
-		    t
-		    (push
-		     (format nil "[Axis=~a] Failed with (< subscript[~a] shape[~a]). subscript[~a]=~a shape[~a]=~a~%"
-			     i
-			     i
-			     i
-			     i
-			     sub
-			     i
-			     dim)
-		     reports)))
-	       (list
-		(typecase (car sub)
-		  (fixnum
-		   (cond
-		     ;; (5 3) is invaild (>= 5 3)
-		     ((>= (the fixnum (car sub)) (the fixnum (second sub)))
-		      (push
-		       (format nil "[Axis=~a] Failed with (< subscript[~a][0] subscript[~a][1]). subscript=~a~%"
-			       i
-			       i
-			       i
-			       sub)
-		       reports))
-		     ;; (n 10) but axis=3
-		     ((> (the fixnum (second sub)) (the fixnum dim))
-		      (push
-		       (format nil "[Axis=~a] Failed with (< subscript[~a][1] shape[~a]) subscript=~a, shape[~a]=~a~%"
-			       i
-			       i
-			       i
-			       sub
-			       i
-			       dim)
-		       reports))
-		     ((not (= (length sub) 2))
-		      (push
-		       (format nil "[Axis=~a] Failed with (= (length subscript[~a]) 2). subscript=~a.~%"
-			       i
-			       i
-			       sub)
-		       reports))
-		     (t t)))
-		  (keyword
-		   (case (car sub)
-		     (:indices
-		      (let ((ov (find-if #'(lambda (x) (>= (the fixnum x) dim)) (the list (cdr sub)))))
-			(if ov
-			    (push
-			     (format nil "[Axis=~a] Each index mustn't exceed ~a, but found: ~a.~%"
-				     i
-				     dim
-				     ov)
-			     reports)
-			    t)))
-		     (:broadcast
-		      (cond
-			((not (= (length sub) 2))
-			 (push
-			  (format nil "[Axis=~a] :broadcast keyword is given the following format: `(:broadcast n) but got ~a~%"
-				  i
-				  sub)
-			  reports))
-			((not (= (the fixnum dim) 1))
-			 (push
-			  (format nil "[Axis=~a] The axis to be broadcasted, must be 1 but got ~a.~%" i dim)
-			  reports))))
-		     (:tflist
-		      ;; add type checks
-		      t)
-		     (T
-		      (push
-		       (format nil "[Axis=~a] Unknown keyword: ~a~%" i sub)
-		       reports))))))
-	       (t
-		(if (eql sub t)
-		    t
-		    (push
-		     (format nil "[Axis=~a] Invaild argument ~a~%" i sub)
-		     reports)))))
-    (if reports
-	(view-indexing-error
-	 "~a"
-	 (with-output-to-string (str)
-	   (write-string "Couldn't parse subscripts correctly:" str)
-	   (write-char #\Newline str)
-	   (write-string (format nil "Shape=~a Subscripts=~a~%" shape subscripts) str)
-	   (dolist (r (reverse reports))
-	     (write-string r str))))
-	t)))
-
 (declaim (ftype (function (fixnum subscript-t fixnum) list) find-subscript-error)
 	 (inline find-subscript-error))
 (defun find-subscript-error (i sub dim &aux (reports nil))
@@ -596,206 +492,6 @@ Return: List (Consisted of strings which records error log)"
 	 (t (view-indexing-error "Cannot handle with this subscript: ~a" subscript))))
       (t old-view))))
 
-;; Slow
-
-(defun compute-absolute-subscripts (orig-mat subscripts)
-  "Translate view-subscription into the format which is compatiable with orig-mat"
-  (declare (optimize (speed 3) (safety 0))
-	   (type list subscripts)
-	   (type matrix orig-mat))
-  (if (matrix-projected-p orig-mat)
-      ;; View-Object -> (view) -> View-Object
-      (progn
-	;; orig-mat turned out to be view-obj, subscripts are relative.
-	(let ((old-view (matrix-view orig-mat))
-	      (original-shape (matrix-shape orig-mat)))
-	  (declare (ignore original-shape)) ;; to be used for error handling
-	  ;; This implementation is so ugly ><
-	  ;; because the below code describes all cases: (e.g.: Slice->Fixnum, Indices->Fixnum)
-	  (labels ((handle-ext-index (view sub)
-		     ;; note: don't return sub directly, add view.
-		     (typecase view
-		       (index
-			;; M[2][0]
-			(the index (+ view (the index sub))))
-		       (list
-			(typecase (car view)
-			  (keyword
-			   ;; M[:broadcast 10][1]
-			   ;; M[:indices 1 2 3 4][1]
-			   (case (car view)
-			     (:indices
-			      (nth sub (cdr view)))
-			     (:broadcast 0)))
-			  (index
-			   ;; M[2:4].view(1)
-			   (the index
-				(+ (the index (car view)) (the index sub))))
-			  (T
-			   (view-indexing-error "Can't handle with this instruction: ~a" view))))
-		       (t
-			;; M[T][0]
-			sub)))
-		   (handle-ext-range (view sub)
-		     (typecase view
-		       (index
-			;; M[1].view([2:4])
-			(view-indexing-error "Attempted to comptute Matrix[~a][~a] but this is out of range." view sub))
-		       (list
-			(typecase (car view)
-			  (keyword
-			   ;; M[:broadcast 10][0:2]
-			   ;; M[:indices 1 2 3 4][0:2]
-			   ;; Todo: Detect out of range
-			   (case (car view)
-			     (:broadcast
-			      `(:indices
-				,@(loop for i fixnum upfrom (car sub) below (second sub)
-					collect 0)))
-			     (:indices
-			      `(:indices
-				,@(loop for i fixnum upfrom (car sub) below (second sub)
-					collect (nth i (cdr view)))))))
-			  (index
-			   ;; M[2:10][1:2] -> M[3:5]
-			   ;; Todo: Detect out of range.
-			   `(,(the index (+ (the index (car view)) (the index (car sub))))
-			     ,(the index (+ (the index (car view)) (the index (second sub))))))
-			  (T
-			   (view-indexing-error "Cant handle this subscript: ~a" view))))
-		       (t sub)))
-		   (handle-ext-kw (view sub)
-		     (typecase view
-		       (index
-			;; M[0][:indices 1 2 3]
-			(view-indexing-error "Attempted to compute M[~a][~a] but it is out of range." view sub))
-		       (list
-			(typecase (car view)
-			  (keyword
-			   ;; M[:broadcast 10][:indices 0 1]
-			   ;; M[:indices 1 2 3][:indices 0 1]
-			   (case (car view)
-			     (:broadcast
-			      `(:indices ,@(loop for i upfrom 0 below (the index (second sub)) collect 0)))
-			     (:indices
-			      `(:indices ,@(map
-					    'list
-					    #'(lambda (k)
-						(nth k (cdr view)))
-					    (cdr sub))))))
-			  (index
-			   ;; M[2:6][:indices 1 2]
-			   (let ((ls (loop for i fixnum
-					   upfrom (car view)
-					     below (second view)
-					   collect i)))
-			     `(:indices ,@(map
-					   'list
-					   #'(lambda (k)
-					       (nth k ls))
-					   (cdr sub)))))
-			  (T
-			   (view-indexing-error "Cant handle this subscript: ~a" view))))
-		       ;; M[T][:indices 1 2 3]
-		       (t sub)))
-		   (handle-ext-kw-broadcast (view sub)
-		     (typecase view
-		       (index
-			;; M[0][:broadcast 10]
-			sub)
-		       (list
-			(typecase (car view)
-			  (keyword
-			   ;; M[:indices 0 1 2 3][:broadcast 10]
-			   ;; M[:broadcast 10][:broadcast 10]
-			   (if (and (= (length (the list (cdr view))) 1)
-				    (eql (car view) :indices))
-			       ;; Only after [:indices m]
-			       sub
-			       (view-indexing-error "view: ~a and ~a couldn't broadcasted together. The axis to be broadcasted, must be 1. Also, M[:broadcast 1][:broadcast 1] is prohibited. (Make a copy of matrix and try it again plz.)" view sub)))
-			  (index
-			   ;; M[0:10][:broadcast 10]
-			   (if (= (- (the index (second view)) (the index (car view))) 1)
-			       sub
-			       (view-indexing-error "view: ~a and ~a couldn't broadcasted together. The axis to be broadcasted, must be 1." view sub)))
-			  (T
-			   (view-indexing-error "Cant handle this subscript: ~a" view))))
-		       ;; M[T][:indices 1 2 3]
-		       (t sub))))
-	    (map 'list #'(lambda (old-view-axis sub)
-			   ;; sub = view(orig-axis, old-view)
-			   ;; solve on the around way
-			   (typecase sub
-			     (index
-			      (handle-ext-index old-view-axis sub))
-			     (list
-			      (typecase (car sub)
-				(keyword
-				 (case (car sub)
-				   (:broadcast (handle-ext-kw-broadcast old-view-axis sub))
-				   (:indices (handle-ext-kw old-view-axis sub))))
-				(index
-				 (handle-ext-range old-view-axis sub))
-				(t (view-indexing-error "Cant handle this subscript: ~a" sub))))
-			     ;; M[:indices 1 2 3][t]
-			     (t old-view-axis)))
-		 old-view subscripts))))
-      ;; Original Matrix -> (view) -> View-Object
-      subscripts))
-
-(defun parse-and-replace-tflist-subscripts (matrix
-					    subscripts
-					    &aux
-					      (tf-p
-					       #'(lambda (x)
-						   (and (typep x 'list)
-							(eql (car x)
-							     :tflist))))
-					      (candiates
-					       (position-if
-						tf-p
-						subscripts)))
-  "(:tflist t f t f ...) -> (:indices 1 3 4 ...)
-   (:tflist matrix)      -> (:indices 1 3 4 ...)"
-  (declare (optimize (speed 3))
-	   (type list subscripts)
-	   (ignore matrix))
-
-  (if candiates
-      (let* ((tflist (find-if tf-p subscripts))
-	     (tflist-args (cdr tflist)))
-	(unless (= (count-if tf-p subscripts) 1)
-	  (view-indexing-error ":tflist can be used at once in view function's subscript."))
-	
-	(unless (or (typep tflist-args 'list) ;; check list's elements
-		    (typep tflist-args 'matrix))
-	  (view-indexing-error ":tflist requires the following: list (consisted of boolean), matrix but got ~a" tflist-args))
-	(typecase (car tflist-args)
-	  (boolean
-	   ;; Todo: Detect (:tflist)
-	   (let ((indices (loop for i fixnum upfrom 0
-				for tf in tflist-args
-				if tf
-				  collect i)))
-	     (setf (nth candiates subscripts) `(:indices ,@indices))
-	     subscripts))
-	  (matrix
-	   ;; Todo: %satisfies return a matrix of bit.
-	   ;; Todo: Detect :tflist mat1 mat2
-	   ;; 1.0 = True, 0.0 = False.
-	   (let* ((mat (car tflist-args))
-		  (indices (loop for i fixnum upfrom 0
-				   below (nth candiates (shape mat))
-				 if (locally (declare (optimize (speed 1)))
-				      (= 1 (round
-					    (1d-mat-aref mat i))))
-				   collect i)))
-	     (setf (nth candiates subscripts) `(:indices ,@indices))
-	     subscripts))
-	  (T
-	   (view-indexing-error ":tflist got invaild argument: ~a. :tflist can be described by list or matrix" (type-of (second tflist-args))))))
-      subscripts))
-
 (declaim (ftype (function (fixnum subscript-t matrix fixnum) (values subscript-t subscript-t)) parse-broadcast))
 (defun parse-broadcast (orig-shape subscript matrix axis)
   "If subscript is broadcast. Returns the broadcasted shape and new-subscript. do nothing otherwise."
@@ -813,73 +509,6 @@ Return: List (Consisted of strings which records error log)"
 	  (view-indexing-error "Can't Broadcast the matrix~%because the axis to be broadcasted is not 1: ~a at axis=~a" (shape matrix) axis))
 	(values t (second subscript)))
       (values subscript nil)))
-
-
-;; Delete
-(defun parse-broadcast-subscripts (matrix subscripts)
-  "(:broadcast 10) or `(:broadcast t)"
-  (declare (optimize (speed 3) (safety 0))
-	   (type matrix matrix)
-	   (type list subscripts))
-  
-  (let ((broadcasts)
-	(newsubs))
-    (loop for i fixnum upfrom 0
-	  for sub in subscripts
-	  do (if (and (typep sub 'cons)
-		      (eql (car sub) :broadcast))
-		 (progn
-		   (unless (= (length sub) 2)
-		     (view-indexing-error "Invaild Operation ~a. :broadcast is given in this format:~% `(:broadcast num) num = t or positive fixnum" sub))
-		   (unless (= (the index (nth i (matrix-visible-shape matrix))) 1)
-		     (view-indexing-error "Can't Broadcast the matrix~%because the axis to be broadcasted is not 1: ~a at axis=~a" (matrix-visible-shape matrix) i))
-		   (push (second sub) broadcasts)
-		   (push sub newsubs))
-		 (progn
-		   (push nil broadcasts)
-		   (push sub newsubs))))
-    (values
-     (reverse broadcasts)
-     (reverse newsubs))))
-
-;; Delete
-(defun straighten-up-subscripts (matrix
-				 subscripts
-				 &aux (result (loop for i fixnum upfrom 0 below (dims matrix)
-						    collect t))
-				   (shapes (matrix-visible-shape matrix)))
-  "Straighten up subscripts and parse relative-position of matrix.
-Example:
-  Matrix=(10 10) view=(1)     -> view = (1 t)
-  Matrix=(10 10) view=(1 1)   -> view = (1 1)
-  Matrix=(10 10) view=(1 1 1) -> Indexing-Error
-
--1 -> 10 for example."
-  (declare (optimize (speed 3) (safety 0))
-	   (type matrix matrix)
-	   (type list subscripts))
-  (unless (>= (dims matrix) (length subscripts))
-    (view-indexing-error "The length of subscripts is too large for the given matrix.~%Matrix:     ~a~%Subscripts: ~a" (matrix-visible-shape matrix) subscripts))
-
-  (labels ((parse-relative-position (dim sub)
-	     (typecase sub
-	       (fixnum
-		(if (>= sub 0)
-		    sub
-		    (let ((pos (the fixnum (+ (the fixnum (nth dim shapes)) sub))))
-		      (if (>= pos 0)
-			  pos
-			  (view-indexing-error "The relative-index ~a beyonds the corresponding axis ~a.~% Matrix: ~a Subscripts: ~a at axis=~a" sub (nth dim shapes) shapes subscripts dim)))))
-	       (list
-		(map 'list #'(lambda (x)
-			       (parse-relative-position dim x))
-		     sub))
-	       (T sub))))
-    (loop for i fixnum upfrom 0
-	  for s in subscripts
-	  do (setf (nth i result) (parse-relative-position i s)))
-    result))
-
 
 
 (declaim (ftype (function (fixnum subscript-t) subscript-t) replace-tflist)
@@ -1176,7 +805,42 @@ Example:
 ;; Unroll and JIT g
 (declaim (ftype (function (matrix &rest subscript-t) matrix) view))
 (defun view (matrix &rest subscripts)
-  "Todo: Docstring"
+  "Todo: Docstring
+  Creates a view-object
+subscript is following:
+
+Primitive Operations:
+  - fixnum
+  - (start-index end-index)
+  - t
+
+External Operations: (Speed is not my concern, and it works like macro).
+  - (:indices 0 2 4 3 ...) (the length of args is any)
+  - (:tflist t nil nil t ...) (the length of args must be correspond with the axis)
+
+>>Detecting errors is todo, good luck :D<<
+
+1. Unwrapped view-object (consisted of primitive operations):
+  call-with-visible-area -> CFFI/Common Lisp's function
+
+2. Wrapped view-object by external operations (possess :indices)
+  call-with-visible-area ->
+       ExternalOperationParser (<- do (dotimes (i indices)))
+         -> call-with-visible-area -> CFFI/Common Lisp's function
+       Finally, modifies the matrix.
+
+;; Note: view-object -> view-object
+;; Semantics:
+;; Matrix -> (view) -> View-object is ok.
+;; View-object -> (view) -> View-object is undefined. (should be matrix -> view-object)
+;; So, view-object -> (view) -> view-object is treated as:
+;; view-object -> matrix -> (view-with-nested) -> view-object.
+
+Possibly throws: view-indexing-error
+
+Done: Straighten-up subscripts
+      Relative-Indexing
+     :tflist"
   (declare (optimize (speed 3))
 	   (type matrix matrix)
 	   (type list subscripts))
@@ -1277,88 +941,6 @@ Todo: Example"
 	(matrix-offset matrix) 0)
   nil)
 
-
-;; for debugging
-(defun view* (matrix &rest subscripts
-	      &aux
-	       (subscripts (straighten-up-subscripts matrix subscripts)))
-  "Creates a view-object
-subscript is following:
-
-Primitive Operations:
-  - fixnum
-  - (start-index end-index)
-  - t
-
-External Operations: (Speed is not my concern, and it works like macro).
-  - (:indices 0 2 4 3 ...) (the length of args is any)
-  - (:tflist t nil nil t ...) (the length of args must be correspond with the axis)
-
->>Detecting errors is todo, good luck :D<<
-
-1. Unwrapped view-object (consisted of primitive operations):
-  call-with-visible-area -> CFFI/Common Lisp's function
-
-2. Wrapped view-object by external operations (possess :indices)
-  call-with-visible-area ->
-       ExternalOperationParser (<- do (dotimes (i indices)))
-         -> call-with-visible-area -> CFFI/Common Lisp's function
-       Finally, modifies the matrix.
-
-;; Note: view-object -> view-object
-;; Semantics:
-;; Matrix -> (view) -> View-object is ok.
-;; View-object -> (view) -> View-object is undefined. (should be matrix -> view-object)
-;; So, view-object -> (view) -> view-object is treated as:
-;; view-object -> matrix -> (view-with-nested) -> view-object.
-
-Possibly throws: view-indexing-error
-
-Done: Straighten-up subscripts
-      Relative-Indexing
-     :tflist"
-  
-  (declare (optimize (speed 3) (safety 0))
-	   (type matrix matrix))
-
-  (unless *unsafe-compute-view*
-    (subscript-p subscripts matrix))
-  
-
-  (multiple-value-bind (broadcasts subscripts) (parse-broadcast-subscripts matrix subscripts)
-    (declare (type list broadcasts subscripts))
-    
-    (let* ((subscripts (parse-and-replace-tflist-subscripts matrix subscripts)) ;; :tflist -> :indices
-	   (subscripts (compute-absolute-subscripts matrix subscripts))) ;; (View -> View) -> (Matrix -> View)
-      (declare (type list subscripts))
-
-      (labels ((external-operations-p (sub)
-		 (when (and (typep sub 'list)
-			    (typep (car sub) 'keyword))
-		   (if (eql (car sub) :indices)
-		       t
-		       nil))))
-
-	(unless (= (length (matrix-visible-shape matrix))
-		   (length subscripts))
-	  (error "Assertion Failed with (length matrix.dim) == subscripts (perhaps internal bug)"))
-	
-	(let ((external-operations (find-if #'external-operations-p subscripts)))
-	  (if external-operations
-	      (let ((external-operation-dim
-		      (position-if #'external-operations-p subscripts)))
-		(unless (= (count-if #'external-operations-p subscripts) 1)
-		  (view-indexing-error "keyword :indices only appears at once in subscriptions."))
-		
-		(let ((view-to-return (apply #'view-of-matrix matrix broadcasts subscripts)))
-		  (setf (matrix-external-operation view-to-return)
-			external-operations)
-		  (setf (matrix-external-operation-dim view-to-return)
-			external-operation-dim)
-		  view-to-return))
-	      ;; Otherwise creates view-object normally.
-	      (let ((view-to-return (apply #'view-of-matrix matrix broadcasts subscripts)))
-		view-to-return)))))))
 
 (defmacro with-view ((var matrix &rest subscripts)
 		     &body body)
