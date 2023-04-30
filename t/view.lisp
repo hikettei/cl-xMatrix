@@ -57,12 +57,12 @@
     
     ;; indices (List)
 
+    ;; Note:: Optimize :indices/:tflist.
+
     (test-view matrix `((:indices 0 1 2)) 435)
     (test-view matrix `((:indices 0 1 2) 0) 30)
 
     ;; indices (Matrix)
-    
-
     
     ;; tflist (List)
     

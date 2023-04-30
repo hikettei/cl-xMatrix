@@ -1041,7 +1041,14 @@ Todo: Example"
 ;; I could inline call-with-visible-area... (It remains to be optimized, since it could unrolled and compield by SBCL.)
 ;; Note: To reduce call-with-visible-area's overheads ultimately, we would need the information about the shape and viewi information about the array to be computed. Fortunately, view/broadcasting's definition make it ez if only i have coalton.
 
+;; Theorically, I can unroll this iteration but ANSI CL's APIs are insufficient!.
 ;; f(args) -> f(offsets, args)
+(declaim (ftype (function (matrix function &key
+				  (:mat-operated-with (or null matrix))
+				  (:first-offset fixnum)
+				  (:direction keyword))
+			  null)
+		call-with-visible-area))
 (defun call-with-visible-area (matrix function
 			       &key
 				 (mat-operated-with nil)

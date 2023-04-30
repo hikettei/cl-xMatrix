@@ -5,6 +5,12 @@
 
 ;; To Add: arange a[i] = alpha*i + beta. i = (k, m)
 
+;(define-method-combination static-shape ())
+
+;; https://eshamster.hatenablog.com/entry/play-define-method-combination-01
+
+;; Increment -> bordeaux-threads/?
+
 (macrolet ((define-arithmetic-cfun (name dtype)
 	     `(defcfun ,name :void
 		(view1 :pointer)
@@ -242,10 +248,20 @@ Return:
   (define-scalar-mat-cfun "fp8_scalar_add" :uint8)
   (define-scalar-mat-cfun "int_scalar_add" :int)
 
+  (define-scalar-mat-cfun "fp32_scalar_sub" :float)
+  (define-scalar-mat-cfun "fp16_scalar_sub" :uint16)
+  (define-scalar-mat-cfun "fp8_scalar_sub" :uint8)
+  (define-scalar-mat-cfun "int_scalar_sub" :int)
+
   (define-scalar-mat-cfun "fp32_scalar_mul" :float)
   (define-scalar-mat-cfun "fp16_scalar_mul" :uint16)
   (define-scalar-mat-cfun "fp8_scalar_mul" :uint8)
   (define-scalar-mat-cfun "int_scalar_mul" :int)
+
+  (define-scalar-mat-cfun "fp32_scalar_div" :float)
+  (define-scalar-mat-cfun "fp16_scalar_div" :uint16)
+  (define-scalar-mat-cfun "fp8_scalar_div" :uint8)
+  (define-scalar-mat-cfun "int_scalar_div" :int)
 
   (define-scalar-mat-cfun "fp32_fill" :float)
   (define-scalar-mat-cfun "fp16_fill" :uint16)
@@ -294,7 +310,20 @@ SideEffects:
 
 Return:
   - modified matrix."
-  (%scalar-add matrix (- scalar)))
+  (declare (optimize (speed 3) (safety 0)))
+  (call-with-visible-area
+   matrix #'(lambda (x)
+	      (dtypecase matrix
+		(:float
+		 (fp32-scalar-sub x (matrix-vec matrix) scalar))
+		(:uint16
+		 (fp16-scalar-sub x (matrix-vec matrix) scalar))
+		(:uint8
+		 (fp8-scalar-sub x (matrix-vec matrix) scalar))
+		(:int
+		 (int-scalar-sub x (matrix-vec matrix) scalar))))
+   :direction :foreign)
+  matrix)
 
 
 (defun %scalar-mul (matrix scalar &aux (scalar (coerce scalar (dtype->lisp-type (matrix-dtype matrix)))))
@@ -326,7 +355,7 @@ Return:
    :direction :foreign)
   matrix)
 
-(defun %scalar-div (matrix scalar)
+(defun %scalar-div (matrix scalar &aux (scalar (coerce scalar (dtype->lisp-type (matrix-dtype matrix)))))
     "The function %scalar-div divides the matrix by scalar.
 
 Note: scalar is coerced into the matrix's dtype (This could be lead to the performance problem. FIXME)
@@ -339,7 +368,20 @@ SideEffects:
 
 Return:
   - modified matrix."
-  (%scalar-mul matrix (coerce (/ scalar) (dtype->lisp-type (matrix-dtype matrix)))))
+  (declare (optimize (speed 3) (safety 0)))
+  (call-with-visible-area
+   matrix #'(lambda (x)
+	      (dtypecase matrix
+		(:float
+		 (fp32-scalar-div x (matrix-vec matrix) scalar))
+		(:uint16
+		 (fp16-scalar-div x (matrix-vec matrix) scalar))
+		(:uint8
+		 (fp8-scalar-div x (matrix-vec matrix) scalar))
+		(:int
+		 (int-scalar-div x (matrix-vec matrix) scalar))))
+   :direction :foreign)
+  matrix)
 
 
 (defun %fill (matrix scalar)

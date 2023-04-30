@@ -371,6 +371,23 @@ void int_scalar_add(const struct ViewInstruction* view, int* vec1, int scal) {
 }
 
 
+void fp32_scalar_sub(const struct ViewInstruction* view, single_float* vec1, single_float scal) {
+  WITH_ELWISE_VIEW(view, k, vec1[k] -= scal);
+}
+
+void fp16_scalar_sub(const struct ViewInstruction* view, fp16_t* vec1, fp16_t scal) {
+  WITH_ELWISE_VIEW(view, k, vec1[k] -= scal);
+}
+
+void fp8_scalar_sub(const struct ViewInstruction* view, fp8_t* vec1, fp8_t scal) {
+  WITH_ELWISE_VIEW(view, k, vec1[k] -= scal);
+}
+
+void int_scalar_sub(const struct ViewInstruction* view, int* vec1, int scal) {
+  WITH_ELWISE_VIEW(view, k, vec1[k] -= scal);
+}
+
+
 void fp32_scalar_mul(const struct ViewInstruction* view, single_float* vec1, single_float scal) {
   WITH_ELWISE_VIEW(view, k, vec1[k] *= scal);
 }
@@ -385,6 +402,23 @@ void fp8_scalar_mul(const struct ViewInstruction* view, fp8_t* vec1, fp8_t scal)
 
 void int_scalar_mul(const struct ViewInstruction* view, int* vec1, int scal) {
   WITH_ELWISE_VIEW(view, k, vec1[k] *= scal);
+}
+
+
+void fp32_scalar_div(const struct ViewInstruction* view, single_float* vec1, single_float scal) {
+  WITH_ELWISE_VIEW(view, k, vec1[k] /= scal);
+}
+
+void fp16_scalar_div(const struct ViewInstruction* view, fp16_t* vec1, fp16_t scal) {
+  WITH_ELWISE_VIEW(view, k, vec1[k] /= scal);
+}
+
+void fp8_scalar_div(const struct ViewInstruction* view, fp8_t* vec1, fp8_t scal) {
+  WITH_ELWISE_VIEW(view, k, vec1[k] /= scal);
+}
+
+void int_scalar_div(const struct ViewInstruction* view, int* vec1, int scal) {
+  WITH_ELWISE_VIEW(view, k, vec1[k] /= scal);
 }
 
 
