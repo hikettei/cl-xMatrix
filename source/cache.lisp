@@ -50,11 +50,25 @@
      (macrolet ((overwrite (value)
 		  `(set-thread-cached-object ,,place-key ,value)))
        (if (null ,var)
-	   (setq ,var (progn ,@otherwise))
-	   (setq ,var (progn ,@if-exists)))
+	   (setq ,var (progn ,otherwise))
+	   (setq ,var (progn ,if-exists)))
        ,@body)))
 
-(defmacro with-cache ()
+(defmacro with-cache ((var dimension &key (place-key :cache) (dtype :float)) &body body)
   "Caching Matrix"
-  )
+  `(with-internal-system-caching (,var ,place-key)
+       (:if-exists ,var
+        :otherwise (overwrite (matrix ,dimension :dtype ,dtype)))
+     ,@body))
+
+(defmacro with-caches ((&rest forms) &body body)
+  ""
+  (labels ((expand-caches (binding-specs body)
+	     (if (endp binding-specs)
+		 `(progn ,@body)
+		 `(with-cache ,(first binding-specs)
+	            ,(expand-caches (cdr binding-specs) body)))))
+    (expand-caches forms body)))
+
+
 ;; with-cache (:adjustable t)

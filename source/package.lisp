@@ -13,7 +13,8 @@
   ;; Caching
   (:export
    #:with-internal-system-caching
-   #:with-cache)
+   #:with-cache
+   #:with-caches)
 
   (:export
    #:*available-dtypes*)

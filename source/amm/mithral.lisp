@@ -347,7 +347,8 @@ Memo: Spelling Inconsistency -> threshold and val."
 		    &aux
 		      (N (car (shape x)))
 		      (D (second (shape x)))
-		      (dtype (dtype x)))
+		      (dtype (dtype x))
+		      (cumsses (matrix `(,N ,D) :dtype dtype)))
   "Computes SSE (Sum of Square Errors) column-wise.
 Input: X [N D]
 Output: Cumsses [N D]"
@@ -355,10 +356,11 @@ Output: Cumsses [N D]"
 	   (type index N D)
 	   (type matrix x))
   ;; To reduce alloc-mat: -> with-cache
-  (let ((cumsses    (matrix `(,N ,D) :dtype dtype))
-	(cumX-cols  (matrix `(1 ,D)  :dtype dtype))
-	(cumx2-cols (matrix `(1 ,D)  :dtype dtype)))
-
+  (with-caches ((cumX-cols `(1 ,D) :dtype dtype :place-key :cummsse-col1)
+		(cumX2-cols `(1 ,D) :dtype dtype :place-key :cumsse-col2))
+    (%fill cumX-cols 0.0)
+    (%fill cumX2-cols 0.0)
+    
     ;; cumsses ... each N's Loss
 
     ;; First Step (n=0), (for initializing)
@@ -400,9 +402,6 @@ Output: Cumsses [N D]"
 
     ;;(sb-profile:report)
     ;;(sb-profile:unprofile "CL-XMATRIX")
-    
-    (free-mat cumX-cols)
-    (free-mat cumx2-cols)
     cumsses))
 
 ;; This function is O(N)
@@ -437,9 +436,9 @@ x - One of prototypes. [num_idxs, D]"
       (%adds best-col next-col)
       (%scalar-mul best-col 0.5)
       
-      ;(free-mat next-col)
-      ;(free-mat sses-head)
-      ;(free-mat sses-tail-reversed)
+					;(free-mat next-col)
+					;(free-mat sses-head)
+					;(free-mat sses-tail-reversed)
 
       ;; matrix matrix
       (values best-col (view sses best-idx t)))))
