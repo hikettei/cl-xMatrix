@@ -1,7 +1,7 @@
 
 (in-package :cl-xmatrix-test)
 
-;; Testing View
+;; Testing View APIs (Handling multiple dimensions)
 
 (in-suite :test)
 
@@ -91,3 +91,9 @@
 
 (test uint8-view-test-2d
   (is (testing-in-2d :uint8)))
+
+
+;; Add: 3D/4D
+;; Add: Broadcasts
+;; Add:
+

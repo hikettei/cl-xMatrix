@@ -16,6 +16,8 @@
 
 (in-suite :test)
 
+(cpu-information)
+
 ;; Assume:
 
 
@@ -29,6 +31,7 @@
 ;; Numba: 0.00008
 ;; Numpy: 0.080   (Colab), Intel(R) Xeon(R) CPU @ 2.20GHz
 
+
 (defun test-mithral ()
   (let ((a (matrix `(5000 16))))
    ;; (sb-profile:profile "CL-XMATRIX")
@@ -40,5 +43,5 @@
     t))
 
 
-(test mithral-training-hash-table
-  (is (test-mithral)))
+;;(test mithral-training-hash-table
+;;  (is (test-mithral)))

@@ -44,27 +44,6 @@ struct ViewInstruction {
   int broadcast1; // 0 or 1
 };
 
-// element-wise mathematical functions
-
-void fp32_abs(const struct ViewInstruction*, single_float*);
-void fp16_abs(const struct ViewInstruction*, fp16_t*);
-void fp8_abs(const struct ViewInstruction*, fp8_t*);
-void int_abs(const struct ViewInstruction*, int*);
-
-void fp32_sin(const struct ViewInstruction*, single_float*);
-void fp16_sin(const struct ViewInstruction*, fp16_t*);
-void fp8_sin(const struct ViewInstruction*, fp8_t*);
-void int_sin(const struct ViewInstruction*, int*);
-
-void fp32_cos(const struct ViewInstruction*, single_float*);
-void fp16_cos(const struct ViewInstruction*, fp16_t*);
-void fp8_cos(const struct ViewInstruction*, fp8_t*);
-void int_cos(const struct ViewInstruction*, int*);
-
-void fp32_tan(const struct ViewInstruction*, single_float*);
-void fp16_tan(const struct ViewInstruction*, fp16_t*);
-void fp8_tan(const struct ViewInstruction*, fp8_t*);
-void int_tan(const struct ViewInstruction*, int*);
 
 
 void fp32_copy(const struct ViewInstruction*, const struct ViewInstruction*, single_float*, single_float*);
@@ -124,4 +103,36 @@ void fp16_fill(const struct ViewInstruction*, fp16_t*, fp16_t);
 void fp8_fill(const struct ViewInstruction*, fp8_t*, fp8_t);
 void int_fill(const struct ViewInstruction*, int*, int);
 
+// Element-Wise Functions
 
+#define DEFINE_1D_HEADER(name)						\
+  void fp32_##name(const struct ViewInstruction*, single_float*);	\
+  void fp16_##name(const struct ViewInstruction*, fp16_t*);		\
+  void fp8_##name(const struct ViewInstruction*, fp8_t*);		\
+  void int_##name(const struct ViewInstruction*, int*);			\
+
+DEFINE_1D_HEADER(abs);
+
+DEFINE_1D_HEADER(sin);
+DEFINE_1D_HEADER(cos);
+DEFINE_1D_HEADER(tan);
+
+DEFINE_1D_HEADER(asin);
+DEFINE_1D_HEADER(acos);
+DEFINE_1D_HEADER(atan);
+
+DEFINE_1D_HEADER(sinh);
+DEFINE_1D_HEADER(cosh);
+DEFINE_1D_HEADER(tanh);
+
+DEFINE_1D_HEADER(asinh);
+DEFINE_1D_HEADER(acosh)
+DEFINE_1D_HEADER(atanh);
+
+DEFINE_1D_HEADER(log);
+DEFINE_1D_HEADER(log2);
+DEFINE_1D_HEADER(log10);
+
+DEFINE_1D_HEADER(exp);
+DEFINE_1D_HEADER(sqrt);
+DEFINE_1D_HEADER(cbrt);

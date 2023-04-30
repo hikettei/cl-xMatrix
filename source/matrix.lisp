@@ -408,4 +408,3 @@ Example:
 	    (if (typep m 'matrix)
 		(free-mat m)))
 	*pinned-matrices*))))
-

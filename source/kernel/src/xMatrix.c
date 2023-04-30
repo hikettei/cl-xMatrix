@@ -124,7 +124,6 @@ int* int_allocate_aligned_mat(int size) {
 // Macros for STORING AND LOADING
 
 // f(x)
-// indexの計算をFor内部でしない, 関数呼び出しはSIMD化を妨げる
 // simd_operation -> SIMD Operation, reminder = element_wise_operation
 #define WITH_VIEW_ITER(view, index, stride, simd_operation, reminder)	\
   do {									\
@@ -439,38 +438,50 @@ void int_fill(const struct ViewInstruction* view, int* vec1, int scal) {
 }
 
 
-void fp32_sin(const struct ViewInstruction* view, single_float* vec) {
-  WITH_ELWISE_VIEW(view, k, vec[k] = sin(vec[k]));
-}
-
-void fp16_sin(const struct ViewInstruction* view, fp16_t* vec) {
-  WITH_ELWISE_VIEW(view, k, vec[k] = sin(vec[k]));
-}
-
-void fp8_sin(const struct ViewInstruction* view, fp8_t* vec) {
-  WITH_ELWISE_VIEW(view, k, vec[k] = sin(vec[k]));
-}
-
-void int_sin(const struct ViewInstruction* view, int* vec) {
-  WITH_ELWISE_VIEW(view, k, vec[k] = sin(vec[k]));
-}
 
 
-void fp32_cos(const struct ViewInstruction* view, single_float* vec) {
-  WITH_ELWISE_VIEW(view, k, vec[k] = cos(vec[k]));
-}
+#define DEFINE_1D_FUNCTION(name, f)					\
+  void fp32_##name(const struct ViewInstruction* view, single_float* vec) { \
+    WITH_ELWISE_VIEW(view, k, vec[k]=f(vec[k]));			\
+  }									\
+  void fp16_##name(const struct ViewInstruction* view, fp16_t* vec) {	\
+    WITH_ELWISE_VIEW(view, k, vec[k]=f(vec[k]));			\
+  }									\
+  void fp8_##name(const struct ViewInstruction* view, fp8_t* vec) {	\
+    WITH_ELWISE_VIEW(view, k, vec[k]=f(vec[k]));			\
+  }									\
+  void int_##name(const struct ViewInstruction* view, int* vec) {	\
+    WITH_ELWISE_VIEW(view, k, vec[k]=f(vec[k]));			\
+  }									\
 
-void fp16_cos(const struct ViewInstruction* view, fp16_t* vec) {
-  WITH_ELWISE_VIEW(view, k, vec[k] = cos(vec[k]));
-}
+DEFINE_1D_FUNCTION(sin, sin);
+DEFINE_1D_FUNCTION(cos, cos);
+DEFINE_1D_FUNCTION(tan, tan);
 
-void fp8_cos(const struct ViewInstruction* view, fp8_t* vec) {
-  WITH_ELWISE_VIEW(view, k, vec[k] = cos(vec[k]));
-}
+DEFINE_1D_FUNCTION(asin, asin);
+DEFINE_1D_FUNCTION(acos, acos);
+DEFINE_1D_FUNCTION(atan, atan);
 
-void int_cos(const struct ViewInstruction* view, int* vec) {
-  WITH_ELWISE_VIEW(view, k, vec[k] = cos(vec[k]));
-}
+DEFINE_1D_FUNCTION(sinh, sinh);
+DEFINE_1D_FUNCTION(cosh, cosh);
+DEFINE_1D_FUNCTION(tanh, tanh);
+
+DEFINE_1D_FUNCTION(asinh, asinh);
+DEFINE_1D_FUNCTION(acosh, acosh);
+DEFINE_1D_FUNCTION(atanh, atanh);
+
+// log log2 log10 exp expt square sqrt pow
 
 
+DEFINE_1D_FUNCTION(log, log);
+DEFINE_1D_FUNCTION(log2, log2);
+DEFINE_1D_FUNCTION(log10, log10);
+
+DEFINE_1D_FUNCTION(exp, exp);
+DEFINE_1D_FUNCTION(sqrt, sqrt);
+DEFINE_1D_FUNCTION(cbrt, cbrt);
+
+// expt(base, power) pow(x, n)
+
+// For disassemble
 int main () {}

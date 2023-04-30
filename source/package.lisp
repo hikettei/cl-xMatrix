@@ -85,24 +85,6 @@
    #:%sum
    #:%sumup)
 
-  ;; Trigonometic
-  (:export
-   #:%sin
-   #:%cos
-   #:%tan
-
-   #:%asin
-   #:%acos
-   #:%atan
-
-   #:%sinh
-   #:%cosh
-   #:%tanh
-
-   #:%asinh
-   #:%acosh
-   #:%atanh)
-
   ;; Compares
   (:export
    #:%filter
