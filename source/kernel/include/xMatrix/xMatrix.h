@@ -136,3 +136,8 @@ DEFINE_1D_HEADER(log10);
 DEFINE_1D_HEADER(exp);
 DEFINE_1D_HEADER(sqrt);
 DEFINE_1D_HEADER(cbrt);
+
+void fp32_scalar_greater_than(const struct ViewInstruction*, const struct ViewInstruction*, single_float*, single_float*, single_float);
+
+void fp32_scalar_less_than(const struct ViewInstruction*, const struct ViewInstruction*, single_float*, single_float*, single_float);
+

@@ -481,6 +481,32 @@ DEFINE_1D_FUNCTION(exp, exp);
 DEFINE_1D_FUNCTION(sqrt, sqrt);
 DEFINE_1D_FUNCTION(cbrt, cbrt);
 
+static inline void fp32_elm_scalar_greater_than(single_float* vec, single_float* out, single_float scalar, int k, int m) {
+  if (vec[k] > scalar) {
+    out[m] = 1.0;
+  } else {
+    out[m] = 0.0;
+  }
+}
+
+static inline void fp32_elm_scalar_less_than(single_float* vec, single_float* out, single_float scalar, int k, int m) {
+  if (vec[k] < scalar) {
+    out[m] = 1.0;
+  } else {
+    out[m] = 0.0;
+  }
+}
+
+// out <- vec > scalar
+void fp32_scalar_greater_than(const struct ViewInstruction* view, const struct ViewInstruction* view1, single_float* vec, single_float* out, single_float scalar) {
+  WITH_ELWISE_OPS(view, view1, k, m, fp32_elm_scalar_greater_than(vec, out, scalar, k, m));
+}
+
+void fp32_scalar_less_than(const struct ViewInstruction* view, const struct ViewInstruction* view1, single_float* vec, single_float* out, single_float scalar) {
+  WITH_ELWISE_OPS(view, view1, k, m, fp32_elm_scalar_less_than(vec, out, scalar, k, m));
+}
+
+// Add:
 // expt(base, power) pow(x, n)
 
 // For disassemble
