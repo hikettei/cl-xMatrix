@@ -75,7 +75,7 @@ Return:
 	    unless (= i (- D step))
 	      do (incf-view! a-offline* 1 step))
 
-      ))))
+      )))
 
 ;; B(t, i)
 ;; Each Bucket possess: tree-level, index, threshold, next-nodes
@@ -84,7 +84,8 @@ Return:
 ;; Todo Pprint
 ;; Todo: Unroll Macro: Bucket -> Node
 (defstruct (Bucket
-	    (:constructor make-toplevel-bucket (bucket-indices &aux (tree-level 0)))
+	    (:predicate bucket-)
+	    (:constructor make-toplevel-bucket (indices &aux (tree-level 0)))
 	    ;;(:constructor make-subbucket ())
 	    )
   ;; (C 0 :type fixnum) 
@@ -92,7 +93,7 @@ Return:
   (index 0 :type fixnum) ;; split-index
   (threshold  0.0        :type single-float)
   (next-nodes nil :type list)
-  (bucket-indices bucket-indices :type list)) ;; The list of indices of A which current bucket posses (C, D), D= 1 3 5 10 2 ... Bucketが管轄するDのIndex
+  (indices indices :type list)) ;; The list of indices of A which current bucket posses (C, D), D= 1 3 5 10 2 ... Bucketが管轄するDのIndex
 
 ;; (defun maddness-hash ())
 
@@ -160,26 +161,46 @@ X = [C, (0, 1, 2, ... D)]
       
 	  )))))
 
-(defun optimal-val-splits! (bucket index)
+
+(defun sort-rows-based-on-col (matrix indices)
+  
+  )
+
+(defun optimal-val-splits (subtype bucket index tree-level
+			   &aux
+			     (N (first (shape subtype)))
+			     (D (second (shape subtype))))
   "Tests all possible thresholds to find one minimizing B(t, i).
 Ref: Appendix C, Algorithm 3, Optimal Split Threshold Within a Bucket.
 
 "
   (declare (optimize (speed 3))
+	   (type matrix subtype)
 	   (type Bucket bucket)
-	   (type fixnum index))
-  
-  )
+	   (type fixnum index tree-level))
+
+  (with-caches ((x-head `(,N ,D) :dtype (matrix-dtype subtype) :place-key :C1)
+		(x-tail `(,N ,D) :dtype (matrix-dtype subtype) :place-key :C2))
+
+    (let* ((indices (bucket-indices bucket))
+	   (x (view subtype t `(:indices ,@indices)))
+	   (x-sort-indices     (sort-rows-based-on-col x indices))
+	   (x-sort-indices-rev (reverse x-sort-indices)))
+      (declare (type list x-sort-indices))
+      
+      (cumulative-sse! (view x t `(:indices ,@x-sort-indices))     x-head)
+      (cumulative-sse! (view x t `(:indices ,@x-sort-indices-rev)) x-tail)
+      
+
+      )))
 
 
-(defun cumulative-sse (x
-		       &key
-			 (out nil) 
-		       &aux
-			 (N (car    (shape x)))
-			 (D (second (shape x)))
-			 (dtype     (dtype x))
-			 (cumsses   (or out (matrix `(,N ,D) :dtype dtype))))
+(defun cumulative-sse! (x
+			cumsses
+			&aux
+			  (N (car    (shape x)))
+			  (D (second (shape x)))
+			  (dtype     (dtype x)))
   "Algorithm 4 Cumulative SSE. (Computes SSE Loss)
 
    Input: X [N D]
@@ -187,13 +208,12 @@ Ref: Appendix C, Algorithm 3, Optimal Split Threshold Within a Bucket.
    Output: Cumsses [N D]"
   (declare (optimize (speed 3) (safety 0))
 	   (type index N D)
-	   (type matrix x))
+	   (type matrix x cumsses))
   
   (with-caches ((cumX-cols `(1 ,D) :dtype dtype :place-key  :cumsse-col1)
 		(cumX2-cols `(1 ,D) :dtype dtype :place-key :cumsse-col2))
     (%fill cumX-cols 0.0)
     (%fill cumX2-cols 0.0)
-    
     (with-views ((cxc cumX-cols 0 t)
 		 (cxc2 cumX2-cols 0 t)
 		 (x* x 0 t)
@@ -214,7 +234,7 @@ Ref: Appendix C, Algorithm 3, Optimal Split Threshold Within a Bucket.
 	(incf-offsets! cs 1 0))
       (reset-offsets! x*)
       (reset-offsets! cs))
-    cumsses))
+    nil))
 
 (defun splits-buckets (bucket)
 
