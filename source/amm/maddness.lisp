@@ -21,33 +21,36 @@
 				 (D (second (shape a-offline)))
 				 (K 16))
   "
-The function init-and-learn-offline clusters the prototypes and computes the encoding function g(a).
+The function init-and-learn-offline clusters the prototypes, and constructs the encoding function g(a).
 
-Assertion: N must be divided by C (while the original impl doesn't impose it.)
+Assertions:
+  1. D must be divided by C (while the original impl doesn't impose it.)
+  2. a-offline is a 2d-matrix.
 
-========================================================================
-   D         D
-  +++     C +++ <- N*D Matrix is disjointed into C*D Matrix
-N +++ ->     D
-  +++     C +++
-            ... x (N//C)
-========================================================================
+Semantics:
+=========================================================================
+   D        C 
+  +++       +--
+N +++ ->  N +-- <- N*D Matrix is disjointed into N*C Matrix.
+  +++       +--    Binary-Tree-Split is applied into each visible area.
+=========================================================================
+
 Input:
   - a-offline The Training Matrix.
   - C fixnum  The Parameter Variable, C.
 Return:
-  - (values ) 
+  - (values Prototypes List<Buckets> Loss) 
 "
   (declare (optimize (speed 3))
 	   (type matrix a-offline)
 	   (type fixnum N D C K))
 
-  (assert (= (mod N C) 0) nil "Assertion Failed with (= (mod N C) 0). N=~a C=~a" N C)
+  (assert (= (mod D C) 0) nil "Assertion Failed with (= (mod N C) 0). N=~a C=~a" N C)
 
   ;; with-view: Cut out the shape of matrix.
-  ;; The visible-area is adjusted by modifying offsets. (the elements[0~offsets] must be continuous in memory.)
+  ;; The visible-area is adjusted by modifying offsets.
   ;;    D        D
-  ;;   +++    C +-- <- offset=0
+  ;;   +++    C +--
   ;; N +++ =>   +--
   ;;   +++      +--
   ;;
@@ -56,16 +59,21 @@ Return:
   ;; all-prototypes (C, K, D)
 
   (let ((all-prototypes (or all-prototypes-out
-			    t ;;del
-			    (matrix `(,C ,K ,D) :dtype (dtype a-offline))))
+			    (matrix `(,C ,K ,D) :dtype (dtype a-offline))
+			    ))
 	(step (/ D C)))
+    (declare (ignore all-prototypes))
     
-    (with-view (a-offline* a-offline t `(0, C))
-      (loop for i fixnum upfrom 0 below C
+    (with-view (a-offline* a-offline t `(0 ,step))
+      ;; subspace = [N, STEP]
+      (loop for i fixnum upfrom 0 below D by step
 	    do (progn
-
-		 (incf-offset! matrix t 3)
+		 (learn-binary-tree-splits a-offline* C D)
+		 ;;(print i)
+		 ;;(print a-offline*)
 		 )
+	    unless (= i (- D step))
+	      do (incf-view! a-offline* 1 step))
 
       ))))
 
@@ -108,9 +116,9 @@ B(3, 1)  B(3, 2)   B(3, 3)  B(3, 4)    | nth=2
                                        | ...
                                        | nth=nsplits
 Inputs:
- - subspace Matrix
+ - subspace Matrix[N, STEP]
  - C, D     Fixnum
- - nsplits The number of training, the paper has it that setting 4 is always the best.
+ - nsplits The number of training, the original paper has it that setting 4 is always the best.
 
 Thresholds - scalar, K-1
 Split-Indices - 
@@ -142,7 +150,9 @@ X = [C, (0, 1, 2, ... D)]
 	  ;; AddHere: Compute losses by columns
 
 	  ;; d=[Largest-Loss-Axis, ..., Smallest-Loss-Axis]
-	  (optimal-val-splits! buckets)
+	  (optimal-val-splits! buckets 0)
+
+	  ;; loop for i in N. <- NをLossでSortする。
 
 	  
 	  
@@ -150,7 +160,68 @@ X = [C, (0, 1, 2, ... D)]
       
 	  )))))
 
+(defun optimal-val-splits! (bucket index)
+  "Tests all possible thresholds to find one minimizing B(t, i).
+Ref: Appendix C, Algorithm 3, Optimal Split Threshold Within a Bucket.
+
+"
+  (declare (optimize (speed 3))
+	   (type Bucket bucket)
+	   (type fixnum index))
+  
+  )
+
+
+(defun cumulative-sse (x
+		       &key
+			 (out nil) 
+		       &aux
+			 (N (car    (shape x)))
+			 (D (second (shape x)))
+			 (dtype     (dtype x))
+			 (cumsses   (or out (matrix `(,N ,D) :dtype dtype))))
+  "Algorithm 4 Cumulative SSE. (Computes SSE Loss)
+
+   Input: X [N D]
+          out - the matrix to be overwritten with result. If nil, The function allocates a new matrix.
+   Output: Cumsses [N D]"
+  (declare (optimize (speed 3) (safety 0))
+	   (type index N D)
+	   (type matrix x))
+  
+  (with-caches ((cumX-cols `(1 ,D) :dtype dtype :place-key  :cumsse-col1)
+		(cumX2-cols `(1 ,D) :dtype dtype :place-key :cumsse-col2))
+    (%fill cumX-cols 0.0)
+    (%fill cumX2-cols 0.0)
+    
+    (with-views ((cxc cumX-cols 0 t)
+		 (cxc2 cumX2-cols 0 t)
+		 (x* x 0 t)
+		 (cs cumsses 0 t))
+      (%move x* cxc)
+      (%move x* cxc2)
+      (%square cxc2)
+      (dotimes (i N)
+	(let ((lr (/ (+ 2.0 i))))
+	  (%adds cumX-cols x*)
+	  (%adds cumX2-cols x*)
+	  (let* ((meanX (%scalar-mul cumX-cols lr))
+		 (mx    (%muls meanX cumX-cols))
+		 (mx    (%scalar-mul mx -1.0)))
+	    (%move cumX2-cols cs)
+	    (%adds cs mx)))
+	(incf-offsets! x* 1 0)
+	(incf-offsets! cs 1 0))
+      (reset-offsets! x*)
+      (reset-offsets! cs))
+    cumsses))
+
+(defun splits-buckets (bucket)
+
+)
+
+
 (defun test ()
-  (let ((matrix (matrix `(128 16))))
+  (let ((matrix (matrix `(128 32))))
     (%index matrix #'(lambda (i) (+ i 0.0)))
     (time (init-and-learn-offline matrix 4))))
