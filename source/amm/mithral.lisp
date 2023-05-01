@@ -51,6 +51,72 @@
 
 ;; Memo
 
+#|
+X =( 5000, 64) C =16
+  seconds  |     gc     |    consed   |    calls   |  sec/call  |  name  
+--------------------------------------------------------------
+     0.624 |      0.000 |   4,746,752 |     44,472 |   0.000014 | CL-XMATRIX::COMPUTE-ABSOLUTE-SUBSCRIPT
+     0.278 |      0.000 |  55,400,480 |  1,156,652 |   0.000000 | 1D-MAT-AREF
+     0.269 |      0.000 |  64,803,040 |      1,253 |   0.000215 | CL-XMATRIX::ALLOCATE-MAT
+     0.079 |      0.000 |  11,769,344 |    340,241 |   0.000000 | CL-XMATRIX::VISIBLE-SHAPE
+     0.059 |      0.000 |  11,119,104 |    225,508 |   0.000000 | (SETF 1D-MAT-AREF)
+     0.053 |      0.000 |   7,898,848 |     23,708 |   0.000002 | CL-XMATRIX::PARSE-SUBSCRIPTS
+     0.044 |      0.000 |           0 |    582,272 |   0.000000 | CL-XMATRIX::FP32-SCALAR-MUL
+     0.036 |      0.000 |           0 |    873,672 |   0.000000 | CL-XMATRIX::FP32-ADD
+     0.033 |      0.000 |           0 |    485,249 |   0.000000 | CL-XMATRIX::FP32-COPY
+     0.026 |      0.000 |  18,872,000 |    582,032 |   0.000000 | INCF-OFFSETS!
+     0.023 |      0.000 |           0 |    583,845 |   0.000000 | DTYPE->LISP-TYPE
+     0.017 |      0.000 |           0 |    291,368 |   0.000000 | CL-XMATRIX::FP32-MUL
+     0.016 |      0.010 |   9,038,336 |    340,241 |   0.000000 | CL-XMATRIX::COMPUTE-VISIBLE-AND-BROADCASTED-SHAPE
+     0.011 |      0.000 |           0 |    727,579 |   0.000000 | CL-XMATRIX::VIEW-ENDINDEX
+     0.010 |      0.000 |           0 |    727,579 |   0.000000 | CL-XMATRIX::VIEW-STARTINDEX
+     0.008 |      0.000 |  12,126,976 |     47,432 |   0.000000 | CL-XMATRIX::PARSE-RELATIVE-POSITION
+     0.006 |      0.000 |           0 |    145,508 |   0.000000 | CL-XMATRIX::FP32-SCALAR-GREATER-THAN
+     0.002 |      0.000 |           0 |     21,836 |   0.000000 | CL-XMATRIX::FP32-SUB
+     0.001 |      0.000 |   4,675,504 |     23,708 |   0.000000 | CL-XMATRIX::VIEW-OF-MATRIX-WITH-SHAPE
+     0.001 |      0.000 |           0 |      1,253 |   0.000001 | COERCE-TO-DTYPE
+     0.001 |      0.000 |           0 |      2,522 |   0.000000 | DTYPE-P
+     0.001 |      0.000 |           0 |        320 |   0.000002 | CL-XMATRIX::READ-THREAD-CACHED-OBJECT
+     0.001 |      0.000 |     162,560 |      2,939 |   0.000000 | CL-XMATRIX::GET-STRIDE
+     0.000 |      0.000 |   1,601,648 |        256 |   0.000002 | CONVERT-INTO-LISP-ARRAY
+     0.000 |      0.000 |           0 |     47,432 |   0.000000 | CL-XMATRIX::PARSE-BROADCAST
+     0.000 |      0.000 |      97,536 |      2,939 |   0.000000 | CL-XMATRIX::FILL-WITH-D
+     0.000 |      0.000 |           0 |        144 |   0.000002 | FREE-MAT
+     0.000 |      0.000 |           0 |         80 |   0.000002 | CL-XMATRIX::FP32-SCALAR-ADD
+     0.000 |      0.000 |           0 |        336 |   0.000000 | CL-XMATRIX::FP32-FILL
+     0.000 |      0.000 |           0 |        176 |   0.000000 | CL-XMATRIX::FP32-SCALAR-DIV
+     0.000 |      0.000 |           0 |        224 |   0.000000 | DTYPE
+     0.000 |      0.000 |           0 |        144 |   0.000000 | (SETF CL-XMATRIX::MATRIX-FREEP)
+     0.000 |      0.000 |           0 |        256 |   0.000000 | RESET-OFFSETS!
+     0.000 |      0.000 |           0 |        144 |   0.000000 | CL-XMATRIX::MATRIX-FREEP
+     0.000 |      0.000 |           0 |         16 |   0.000000 | %SUMUP
+     0.000 |      0.000 |           0 |         80 |   0.000000 | CL-XMATRIX::MATRIX-VEC
+     0.000 |      0.000 |           0 |          3 |   0.000000 | CL-XMATRIX::SET-THREAD-CACHED-OBJECT
+     0.000 |      0.000 |  10,989,056 |        192 |   0.000000 | CL-XMATRIX::CALL-WITH-VISIBLE-AREA-AND-EXTOPE
+     0.000 |      0.000 |           0 |         16 |   0.000000 | CL-XMATRIX::RESHAPE
+     0.000 |      0.000 |     162,560 |      1,461 |   0.000000 | CL-XMATRIX::CALC-STRIDES
+     0.000 |      0.000 |  60,594,432 |    338,972 |   0.000000 | CL-XMATRIX::VIEW-OF-MATRIX
+     0.000 |      0.012 |  14,667,200 |  2,401,026 |   0.000000 | CALL-WITH-VISIBLE-AREA
+     0.000 |      0.000 |   9,249,168 |    291,913 |   0.000000 | %MOVE
+     0.000 |      0.000 |      65,024 |        352 |   0.000000 | %SUM
+     0.000 |      0.000 |  17,767,104 |    582,272 |   0.000000 | %SCALAR-MUL
+     0.000 |      0.000 |           0 |        352 |   0.000000 | %SQUARE
+     0.000 |      0.000 |           0 |         80 |   0.000000 | %SCALAR-ADD
+     0.000 |      0.000 |           0 |         64 |   0.000000 | %>
+     0.000 |      0.000 |  28,862,032 |    873,672 |   0.000000 | %ADDS
+     0.000 |      0.000 |           0 |         65 |   0.000000 | %FILTER
+     0.000 |      0.000 |   9,746,512 |    291,368 |   0.000000 | %MULS
+     0.000 |      0.000 |           0 |        609 |   0.000000 | %COPY
+     0.000 |      0.000 |           0 |        176 |   0.000000 | %SCALAR-DIV
+     0.000 |      0.000 |           0 |        336 |   0.000000 | %FILL
+     0.000 |      0.000 |      98,256 |     21,836 |   0.000000 | %SUBS
+     0.000 |      0.000 |     163,504 |      1,253 |   0.000000 | MATRIX
+     0.000 |      0.000 |      32,512 |     23,708 |   0.000000 | VIEW
+--------------------------------------------------------------
+     1.599 |      0.021 | 354,709,488 | 12,113,142 |            | Total
+|#
+
+
 (deftype index () `(or fixnum))
 
 (defstruct (MSBucket ;; Bucket
@@ -217,12 +283,10 @@ Bucket-Split: B(A) -> B(id0), B(id1)"
 			      :bucket-id bucket-id))
 	       (%cmp> (matrix scalar)
 		 "matrix = [N, 1]. Result=List"
-		 (%satisfies matrix
-			     #'(lambda (x)
-				 ;; with-typevar?
-				 ;; may error when dtype!=:float
-				 (declare (type single-float x scalar))
-				 (> x scalar))))
+		 (with-cache (out (shape matrix)
+			      :place-key :cmp-bsplit
+			      :dtype (matrix-dtype matrix))
+		   (%> matrix scalar)))
 	       (next-point-ids (list tf-list)
 		 (loop for l in list
 		       for count fixnum upfrom 0 below (car (shape tf-list))
@@ -653,7 +717,7 @@ y = [D M] (To be multiplied)"
 	 (x-orig x)          ;; Training Dataset (minimize ||a-a'||)
 	 (N (car (shape X)))
 	 (D (second (shape X)))
-	 (all-prototypes (matrix `(,C ,K ,D) :dtype (cl-xmatrix::matrix-dtype X)))
+	 (all-prototypes (matrix `(,C ,K ,D) :dtype (matrix-dtype X)))
 	 (all-splits nil) ;; The Result
 	 (all-buckets nil) ;; Tmp List
 	 ;; indices of disjoints based on C are needed when training KMeans. (j)

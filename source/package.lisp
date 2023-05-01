@@ -39,6 +39,7 @@
    #:view
    #:with-view
    #:with-views
+   #:incf-view!
 
    #:incf-offsets!
    #:reset-offsets!

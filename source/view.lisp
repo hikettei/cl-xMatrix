@@ -890,7 +890,50 @@ Done: Straighten-up subscripts
 	  (progn
 	    (apply #'view-of-matrix-with-shape matrix broadcasts visible-shape subscripts))))))
 
-;; TODO: (defun view! (hoge) ..)
+(defun incf-view! (matrix axis increment &aux (dims (dims matrix)))
+  "Modifies the matrix's view-object.
+subscript <- must not include indices"
+  (declare (optimize (speed 3))
+	   (type matrix matrix)
+	   (type fixnum axis increment dims))
+
+  ;; if axis in m/n, douzini incr ptr.
+  (labels ((add-n (obj)
+	     (typecase obj
+	       (list (map 'list #'add-n obj))
+	       (fixnum (the fixnum (+ obj increment)))
+	       (T (error "incf-view! ~a can't be used." (nth axis (matrix-view matrix)))))))
+    (let ((new-view (add-n (nth axis (matrix-view matrix)))))
+
+      (when (> (the fixnum
+		    (typecase new-view
+		      (fixnum new-view)
+		      (list (second new-view))))
+	       (the fixnum (nth axis (matrix-shape matrix))))
+	(view-indexing-error "incf-view! increments beyonds matrix'size"))
+
+      (setf (nth axis (matrix-view matrix)) new-view)
+
+      (when (= axis (- dims 2))
+	;; axis=M
+	(let ((foreign-ptr (matrix-view-foreign-ptr matrix))
+	      (lisp-ptr    (matrix-view-lisp-ptr matrix)))
+	  (when foreign-ptr
+	    (incf (foreign-slot-value foreign-ptr `(:struct ViewInstruction) 'offset2) increment))
+	  (when lisp-ptr
+	    (incf (viewinstruction-lisp-offset2 lisp-ptr) increment))))
+
+      (when (= axis (- dims 1))
+	;; axis=N
+	(let ((foreign-ptr (matrix-view-foreign-ptr matrix))
+	      (lisp-ptr    (matrix-view-lisp-ptr matrix)))
+	  (when foreign-ptr
+	    (incf (foreign-slot-value foreign-ptr `(:struct ViewInstruction) 'offset1) increment))
+	  (when lisp-ptr
+	    (incf (viewinstruction-lisp-offset1 lisp-ptr) increment))))
+
+      nil)))
+
 
 ;; Todo: :indices lambda(x), :tflist lambda(x)
 ;; Is there a bug?
@@ -948,7 +991,6 @@ Todo: Example"
   (setf (matrix-created-offsets matrix) nil
 	(matrix-offset matrix) 0)
   nil)
-
 
 (defmacro with-view ((var matrix &rest subscripts)
 		     &body body)

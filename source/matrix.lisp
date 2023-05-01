@@ -7,6 +7,7 @@
 ;; (define-mat-dtype
 ;;        :uint8
 ;;        available-transfer :retained-by ~~)
+;; todo: support define-vop
 
 (annot:enable-annot-syntax)
 
