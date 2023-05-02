@@ -934,6 +934,37 @@ subscript <- must not include indices"
 
       nil)))
 
+(defun system-set-view! (matrix axis new-index &aux (dims (dims matrix)))
+  "DO NOT EXPORT IT"
+  (declare (optimize (speed 3))
+	   (type matrix matrix)
+	   (type fixnum axis new-index dims))
+
+  (unless (typep (nth axis (matrix-view matrix)) 'fixnum)
+    (error "system-set-view! Internal Error. (the axis to be replaced must be FIXNUM view.)"))
+
+  (setf (nth axis (matrix-view matrix)) new-index)
+
+  (when (= axis (- dims 2))
+    ;; axis=M
+    (let ((foreign-ptr (matrix-view-foreign-ptr matrix))
+	  (lisp-ptr    (matrix-view-lisp-ptr matrix)))
+      (when foreign-ptr
+	(setf (foreign-slot-value foreign-ptr `(:struct ViewInstruction) 'offset2) new-index))
+      (when lisp-ptr
+	(setf (viewinstruction-lisp-offset2 lisp-ptr) new-index))))
+
+  (when (= axis (- dims 1))
+    ;; axis=N
+    (let ((foreign-ptr (matrix-view-foreign-ptr matrix))
+	  (lisp-ptr    (matrix-view-lisp-ptr matrix)))
+      (when foreign-ptr
+	(setf (foreign-slot-value foreign-ptr `(:struct ViewInstruction) 'offset1) new-index))
+      (when lisp-ptr
+	(setf (viewinstruction-lisp-offset1 lisp-ptr) new-index))))
+  
+  nil)
+
 
 ;; Todo: :indices lambda(x), :tflist lambda(x)
 ;; Is there a bug?
@@ -1051,24 +1082,29 @@ Todo: Example"
   "Handles the external operation of matrix"
   (declare (optimize (speed 3))
 	   (type matrix matrix)
-	   (type function function))
+	   (type function function)
+	   (inline call-with-visible-area))
   (with-slots ((external-operation external-operation)
 	       (external-operation-dim external-operation-dim))
       matrix
+    
     (case (car external-operation)
       (:indices
        (let ((indices (cdr external-operation))
 	     ;; copy-list: avoid side effects.
 	     (view   (copy-list (matrix-view matrix)))
-	     ;; Note: Should broadcast's dim considered?
+	     ;; FixME?: Should broadcast's dim considered?
 	     (stride (nth external-operation-dim (calc-strides (shape matrix)))))
-	 (loop for index in indices
-	       for ith fixnum upfrom 0
-	       do (let ((view (copy-list view)))
-		    (setf (nth external-operation-dim view) index)
-		    (let ((matrix* (apply #'view-of-matrix matrix nil view)))
+
+	 (setf (nth external-operation-dim view) 0)
+
+	 (let ((m* (apply #'view-of-matrix matrix nil view)))
+	   (loop for index in indices
+		 for ith fixnum upfrom 0
+		 do (progn
+		      (system-set-view! m* external-operation-dim index)
 		      (call-with-visible-area
-		       matrix*
+		       m*
 		       function
 		       :direction direction
 		       :mat-operated-with mat-operated-with

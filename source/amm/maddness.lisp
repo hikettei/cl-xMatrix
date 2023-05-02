@@ -10,7 +10,7 @@
 
 ;; This is the my reimplementation of Maddness
 
-
+;; Indicesの高速化
 
 (defun init-and-learn-offline (a-offline
 			       C
@@ -157,7 +157,7 @@ X = [C, (0, 1, 2, ... D)]
 	
 	;; Training
 	(dotimes (nth-split nsplits)
-	  (maybe-print "== (~a/~a)Training Binary Tree Splits =========" (1+ nth-split) nsplits)
+	 ;; (maybe-print "== (~a/~a)Training Binary Tree Splits =========" (1+ nth-split) nsplits)
 
 	  ;; AddHere: Compute losses by columns
 
@@ -223,11 +223,12 @@ subspace - original subspace
     (with-caches ((x-head `(,N ,D) :dtype (matrix-dtype subspace) :place-key :C1)
 		  (x-tail `(,N ,D) :dtype (matrix-dtype subspace) :place-key :C2))
 
-      (print (view x `(:indices ,@x-sort-indices)))
-      (print x-head)
+      
       (cumulative-sse! (view x `(:indices ,@x-sort-indices))     x-head)
-     ;; (cumulative-sse! (view x `(:indices ,@x-sort-indices-rev)) x-tail)
+      (cumulative-sse! (view x `(:indices ,@x-sort-indices-rev)) x-tail)
 
+      ;; (print x-head)
+     ;; (print x-tail)
       
       )))
 
@@ -281,4 +282,10 @@ subspace - original subspace
 (defun test ()
   (let ((matrix (matrix `(128 32))))
     (%index matrix #'(lambda (i) (random 1.0)))
-    (time (init-and-learn-offline matrix 4))))
+    ;; (sb-ext:gc :full t)
+    ;;(sb-profile:profile "CL-XMATRIX")
+    (time (init-and-learn-offline matrix 4))
+    ;;(sb-profile:report)
+    ;;(sb-profile:unprofile "CL-XMATRIX")
+
+    ))
