@@ -10,7 +10,6 @@
 
 ;; This is the my reimplementation of Maddness
 
-;; Indicesの高速化
 ;; TODO: Comments for readers
 
 (defun init-and-learn-offline (a-offline
@@ -513,23 +512,107 @@ subspace - original subspace
       (sumup-col-sum-sqs! place (cdr children) subspace)))
   nil)
 
-(defun splits-buckets (bucket)
 
-)
+#|
+  seconds  |     gc     |     consed    |    calls   |  sec/call  |  name  
+----------------------------------------------------------------
+     4.562 |      0.011 | 1,071,901,488 |      5,243 |   0.000870 | CL-XMATRIX::ALLOCATE-MAT
+     0.486 |      0.000 |    19,214,592 |     14,836 |   0.000033 | CL-XMATRIX::COMPUTE-ABSOLUTE-SUBSCRIPT
+     0.136 |      0.000 |             0 |  2,314,320 |   0.000000 | CL-XMATRIX::FP32-SCALAR-MUL
+     0.123 |      0.000 |             0 |  2,405,500 |   0.000000 | CL-XMATRIX::FP32-COPY
+     0.103 |      0.002 |    74,127,520 |  2,315,526 |   0.000000 | INCF-OFFSETS!
+     0.085 |      0.000 |             0 |  3,473,934 |   0.000000 | CL-XMATRIX::FP32-ADD
+     0.055 |      0.000 |             0 |  1,159,710 |   0.000000 | CL-XMATRIX::FP32-MUL
+     0.039 |      0.000 |             0 |  2,323,661 |   0.000000 | DTYPE->LISP-TYPE
+     0.029 |      0.000 |     3,965,424 |     22,045 |   0.000001 | CL-XMATRIX::PARSE-SUBSCRIPTS
+     0.020 |      0.000 |     4,941,904 |     97,084 |   0.000000 | 1D-MAT-AREF
+     0.019 |      0.000 |    28,350,464 |     44,090 |   0.000000 | CL-XMATRIX::PARSE-RELATIVE-POSITION
+     0.011 |      0.000 |             0 |     11,343 |   0.000001 | CL-XMATRIX::READ-THREAD-CACHED-OBJECT
+     0.009 |      0.000 |             0 |      4,044 |   0.000002 | FREE-MAT
+     0.005 |      0.000 |             0 |     58,890 |   0.000000 | CL-XMATRIX::VIEW-ENDINDEX
+     0.004 |      0.000 |     8,691,232 |      2,438 |   0.000002 | CONVERT-INTO-LISP-ARRAY
+     0.004 |      0.000 |       455,168 |     16,099 |   0.000000 | CL-XMATRIX::GET-STRIDE
+     0.004 |      0.000 |             0 |      4,044 |   0.000001 | CL-XMATRIX::SET-THREAD-CACHED-OBJECT
+     0.003 |      0.000 |             0 |      7,639 |   0.000000 | COERCE-TO-DTYPE
+     0.003 |      0.000 |             0 |     10,486 |   0.000000 | DTYPE-P
+     0.003 |      0.000 |       617,776 |     10,620 |   0.000000 | (SETF 1D-MAT-AREF)
+     0.002 |      0.000 |             0 |      6,147 |   0.000000 | CL-XMATRIX::FP32-FILL
+     0.002 |      0.000 |     3,560,560 |     22,045 |   0.000000 | CL-XMATRIX::VIEW-OF-MATRIX-WITH-SHAPE
+     0.002 |      0.000 |       260,096 |      8,049 |   0.000000 | CL-XMATRIX::VISIBLE-SHAPE
+     0.001 |      0.000 |             0 |        192 |   0.000007 | CL-XMATRIX::FP32-SCALAR-DIV
+     0.001 |      0.000 |       422,656 |     16,099 |   0.000000 | CL-XMATRIX::FILL-WITH-D
+     0.001 |      0.000 |             0 |     43,232 |   0.000000 | CL-XMATRIX::FP32-SCALAR-GREATER-THAN
+     0.001 |      0.000 |        32,768 |      6,317 |   0.000000 | %SUMUP
+     0.001 |      0.000 |             0 |     58,890 |   0.000000 | CL-XMATRIX::VIEW-STARTINDEX
+     0.001 |      0.000 |             0 |         96 |   0.000005 | CL-XMATRIX::FP32-SUB
+     0.000 |      0.000 |             0 |      4,812 |   0.000000 | RESET-OFFSETS!
+     0.000 |      0.000 |        32,512 |      8,049 |   0.000000 | CL-XMATRIX::COMPUTE-VISIBLE-AND-BROADCASTED-SHAPE
+     0.000 |      0.000 |             0 |      1,302 |   0.000000 | CL-XMATRIX::FP32-SCALAR-ADD
+     0.000 |      0.000 |             0 |     44,090 |   0.000000 | CL-XMATRIX::PARSE-BROADCAST
+     0.000 |      0.000 |             0 |      3,605 |   0.000000 | DTYPE
+     0.000 |      0.000 |             0 |      4,044 |   0.000000 | CL-XMATRIX::MATRIX-FREEP
+     0.000 |      0.000 |             0 |      4,044 |   0.000000 | (SETF CL-XMATRIX::MATRIX-FREEP)
+     0.000 |      0.000 |             0 |      2,396 |   0.000000 | MATRIX-DTYPE
+     0.000 |      0.000 |             0 |      4,044 |   0.000000 | CL-XMATRIX::MATRIX-VEC
+     0.000 |      0.000 |             0 |          3 |   0.000001 | INCF-VIEW!
+     0.000 |      0.000 |        65,024 |      2,806 |   0.000000 | CL-XMATRIX::CALL-WITH-VISIBLE-AREA-AND-EXTOPE
+     0.000 |      0.000 |             0 |  1,330,040 |   0.000000 | CL-XMATRIX::SYSTEM-SET-VIEW!
+     0.000 |      0.000 |        65,024 |      8,049 |   0.000000 | CL-XMATRIX::CALC-STRIDES
+     0.000 |      0.000 |       261,616 |      2,806 |   0.000000 | CL-XMATRIX::VIEW-OF-MATRIX
+     0.000 |      0.000 |             0 |     43,232 |   0.000000 | CL-XMATRIX::FP32-SCALAR-LESS-THAN-EQ
+     0.000 |      0.000 |       652,864 |      5,243 |   0.000000 | MATRIX
+     0.000 |      0.000 |        32,736 |        104 |   0.000000 | %<=
+     0.000 |      0.000 |             0 |        192 |   0.000000 | %SCALAR-DIV
+     0.000 |      0.000 |    76,014,096 |  2,314,320 |   0.000000 | %SCALAR-MUL
+     0.000 |      0.000 |        65,536 |      1,198 |   0.000000 | %SATISFIES
+     0.000 |      0.000 |             0 |      1,198 |   0.000000 | %ALL?
+     0.000 |      0.000 |    63,184,912 |  9,460,424 |   0.000000 | CALL-WITH-VISIBLE-AREA
+     0.000 |      0.000 |       131,072 |      6,147 |   0.000000 | %FILL
+     0.000 |      0.000 |             0 |        104 |   0.000000 | %>
+     0.000 |      0.000 |       682,752 |     22,045 |   0.000000 | VIEW
+     0.000 |      0.000 |        32,752 |      1,302 |   0.000000 | %SCALAR-ADD
+     0.000 |      0.000 |    38,759,632 |  1,159,710 |   0.000000 | %MULS
+     0.000 |      0.002 |   107,188,016 |  3,473,934 |   0.000000 | %ADDS
+     0.000 |      0.002 |    38,661,568 |  1,164,522 |   0.000000 | %MOVE
+     0.000 |      0.000 |             0 |      2,396 |   0.000000 | COERCE-TO-MAT-DTYPE
+     0.000 |      0.000 |             0 |      2,598 |   0.000000 | %SQUARE
+     0.000 |      0.000 |       130,032 |      1,299 |   0.000000 | %SUM
+     0.000 |      0.000 |        32,752 |         96 |   0.000000 | %SUBS
+----------------------------------------------------------------
+     5.720 |      0.017 | 1,542,534,544 | 33,542,773 |            | Total
 
+  seconds  |     gc     |     consed    | calls |  sec/call  |  name  
+-----------------------------------------------------------
+     4.215 |      0.013 |   808,529,824 | 1,330 |   0.003169 | COMPUTE-OPTIMAL-VAL-SPLITS
+     2.758 |      0.003 |   692,267,984 | 2,372 |   0.001163 | CUMULATIVE-SSE!
+     0.213 |      0.000 |    44,408,416 |    92 |   0.002319 | COL-VARIANCES
+     0.169 |      0.000 |    33,799,472 | 1,186 |   0.000142 | SORT-ROWS-BASED-ON-COL
+     0.165 |      0.002 |    75,712,528 | 2,404 |   0.000068 | ARGSORT
+     0.065 |      0.000 |    12,810,576 |    16 |   0.004050 | OPTIMIZE-BUCKET-SPLITS!
+     0.019 |      0.000 |     3,875,584 |   549 |   0.000034 | OPTIMAL-VAL-SPLITS!
+     0.001 |      0.000 |             0 |    16 |   0.000055 | SUMUP-COL-SUM-SQS!
+     0.000 |      0.000 |             0 |    16 |   0.000007 | OPTIMIZE-SPLIT-THRESHOLDS!
+     0.000 |      0.000 |             0 |   120 |   0.000001 | MAKE-SUB-BUCKET
+     0.000 |      0.000 |             0 |     4 |   0.000001 | MAKE-TOPLEVEL-BUCKET
+     0.000 |      0.000 |       195,072 |     1 |   0.000000 | INIT-AND-LEARN-OFFLINE
+     0.000 |      0.000 |        32,512 |     4 |   0.000000 | LEARN-BINARY-TREE-SPLITS
+-----------------------------------------------------------
+     7.604 |      0.018 | 1,671,631,968 | 8,110 |            | Total
+
+|#
 
 (defun test (&key (p 0.8))
   ;; How tall matrix is, computation time is constant.
-  (let ((matrix (matrix `(256 32))))
+  (let ((matrix (matrix `(1000 64))))
     (%index matrix #'(lambda (i)
 		       (if (< (random 1.0) p)
 			   (random 1.0)
 			   0.0)))
-    ;; (sb-ext:gc :full t)
-    ;;(sb-profile:profile "CL-XMATRIX")
+    ;;(sb-ext:gc :full t)
+    ;;(sb-profile:profile "CL-XMATRIX.AMM.MADDNESS")
     (time (init-and-learn-offline matrix 4))
     ;;(sb-profile:report)
-    ;;(sb-profile:unprofile "CL-XMATRIX")
+    ;;(sb-profile:unprofile "CL-XMATRIX.AMM.MADDNESS")
 
     (free-mat matrix)
     ))
