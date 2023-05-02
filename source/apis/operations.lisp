@@ -48,6 +48,7 @@ todo: check out's dimensions/error check"
 	(%adds result* matrix)
 	result))))
 
+(declaim (inline 1d-mat-aref))
 (defun 1d-mat-aref (matrix index)
   ""
   (mem-aref (matrix-vec matrix) (matrix-dtype matrix) index))
@@ -207,7 +208,6 @@ todo: check out's dimensions/error check"
    :mat-operated-with out
    :direction :foreign)
   out)
-
 
 @export
 (defun %>= (matrix scalar
