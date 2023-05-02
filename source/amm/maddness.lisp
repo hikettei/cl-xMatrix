@@ -128,7 +128,7 @@ Return:
 
   nil)
 
-(defun optimize-bucket-splits! (bucket best-dim subspace &key (starting-tree-level 0))
+(defun optimize-bucket-splits! (bucket best-dim subspace)
   "Splits bucket's binary-tree
 split-val dim"
   (declare (optimize (speed 3))
@@ -139,20 +139,60 @@ split-val dim"
   ;; if bucket-nodes = nil -> Create new
   ;; if t  -> Optimize the old one
   (flet ((create-new-bucket (points)
-	   (make-sub-buckets points (1+ (bucket-tree-level bucket)))))
+	   (make-sub-bucket points (1+ (bucket-tree-level bucket))))
+	 (make-tflist-indices (tflist)
+	   "(:tflist 1.0 0.0 1.0 ...) => (:indices 1 3 ...)"
+	   (declare (type matrix tflist))
+	   
+	   ;; Assertion: tflist isn't view-matrix
+	   (assert (not (cl-xmatrix::matrix-projected-p tflist)) nil "make-tflist-indices: Assertion Failed because the given tflist is a view-object.")
+
+	   ;; To Add: matrix but dtype=bit.
+	   (loop for i fixnum upfrom 0 below (first (shape tflist))
+		 if (= (the single-float (1d-mat-aref tflist i)) 1.0)
+		   collect i)))
 
     (let* ((jurisdictions (bucket-indices bucket))
-	   (x (view subspace t `(:indices ,@jurisdictions) best-dim))
-	   (split-val (bucket-threshold bucket)))
-      (with-caches ((mask (shape x) :place-key :mask1)
+	   (x             (view subspace `(:indices ,@jurisdictions) best-dim))
+	   (split-val     (bucket-threshold bucket)))
+
+      (with-caches ((mask     (shape x) :place-key :mask1)
 		    (not-mask (shape x) :place-key :mask-not1))
 
-	(%> x split-val  :out mask)
-	(%<= x split-val :out not-mask)
+	;; FIXME: conversation between lisp-array and matrix...
 
-	))))
+	;; Note: Having avoided using maddness-hash but using cons to express tree-structure, I am wondering this semantics below is currect?
+	(%>  x split-val :out mask)     ;; left
+	(%<= x split-val :out not-mask) ;; right
 
-;; (defun maddness-hash ())
+	(if (null (bucket-next-nodes bucket))
+	    ;; If bucket is the end of node...
+	    (progn
+	      (setf (bucket-next-nodes bucket)
+		    (cons (create-new-bucket (make-tflist-indices mask))
+			  (create-new-bucket (make-tflist-indices not-mask))))
+	      nil)
+	    ;; Otherwise -> Go deeper and update nodes.
+	    (progn
+	      ;; HELPME: Which is correct.
+	      ;; Update Current Bucket -> Go Deeper? (I'm using it)
+	      ;; Go Deeper -> Update Current Bucket
+
+	      (setf (bucket-next-nodes bucket)
+		    (cons (create-new-bucket (make-tflist-indices mask))
+			  (create-new-bucket (make-tflist-indices not-mask))))
+
+	      ;; Update Left-side
+	      (optimize-bucket-splits!
+	       (car (bucket-next-nodes bucket))
+	       best-dim
+	       subspace)
+
+	      (optimize-bucket-splits!
+	       (cdr (bucket-next-nodes bucket))
+	       best-dim
+	       subspace)))))
+    nil))
 
 (defun learn-binary-tree-splits (subspace STEP &key (nsplits 4) (verbose nil))
   "
@@ -310,21 +350,14 @@ Return:
 		 (%satisfies
 		  (view total-losses t `(0 ,dim))
 		  #'(lambda (x) (> loss-d* (the single-float x)))))))))
-      (progn
+      (let ((next-nodes (bucket-next-nodes bucket)))
 	;; Explore nodes untill reach tree-level
-	(when (null (bucket-next-nodes bucket))
+	(when (null next-nodes)
 	  (error "optimal-val-splits! Couldn't find any buckets."))
-	(find-if
-	 #'(lambda (x) x)
-	 (map
-	  'list
-	  #'(lambda (next-bucket)
-	      (optimal-val-splits! subspace
-				   next-bucket
-				   total-losses
-				   dim
-				   (1+ tree-level)))
-	  (bucket-next-nodes bucket)))))
+
+	(or
+	 (optimal-val-splits! subspace (car next-nodes) total-losses dim (1+ tree-level))
+	 (optimal-val-splits! subspace (car next-nodes) total-losses dim (1+ tree-level)))))
   nil)
 
 (declaim (ftype (function (matrix Bucket fixnum) (values single-float single-float)) compute-optimal-val-splits))
@@ -434,9 +467,10 @@ subspace - original subspace
   (when (bucket-indices bucket)
     (%adds place (%scalar-mul (col-variances bucket subspace) n)))
 
-  (when (bucket-next-nodes bucket)
-    (dolist (b (bucket-next-nodes bucket))
-      (sumup-col-sum-sqs! place b subspace)))
+  (let ((children (bucket-next-nodes bucket)))
+    (when children
+      (sumup-col-sum-sqs! place (car children) subspace)
+      (sumup-col-sum-sqs! place (cdr children) subspace)))
   nil)
 
 (defun splits-buckets (bucket)
