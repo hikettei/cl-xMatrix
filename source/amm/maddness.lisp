@@ -92,9 +92,28 @@ Return:
   ;; (C 0 :type fixnum) 
   (tree-level tree-level :type fixnum)
   (index 0 :type fixnum) ;; split-index
-  (threshold  0.0        :type single-float)
+  (threshold  0.0        :type single-float) ;; = split-val
+  (threshold-candidates nil)
   (next-nodes nil :type list)
   (indices indices :type list)) ;; The list of indices of A which current bucket posses (C, D), D= 1 3 5 10 2 ... Bucketが管轄するDのIndex
+
+(defmethod col-variances ((bucket Bucket) subspace &aux (N (length (bucket-indices bucket))))
+  (declare (optimize (speed 3))
+	   (type matrix subspace))
+  (with-view (s* subspace `(:indices ,@(bucket-indices bucket)) t)
+    (with-caches ((ex2 (shape s*) :place-key :col-variances1)
+		  (ex  (shape s*) :place-key :col-variances2)
+		  (result `(1 ,(second (shape s*))) :place-key :sum-out1))
+      (%fill result 0.0)
+      ;; Sum(E[x^2] - E[x], axis=0)
+      (%move s* ex2)
+      (%move s* ex)
+      (%square ex2)
+      (%scalar-div ex2 N)
+      (%scalar-div ex N)
+      (%subs ex2 ex)
+      (%sum ex2 :out result :axis 0)
+      result)))
 
 ;; (defun maddness-hash ())
 
@@ -152,33 +171,43 @@ X = [C, (0, 1, 2, ... D)]
 		  ;; B(1, 1) possess all the elements in the subspace.
 		  (loop for i fixnum upfrom 0 below STEP
 			collect i))))
-
-    ;; Utils
-    (labels ((col-losses ()
-	       ))
-
+    (with-cache (col-losses `(1 ,STEP) :dtype (matrix-dtype subspace) :place-key :losses1)
       ;; Utils
       (macrolet ((maybe-print (object &rest control-objects)
 		   `(when verbose (format t ,object ,@control-objects))))
 	
 	;; Training
 	(dotimes (nth-split nsplits)
-	 ;; (maybe-print "== (~a/~a)Training Binary Tree Splits =========" (1+ nth-split) nsplits)
+	  ;; (maybe-print "== (~a/~a)Training Binary Tree Splits =========" (1+ nth-split) nsplits)
 
-	  ;; AddHere: Compute losses by columns
+	  ;; heuristic = bucket_sse
+	  (%fill col-losses 0.0)
+	  (sumup-col-sum-sqs! col-losses buckets subspace)
 
-	  ;; d=[Largest-Loss-Axis, ..., Smallest-Loss-Axis]
-	  ;; Here' we tests all dims to get the best trying dims.
-	  ;; depth = 0, 1, 2, 3, ,,, nth-split
-	  (optimal-val-splits subspace buckets 0)
-	  
+	  (with-facet (col-losses* col-losses :direction :simple-array)
+	    ;; Sort By [Largest-Loss-Axis, ... , Smallest-Loss-Axis]
+	    (let* ((dim-orders (argsort col-losses*))
+		   (dim-size   (length dim-orders)))
 
-	  ;; loop for i in N. <- NをLossでSortする。
+	      (with-cache (total-losses `(1 ,dim-size) :place-key :total-loss)
+		(%fill total-losses 0.0)
+		;; Here, we tests all dims to obtain the best trying dim.
+		;; depth = 0, 1, 2, ..., nth-split
 
-	  
-	  
-	  
-      
+		(print nth-split)
+		(loop for d fixnum upfrom 0
+		      for dth in dim-orders
+		      do (loop named training-per-bucket
+			       for level fixnum from 0 to nth-split
+			       do (when (optimal-val-splits! subspace buckets total-losses dth level)
+				    (print "ES")
+				    (return-from training-per-bucket))))
+
+	      (print (convert-into-lisp-array total-losses))
+
+	      )))
+
+
 	  )))))
 
 (declaim (ftype (function ((simple-array t (*)) &key (:test function)) list) argsort))
@@ -198,19 +227,67 @@ X = [C, (0, 1, 2, ... D)]
 
 (defun sort-rows-based-on-col (matrix dim)
   "Returns a sorted indices based n matrix's cols."
-  (declare (optimize (speed 3))
+  (declare (optimize (speed 3) (safety 0))
 	   (type matrix matrix))
-
   (with-facet (arr* (view matrix t dim) :direction :simple-array)
     (argsort arr*)))
 
-(defun optimal-val-splits! (bucket dim tree-level)
-  "Tree-LevelまでBucketを探索してoptimal-val-splitsする"
-  )
 
-(defun optimal-val-splits (subspace bucket dim
-			   &aux
-			     (D (second (shape subspace))))
+;; (optimize-params bucket)
+(defun optimal-val-splits! (subspace bucket total-losses dim tree-level)
+  "Tree-LevelまでBucketを探索してcompute-optimal-val-splitsする
+
+与えれたdimでbinary-treeを学習/loss var (bucket isn't modified.)
+split-dimsを決定
+
+Return:
+   - (values best-val early-stopping-p)
+"
+  (declare (optimize (speed 3))
+	   (type bucket bucket)
+	   (type matrix subspace total-losses)
+	   (type fixnum dim tree-level))
+  (if (= (bucket-tree-level bucket) tree-level)
+      (multiple-value-bind (split-val loss) (compute-optimal-val-splits subspace bucket dim)
+	(declare (type single-float split-val loss))
+
+	(with-view (loss-d total-losses t 0)
+	  (incf-offsets! loss-d 0 dim)
+	  (%scalar-add loss-d loss)
+	  (let ((loss-d* (%sumup loss-d)))
+	    (declare (type single-float loss-d*))
+
+	    ;; Note: split-val[dim~0] <- dont forget to rev it.
+	    ;; that is, dim is on the around way.
+	    (push split-val (bucket-threshold-candidates bucket))
+	    ;; Judge early-stoppig-p
+	    (if (= dim 0)
+		nil
+		(%or?
+		 (%satisfies
+		  (view total-losses t `(0 ,dim))
+		  #'(lambda (x) (> loss-d* (the single-float x)))))))))
+      (progn
+	;; Explore nodes untill reach tree-level
+	(when (null (bucket-next-nodes bucket))
+	  (error "optimal-val-splits! Couldn't find any buckets."))
+	(find-if
+	 #'(lambda (x) x)
+	 (map
+	  'list
+	  #'(lambda (next-bucket)
+	      (optimal-val-splits! subspace
+				   next-bucket
+				   total-losses
+				   dim
+				   (1+ tree-level)))
+	  (bucket-next-nodes bucket)))))
+  nil)
+
+(declaim (ftype (function (matrix Bucket fixnum) (values single-float single-float)) compute-optimal-val-splits))
+(defun compute-optimal-val-splits (subspace bucket dim
+				   &aux
+				     (D (second (shape subspace))))
   "The function optimal-val-splits tests all possible thresholds to find one minimizing B(tree-level, i).
 
 
@@ -258,12 +335,12 @@ subspace - original subspace
 	       (c2 (view x col-idx2 dim)))
 	  (declare (type fixnum best-idx next-idx))
 	  ;; c1 c2 = [1, 1]
-	  ;; sumup may slow...
-
-	  (print (/ (+ (the single-float (%sumup c1))
-		       (the single-float (%sumup c2)))
-		    2.0))
-	  )))))
+	  ;; %sumup may slow... -> Add: mats-as-scalar
+          ;; when dtype=uint?
+	  (values (/ (+ (the single-float (%sumup c1))
+			(the single-float (%sumup c2)))
+		     2.0)
+		  (the single-float (%sumup (view x-head best-idx)))))))))
 
 
 (defun cumulative-sse! (x
@@ -277,7 +354,7 @@ subspace - original subspace
    Input: X [N D]
           out - the matrix to be overwritten with result. If nil, The function allocates a new matrix.
    Output: Cumsses [N D]"
-  (declare (optimize (speed 3) (safety 0))
+  (declare (optimize (speed 3))
 	   (type index N D)
 	   (type matrix x cumsses))
   
@@ -307,13 +384,26 @@ subspace - original subspace
       (reset-offsets! cs))
     nil))
 
+(defun sumup-col-sum-sqs! (place bucket subspace &aux (N (length (bucket-indices bucket))))
+  (declare (optimize (speed 3))
+	   (type matrix place subspace)
+	   (type bucket bucket))
+  (when (bucket-indices bucket)
+    (%adds place (%scalar-mul (col-variances bucket subspace) n)))
+
+  (when (bucket-next-nodes bucket)
+    (dolist (b (bucket-next-nodes bucket))
+      (sumup-col-sum-sqs! place b subspace)))
+  nil)
+
 (defun splits-buckets (bucket)
 
 )
 
 
 (defun test ()
-  (let ((matrix (matrix `(12800 32))))
+  ;; How tall matrix is, computation time is constant.
+  (let ((matrix (matrix `(12800 16))))
     (%index matrix #'(lambda (i) (random 1.0)))
     ;; (sb-ext:gc :full t)
     ;;(sb-profile:profile "CL-XMATRIX")
