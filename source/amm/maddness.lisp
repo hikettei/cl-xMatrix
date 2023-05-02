@@ -101,6 +101,17 @@ Return:
   "
 The function learn-binary-tree-splits computes maddness-hash given subspace X.
 
+=========================================
+   C
+   ++
+ N ++
+   ++
+
+Each subspace is represented as Bucket.
+split-dim -> C
+
+=========================================
+
 4.1 Hash Function Family g(a)
  - MaddnessHash (BinaryTree)
  - 4.2 Learning the Hash-Function Parameters
@@ -151,7 +162,10 @@ X = [C, (0, 1, 2, ... D)]
 	  ;; AddHere: Compute losses by columns
 
 	  ;; d=[Largest-Loss-Axis, ..., Smallest-Loss-Axis]
-	  (optimal-val-splits! buckets 0)
+	  ;; Here' we tests all dims to get the best trying dims.
+	  ;; depth = 0, 1, 2, 3, ,,, nth-split
+	  (optimal-val-splits subspace buckets 0)
+	  
 
 	  ;; loop for i in N. <- NをLossでSortする。
 
@@ -161,37 +175,60 @@ X = [C, (0, 1, 2, ... D)]
       
 	  )))))
 
+(defun argsort (array &key (test #'>))
+  (declare (optimize (speed 3) (safety 0))
+	   (type function test)
+	   (type (simple-array t (*)) array))
+  (mapcar #'second
+          (stable-sort
+           (loop
+             for index fixnum from 0
+             for element-i fixnum upfrom 0 below (array-total-size array)
+             collect (list (aref array element-i) index))
+	   test
+           :key #'first)))
 
-(defun sort-rows-based-on-col (matrix indices)
-  
+(defun sort-rows-based-on-col (matrix dim)
+  "Returns a sorted indices based n matrix's cols."
+  (declare (optimize (speed 3))
+	   (type matrix matrix))
+
+  (with-facet (arr* (view matrix t dim) :direction :simple-array)
+    (argsort arr*)))
+
+(defun optimal-val-splits! (bucket dim tree-level)
+  "Tree-LevelまでBucketを探索してoptimal-val-splitsする"
   )
 
-(defun optimal-val-splits (subtype bucket index tree-level
+(defun optimal-val-splits (subspace bucket dim
 			   &aux
-			     (N (first (shape subtype)))
-			     (D (second (shape subtype))))
-  "Tests all possible thresholds to find one minimizing B(t, i).
+			     (D (second (shape subspace))))
+  "Tests all possible thresholds to find one minimizing B(t, i)
 Ref: Appendix C, Algorithm 3, Optimal Split Threshold Within a Bucket.
 
+subspace - original subspace
 "
   (declare (optimize (speed 3))
-	   (type matrix subtype)
+	   (type matrix subspace)
 	   (type Bucket bucket)
-	   (type fixnum index tree-level))
+	   (type fixnum dim))
 
-  (with-caches ((x-head `(,N ,D) :dtype (matrix-dtype subtype) :place-key :C1)
-		(x-tail `(,N ,D) :dtype (matrix-dtype subtype) :place-key :C2))
+  (let* ((indices (bucket-indices bucket))
+	 (x       (view subspace `(:indices ,@indices) t)) ;; Cut out matrices which given bucket indicates.
+	 (x-sort-indices      (sort-rows-based-on-col x dim))
+	 (x-sort-indices-rev  (reverse x-sort-indices))
+	 (N (length x-sort-indices)))
+    (declare (type list x-sort-indices))
 
-    (let* ((indices (bucket-indices bucket))
-	   (x (view subtype t `(:indices ,@indices)))
-	   (x-sort-indices     (sort-rows-based-on-col x indices))
-	   (x-sort-indices-rev (reverse x-sort-indices)))
-      (declare (type list x-sort-indices))
+    (with-caches ((x-head `(,N ,D) :dtype (matrix-dtype subspace) :place-key :C1)
+		  (x-tail `(,N ,D) :dtype (matrix-dtype subspace) :place-key :C2))
+
+      (print (view x `(:indices ,@x-sort-indices)))
+      (print x-head)
+      (cumulative-sse! (view x `(:indices ,@x-sort-indices))     x-head)
+     ;; (cumulative-sse! (view x `(:indices ,@x-sort-indices-rev)) x-tail)
+
       
-      (cumulative-sse! (view x t `(:indices ,@x-sort-indices))     x-head)
-      (cumulative-sse! (view x t `(:indices ,@x-sort-indices-rev)) x-tail)
-      
-
       )))
 
 
@@ -243,5 +280,5 @@ Ref: Appendix C, Algorithm 3, Optimal Split Threshold Within a Bucket.
 
 (defun test ()
   (let ((matrix (matrix `(128 32))))
-    (%index matrix #'(lambda (i) (+ i 0.0)))
+    (%index matrix #'(lambda (i) (random 1.0)))
     (time (init-and-learn-offline matrix 4))))

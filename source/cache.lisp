@@ -57,7 +57,11 @@
 (defmacro with-cache ((var dimension &key (place-key :cache) (dtype :float)) &body body)
   "Caching Matrix"
   `(with-internal-system-caching (,var ,place-key)
-       (:if-exists ,var
+       (:if-exists (or (when (equal ,dimension (shape ,var))
+			 ,var)
+		       (progn
+			 (free-mat ,var)
+			 (overwrite (matrix ,dimension :dtype ,dtype))))
         :otherwise (overwrite (matrix ,dimension :dtype ,dtype)))
      ,@body))
 

@@ -409,3 +409,15 @@ Example:
 	    (if (typep m 'matrix)
 		(free-mat m)))
 	*pinned-matrices*))))
+
+@export
+(defmacro with-facet ((var matrix &key (direction 'simple-array))
+		      &body body)
+  "TMP"
+  (case direction
+    (:simple-array
+     `(let ((,var (convert-into-lisp-array ,matrix :freep nil)))
+	(declare (type (simple-array t (*)) ,var))
+	,@body))
+    (T
+     (error "with-facet: Unknown direction: ~a" direction))))

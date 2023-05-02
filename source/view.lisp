@@ -704,7 +704,7 @@ Return: List (Consisted of strings which records error log)"
      "The length of subscripts is too large for the given matrix.~%Matrix:     ~a~%Subscripts: ~a"
      (matrix-visible-shape matrix) subscripts))
 
-  ;; Can't be rewriten with a macrolet because of Unsafe concurrent operations on #<HASH-TABLE :TEST EQL :COUNT 14 {100D1E9F03}> detected.
+  ;; SBCL's IRC Bug: Unsafe concurrent operations on #<HASH-TABLE :TEST EQL :COUNT 14 {100D1E9F03}> detected, the following ugly case clauses below can't be rewritten with more briefly notations/macros ;_;.
   (case dimensions
     (1
      (unroll-maplist (i 1)
