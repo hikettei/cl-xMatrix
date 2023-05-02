@@ -144,9 +144,6 @@ split-val dim"
   ;; if t  -> Optimize the old one
   ;; Add: if indices = nil?
 
-  (when (null (bucket-indices bucket))
-    (error "BUCKET INDICES NIL"))
-
   (flet ((create-new-bucket (points)
 	   (make-sub-bucket points (1+ (bucket-tree-level bucket))))
 	 (make-tflist-indices (tflist)
@@ -177,18 +174,17 @@ split-val dim"
 	(%>  x split-val :out mask)     ;; left
 	(%<= x split-val :out not-mask) ;; right
 
-	(setq left-side-points (make-tflist-indices mask))
+	(setq left-side-points  (make-tflist-indices mask))
 	(setq right-side-points (make-tflist-indices not-mask))
 	
 	;; When left side child is supposed to be nil...?
+	;; either is filled with copy of bucket
 	(when (= (the single-float (%sumup mask)) 0.0)
-	 ; (setq left-side-points (make-tflist-indices not-mask))
-	  )
+	  (setq left-side-points (bucket-indices bucket)))
 
 	;; When right side child is supposed to be nil...?
 	(when (= (the single-float (%sumup not-mask)) 0.0)
-	 ; (setq left-side-points (make-tflist-indices mask))
-	  )
+	  (setq left-side-points (bucket-indices bucket)))
 
 	
 	(if (null (bucket-next-nodes bucket))
@@ -201,10 +197,9 @@ split-val dim"
 	      nil)
 	    ;; Otherwise -> Go deeper and update nodes.
 	    (let ((nodes (bucket-next-nodes bucket)))
-	      ;; HELPME: Which is correct.
-	      ;; Update Current Bucket -> Go Deeper? (I'm using it)
-	      ;; Go Deeper -> Update Current Bucket
+	      ;; Update Current Bucket -> Go Deeper
 
+	      ;; Update thresholds?
 	      (setf (bucket-indices (car nodes)) left-side-points)
 	      (setf (bucket-indices (cdr nodes)) right-side-points)
 
@@ -220,7 +215,7 @@ split-val dim"
 	       subspace)))))
     nil))
 
-(defun learn-binary-tree-splits (subspace STEP &key (nsplits 2) (verbose t) &aux (N (first (shape subspace))))
+(defun learn-binary-tree-splits (subspace STEP &key (nsplits 4) (verbose t) &aux (N (first (shape subspace))))
   "
 The function learn-binary-tree-splits computes maddness-hash given subspace X.
 
@@ -315,9 +310,10 @@ X = [C, (0, 1, 2, ... D)]
 		       ;; Transcript dim -> sorted dim
 		       (best-dim (nth best-trying-dim dim-orders)))
 
+		  (print buckets)
 		  (optimize-split-thresholds! buckets best-dim)
 		  (optimize-bucket-splits!    buckets best-dim subspace)
-		  
+		  (print buckets)
 		  ;;(print buckets)
 		  )))))
 	buckets))))
@@ -408,6 +404,9 @@ subspace - original subspace
 	   (type matrix subspace)
 	   (type Bucket bucket)
 	   (type fixnum dim))
+
+  (when (null (bucket-indices bucket))
+    (return-from compute-optimal-val-splits (values 0.0 0.0)))
 
   (let* ((indices (bucket-indices bucket))
 	 (x       (view subspace `(:indices ,@indices) t)) ;; Cut out matrices which given bucket indicates.
