@@ -47,6 +47,7 @@ Return:
 
   (assert (= (mod D C) 0) nil "Assertion Failed with (= (mod N C) 0). N=~a C=~a" N C)
 
+  ;; (For zenn.dev reader: 初めに処理する行列の形状を決めて、その後Offsetを加算します。) <- atodekesu
   ;; with-view: Cut out the shape of matrix.
   ;; The visible-area is adjusted by modifying offsets.
   ;;    D        D
@@ -68,7 +69,7 @@ Return:
       ;; subspace = [N, STEP]
       (loop for i fixnum upfrom 0 below D by step
 	    do (progn
-		 (learn-binary-tree-splits a-offline* C D)
+		 (learn-binary-tree-splits a-offline* STEP)
 		 ;;(print i)
 		 ;;(print a-offline*)
 		 )
@@ -97,19 +98,24 @@ Return:
 
 ;; (defun maddness-hash ())
 
-(defun learn-binary-tree-splits (subspace C D &key (nsplits 4) (verbose t))
+(defun learn-binary-tree-splits (subspace STEP &key (nsplits 4) (verbose t))
   "
 The function learn-binary-tree-splits computes maddness-hash given subspace X.
 
 =========================================
-   C
-   ++
- N ++
-   ++
+subspace:
+   C      C
+   ++     ++
+ N ++   N ++ ... P_n ... Nth Prototype
+   ++     ++
 
-Each subspace is represented as Bucket.
+subspace will be splited into Bucket:
+  C       C
+  ++    N ++ <- B(tree-level, i)
+N ++ ->
+  ++    N ++ <- B(tree-level, i)
+
 split-dim -> C
-
 =========================================
 
 4.1 Hash Function Family g(a)
@@ -139,12 +145,12 @@ X = [C, (0, 1, 2, ... D)]
 "
   (declare (optimize (speed 3))
 	   (type matrix subspace)
-	   (type fixnum C D nsplits)
+	   (type fixnum STEP nsplits)
 	   (type boolean verbose))
 
   (let ((buckets (make-toplevel-bucket
 		  ;; B(1, 1) possess all the elements in the subspace.
-		  (loop for i fixnum upfrom 0 below D
+		  (loop for i fixnum upfrom 0 below STEP
 			collect i))))
 
     ;; Utils
@@ -179,6 +185,7 @@ X = [C, (0, 1, 2, ... D)]
   (declare (optimize (speed 3) (safety 0))
 	   (type function test)
 	   (type (simple-array t (*)) array))
+  ;; Could be slow... Rewrite with C
   (mapcar #'second
           (stable-sort
            (loop
@@ -203,7 +210,9 @@ X = [C, (0, 1, 2, ... D)]
 (defun optimal-val-splits (subspace bucket dim
 			   &aux
 			     (D (second (shape subspace))))
-  "Tests all possible thresholds to find one minimizing B(t, i)
+  "The function optimal-val-splits tests all possible thresholds to find one minimizing B(tree-level, i).
+
+
 Ref: Appendix C, Algorithm 3, Optimal Split Threshold Within a Bucket.
 
 subspace - original subspace
@@ -222,11 +231,16 @@ subspace - original subspace
 
     (with-caches ((x-head `(,N ,D) :dtype (matrix-dtype subspace) :place-key :C1)
 		  (x-tail `(,N ,D) :dtype (matrix-dtype subspace) :place-key :C2))
-
       
       (cumulative-sse! (view x `(:indices ,@x-sort-indices))     x-head)
       (cumulative-sse! (view x `(:indices ,@x-sort-indices-rev)) x-tail)
 
+      ;; x-head = sses-head, x-tail = sses-tail
+      ;; losses <- sses-head 
+      ;; losses[1:N-1] <- losses[1:N-1] + sses_tail[2:N] 
+      ;;
+
+      (%adds (view x-head `(0 -1)) (view x-tail `(1 :~)))
       ;; (print x-head)
      ;; (print x-tail)
       
@@ -280,7 +294,7 @@ subspace - original subspace
 
 
 (defun test ()
-  (let ((matrix (matrix `(128 32))))
+  (let ((matrix (matrix `(12800 32))))
     (%index matrix #'(lambda (i) (random 1.0)))
     ;; (sb-ext:gc :full t)
     ;;(sb-profile:profile "CL-XMATRIX")
@@ -288,4 +302,5 @@ subspace - original subspace
     ;;(sb-profile:report)
     ;;(sb-profile:unprofile "CL-XMATRIX")
 
+    (free-mat matrix)
     ))

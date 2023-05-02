@@ -568,7 +568,8 @@ Return: List (Consisted of strings which records error log)"
 
 (declaim (ftype (function (fixnum subscript-t) subscript-t)))
 (defun parse-relative-position (orig-shape sub)
-  "Parses relatie-position like: -1, -2..."
+  "Parses relatie-position like: -1, -2...
+specifing :- means orig-shape (todo: write docs)"
   (declare (optimize (speed 3) (safety 0))
 	   (type fixnum orig-shape)
 	   (type subscript-t sub))
@@ -582,7 +583,9 @@ Return: List (Consisted of strings which records error log)"
 	       (view-indexing-error "The relative index ~a beyonds the original axis ~a" sub orig-shape)))))
     (list
      (map 'list #'(lambda (x) (parse-relative-position orig-shape x)) sub))
-    (T sub)))
+    (T (if (eq sub :~)
+	   orig-shape
+	   sub))))
 
 (defmacro unroll-maplist ((var iter-num) &body body)
   (labels ((mkstr (&rest args)
