@@ -181,6 +181,7 @@ X = [C, (0, 1, 2, ... D)]
       
 	  )))))
 
+(declaim (ftype (function ((simple-array t (*)) &key (:test function)) list) argsort))
 (defun argsort (array &key (test #'>))
   (declare (optimize (speed 3) (safety 0))
 	   (type function test)
@@ -230,21 +231,39 @@ subspace - original subspace
     (declare (type list x-sort-indices))
 
     (with-caches ((x-head `(,N ,D) :dtype (matrix-dtype subspace) :place-key :C1)
-		  (x-tail `(,N ,D) :dtype (matrix-dtype subspace) :place-key :C2))
+		  (x-tail `(,N ,D) :dtype (matrix-dtype subspace) :place-key :C2)
+		  (s-out  `(,N 1)  :dtype (matrix-dtype subspace) :place-key :C3))
       
       (cumulative-sse! (view x `(:indices ,@x-sort-indices))     x-head)
       (cumulative-sse! (view x `(:indices ,@x-sort-indices-rev)) x-tail)
 
       ;; x-head = sses-head, x-tail = sses-tail
       ;; losses <- sses-head 
-      ;; losses[1:N-1] <- losses[1:N-1] + sses_tail[2:N] 
-      ;;
+      ;; losses[1:N-1] <- losses[1:N-1] + sses_tail[2:N]
 
       (%adds (view x-head `(0 -1)) (view x-tail `(1 :~)))
-      ;; (print x-head)
-     ;; (print x-tail)
-      
-      )))
+      (%sum x-head :axis 1 :out s-out)
+
+      ;; matrix->lisp-array conversations may contribute to low performance...
+      ;; This could be reimplemented in C or define-vop.
+      (with-facet (s-out* s-out :direction :simple-array)
+	(let* ((best-idx (car (argsort s-out* :test #'<)))
+	       (next-idx (min (the fixnum
+				   (1- (the fixnum (car (shape subspace)))))
+			      (the fixnum
+				   (1+ best-idx))))
+	       (col-idx1 (nth best-idx x-sort-indices))
+	       (col-idx2 (nth next-idx x-sort-indices))
+	       (c1 (view x col-idx1 dim))
+	       (c2 (view x col-idx2 dim)))
+	  (declare (type fixnum best-idx next-idx))
+	  ;; c1 c2 = [1, 1]
+	  ;; sumup may slow...
+
+	  (print (/ (+ (the single-float (%sumup c1))
+		       (the single-float (%sumup c2)))
+		    2.0))
+	  )))))
 
 
 (defun cumulative-sse! (x

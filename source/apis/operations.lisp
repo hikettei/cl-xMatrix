@@ -28,8 +28,9 @@
 		    (matrix-vec matrix) (matrix-dtype matrix) index)))))
     total))
 
-(defun %sum (matrix &key (axis 0))
-  "Sum up matrix (write docs)"
+(defun %sum (matrix &key (axis 0) (out nil))
+  "Sum up matrix (write docs)
+todo: check out's dimensions/error check"
   ;; Todo: for multiple axis (I've confirmed it works)
   (declare (type matrix matrix)
 	   (type index axis)
@@ -37,7 +38,7 @@
   (let* ((shape (copy-list (matrix-visible-shape matrix)))
  	 (reduction-size (nth axis shape)))
     (setf (nth axis shape) 1)
-    (let ((result (matrix shape :dtype (matrix-dtype matrix)))
+    (let ((result (or out (matrix shape :dtype (matrix-dtype matrix))))
 	  (view (loop for i fixnum upfrom 0 below (1+ axis)
 		      if (= i axis)
 			collect `(:broadcast ,reduction-size)
