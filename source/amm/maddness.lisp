@@ -185,7 +185,6 @@ split-val dim"
 	;; When right side child is supposed to be nil...?
 	(when (= (the single-float (%sumup not-mask)) 0.0)
 	  (setq left-side-points (bucket-indices bucket)))
-
 	
 	(if (null (bucket-next-nodes bucket))
 	    ;; If bucket is the end of node...
@@ -310,10 +309,9 @@ X = [C, (0, 1, 2, ... D)]
 		       ;; Transcript dim -> sorted dim
 		       (best-dim (nth best-trying-dim dim-orders)))
 
-		  (print buckets)
+		  ;;(print buckets)
 		  (optimize-split-thresholds! buckets best-dim)
 		  (optimize-bucket-splits!    buckets best-dim subspace)
-		  (print buckets)
 		  ;;(print buckets)
 		  )))))
 	buckets))))
@@ -405,7 +403,9 @@ subspace - original subspace
 	   (type Bucket bucket)
 	   (type fixnum dim))
 
-  (when (null (bucket-indices bucket))
+  ;; when the bucket is empty.
+  (when (or (null (bucket-indices bucket))
+	    (< (length (bucket-indices bucket)) 2))
     (return-from compute-optimal-val-splits (values 0.0 0.0)))
 
   (let* ((indices (bucket-indices bucket))
@@ -429,9 +429,7 @@ subspace - original subspace
 
       ;; Maybe this if clause is not necessary.
       
-      (if (= (the fixnum (car (shape x-head))) 1) ;; Check if N >= 1.
-	  (%adds x-head x-tail)
-	  (%adds (view x-head `(0 -1)) (view x-tail `(1 :~))))
+      (%adds x-head x-tail)
       
       (%sum x-head :axis 1 :out s-out)
 
