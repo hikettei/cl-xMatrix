@@ -115,6 +115,18 @@ Return:
       (%sum ex2 :out result :axis 0)
       result)))
 
+(defun optimize-split-thresholds! (bucket index)
+  "Pick up index-th threshold-candiates, and use it as bucket's threshold."
+  (declare (optimize (speed 3))
+	   (type fixnum index))
+
+  (setf (bucket-threshold bucket) (nth index (reverse (bucket-threshold-candidates bucket))))
+
+  (dolist (b (bucket-next-nodes bucket))
+    (optimize-split-thresholds! b index))
+
+  nil)
+
 ;; (defun maddness-hash ())
 
 (defun learn-binary-tree-splits (subspace STEP &key (nsplits 4) (verbose t))
@@ -194,21 +206,25 @@ X = [C, (0, 1, 2, ... D)]
 		;; Here, we tests all dims to obtain the best trying dim.
 		;; depth = 0, 1, 2, ..., nth-split
 
-		(print nth-split)
 		(loop for d fixnum upfrom 0
 		      for dth in dim-orders
 		      do (loop named training-per-bucket
 			       for level fixnum from 0 to nth-split
 			       do (when (optimal-val-splits! subspace buckets total-losses dth level)
-				    (print "ES")
 				    (return-from training-per-bucket))))
 
-	      (print (convert-into-lisp-array total-losses))
+		;; total-losses = `(Loss1 Loss2 Loss3 ... LossN) where N=axis.
+		;; (The next time nsplits training, The axis whose Loss is large is computes ahaed of time.)
+		;;
 
-	      )))
+		(let* ((best-trying-dim (first (argsort (convert-into-lisp-array total-losses) :test #'<)))
+		       ;; Transcript dim -> sorted dim
+		       (best-dim (nth best-trying-dim dim-orders)))
+		  (optimize-split-thresholds! buckets best-dim))
 
-
-	  )))))
+		;; Split-buckets
+		
+		))))))))
 
 (declaim (ftype (function ((simple-array t (*)) &key (:test function)) list) argsort))
 (defun argsort (array &key (test #'>))
