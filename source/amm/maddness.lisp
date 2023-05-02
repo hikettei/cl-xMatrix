@@ -87,12 +87,12 @@ Return:
 (defstruct (Bucket
 	    (:predicate bucket-)
 	    (:constructor make-toplevel-bucket (indices &aux (tree-level 0)))
-	    ;;(:constructor make-subbucket ())
+	    (:constructor make-sub-bucket (indices tree-level))
 	    )
   ;; (C 0 :type fixnum) 
   (tree-level tree-level :type fixnum)
   (index 0 :type fixnum) ;; split-index
-  (threshold  0.0        :type single-float) ;; = split-val
+  (threshold  0.0 :type single-float) ;; = split-val
   (threshold-candidates nil)
   (next-nodes nil :type list)
   (indices indices :type list)) ;; The list of indices of A which current bucket posses (C, D), D= 1 3 5 10 2 ... Bucketが管轄するDのIndex
@@ -118,6 +118,7 @@ Return:
 (defun optimize-split-thresholds! (bucket index)
   "Pick up index-th threshold-candiates, and use it as bucket's threshold."
   (declare (optimize (speed 3))
+	   (type bucket bucket)
 	   (type fixnum index))
 
   (setf (bucket-threshold bucket) (nth index (reverse (bucket-threshold-candidates bucket))))
@@ -127,9 +128,33 @@ Return:
 
   nil)
 
+(defun optimize-bucket-splits! (bucket best-dim subspace &key (starting-tree-level 0))
+  "Splits bucket's binary-tree
+split-val dim"
+  (declare (optimize (speed 3))
+	   (type bucket bucket)
+	   (type matrix subspace)
+	   (type fixnum best-dim))
+
+  ;; if bucket-nodes = nil -> Create new
+  ;; if t  -> Optimize the old one
+  (flet ((create-new-bucket (points)
+	   (make-sub-buckets points (1+ (bucket-tree-level bucket)))))
+
+    (let* ((jurisdictions (bucket-indices bucket))
+	   (x (view subspace t `(:indices ,@jurisdictions) best-dim))
+	   (split-val (bucket-threshold bucket)))
+      (with-caches ((mask (shape x) :place-key :mask1)
+		    (not-mask (shape x) :place-key :mask-not1))
+
+	(%> x split-val  :out mask)
+	(%<= x split-val :out not-mask)
+
+	))))
+
 ;; (defun maddness-hash ())
 
-(defun learn-binary-tree-splits (subspace STEP &key (nsplits 4) (verbose t))
+(defun learn-binary-tree-splits (subspace STEP &key (nsplits 4) (verbose nil))
   "
 The function learn-binary-tree-splits computes maddness-hash given subspace X.
 
@@ -190,7 +215,8 @@ X = [C, (0, 1, 2, ... D)]
 	
 	;; Training
 	(dotimes (nth-split nsplits)
-	  ;; (maybe-print "== (~a/~a)Training Binary Tree Splits =========" (1+ nth-split) nsplits)
+
+	  (maybe-print "== (~a/~a)Training Binary Tree Splits =========" (1+ nth-split) nsplits)
 
 	  ;; heuristic = bucket_sse
 	  (%fill col-losses 0.0)
@@ -220,7 +246,8 @@ X = [C, (0, 1, 2, ... D)]
 		(let* ((best-trying-dim (first (argsort (convert-into-lisp-array total-losses) :test #'<)))
 		       ;; Transcript dim -> sorted dim
 		       (best-dim (nth best-trying-dim dim-orders)))
-		  (optimize-split-thresholds! buckets best-dim))
+		  (optimize-split-thresholds! buckets best-dim)
+		  (optimize-bucket-splits!    buckets best-dim subspace))
 
 		;; Split-buckets
 		

@@ -144,7 +144,11 @@ todo: check out's dimensions/error check"
 		(out (:pointer ,dtype))
 		(scal ,dtype))))
   (define-cmp-cfun "fp32_scalar_greater_than" :float)
-  (define-cmp-cfun "fp32_scalar_less_than" :float))
+  (define-cmp-cfun "fp32_scalar_less_than" :float)
+  (define-cmp-cfun "fp32_scalar_greater_than_eq" :float)
+  (define-cmp-cfun "fp32_scalar_less_than_eq" :float)
+
+  )
 
 @export
 (defun %> (matrix scalar
@@ -203,3 +207,64 @@ todo: check out's dimensions/error check"
    :mat-operated-with out
    :direction :foreign)
   out)
+
+
+@export
+(defun %>= (matrix scalar
+	   &key (out nil)
+	   &aux
+	     (out    (or out (matrix (shape matrix) :dtype (matrix-dtype matrix))))
+	     (scalar (coerce scalar (dtype->lisp-type (matrix-dtype matrix)))))
+  ""
+  (declare (optimize (speed 3))
+	   (type matrix matrix))
+
+  (assert-dtype matrix out)
+  (assure-dimensions matrix out)
+  
+  (call-with-visible-area
+   matrix
+   #'(lambda (x-view x1-view)
+       (dtypecase matrix
+	 (:float
+	  (fp32-scalar-greater-than-eq x-view x1-view (matrix-vec matrix) (matrix-vec out) scalar))
+	 (:uint16
+	  (fp32-scalar-greater-than-eq x-view x1-view (matrix-vec matrix) (matrix-vec out) scalar))
+	 (:uint8
+	  (fp32-scalar-greater-than-eq x-view x1-view (matrix-vec matrix) (matrix-vec out) scalar))
+	 (:int
+	  (fp32-scalar-greater-than-eq x-view x1-view (matrix-vec matrix) (matrix-vec out) scalar))))
+   :mat-operated-with out
+   :direction :foreign)
+  out)
+
+
+@export
+(defun %<= (matrix scalar
+	   &key (out nil)
+	   &aux
+	     (out    (or out (matrix (shape matrix) :dtype (matrix-dtype matrix))))
+	     (scalar (coerce scalar (dtype->lisp-type (matrix-dtype matrix)))))
+  ""
+  (declare (optimize (speed 3))
+	   (type matrix matrix))
+
+  (assert-dtype matrix out)
+  (assure-dimensions matrix out)
+  
+  (call-with-visible-area
+   matrix
+   #'(lambda (x-view x1-view)
+       (dtypecase matrix
+	 (:float
+	  (fp32-scalar-less-than-eq x-view x1-view (matrix-vec matrix) (matrix-vec out) scalar))
+	 (:uint16
+	  (fp32-scalar-less-than-eq x-view x1-view (matrix-vec matrix) (matrix-vec out) scalar))
+	 (:uint8
+	  (fp32-scalar-less-than-eq x-view x1-view (matrix-vec matrix) (matrix-vec out) scalar))
+	 (:int
+	  (fp32-scalar-less-than-eq x-view x1-view (matrix-vec matrix) (matrix-vec out) scalar))))
+   :mat-operated-with out
+   :direction :foreign)
+  out)
+

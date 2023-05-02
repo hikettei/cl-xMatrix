@@ -141,3 +141,7 @@ void fp32_scalar_greater_than(const struct ViewInstruction*, const struct ViewIn
 
 void fp32_scalar_less_than(const struct ViewInstruction*, const struct ViewInstruction*, single_float*, single_float*, single_float);
 
+void fp32_scalar_greater_than_eq(const struct ViewInstruction*, const struct ViewInstruction*, single_float*, single_float*, single_float);
+
+void fp32_scalar_less_than_eq(const struct ViewInstruction*, const struct ViewInstruction*, single_float*, single_float*, single_float);
+
