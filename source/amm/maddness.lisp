@@ -94,7 +94,7 @@ Return:
   (tree-level tree-level :type fixnum)
   (index 0 :type fixnum) ;; split-index
   (threshold  0.0 :type single-float) ;; = split-val
-  (threshold-candidates nil)
+  (threshold-candidates nil) ;; 0~dim
   (next-nodes nil :type list)
   (indices indices :type list)) ;; The list of indices of A which current bucket posses (C, D), D= 1 3 5 10 2 ... Bucketが管轄するDのIndex
 
@@ -106,12 +106,13 @@ Return:
 		  (ex  (shape s*) :place-key :col-variances2)
 		  (result `(1 ,(second (shape s*))) :place-key :sum-out1))
       (%fill result 0.0)
-      ;; Sum(E[x^2] - E[x], axis=0)
+      ;; Sum(E[x^2] - E[x]^2, axis=0)
       (%move s* ex2)
       (%move s* ex)
       (%square ex2)
       (%scalar-div ex2 N)
       (%scalar-div ex N)
+      (%square ex)
       (%subs ex2 ex)
       (%sum ex2 :out result :axis 0)
       result)))
@@ -124,9 +125,10 @@ Return:
 
   (setf (bucket-threshold bucket) (nth index (reverse (bucket-threshold-candidates bucket))))
 
-  (dolist (b (bucket-next-nodes bucket))
-    (optimize-split-thresholds! b index))
-
+  (let ((buckets (bucket-next-nodes bucket)))
+    (when buckets
+      (optimize-split-thresholds! (car buckets) index)
+      (optimize-split-thresholds! (cdr buckets) index)))
   nil)
 
 (defun optimize-bucket-splits! (bucket best-dim subspace)
@@ -179,12 +181,12 @@ split-val dim"
 	
 	;; When left side child is supposed to be nil...?
 	(when (= (the single-float (%sumup mask)) 0.0)
-	  
+	 ; (setq left-side-points (make-tflist-indices not-mask))
 	  )
 
 	;; When right side child is supposed to be nil...?
 	(when (= (the single-float (%sumup not-mask)) 0.0)
-
+	 ; (setq left-side-points (make-tflist-indices mask))
 	  )
 
 	
@@ -217,7 +219,7 @@ split-val dim"
 	       subspace)))))
     nil))
 
-(defun learn-binary-tree-splits (subspace STEP &key (nsplits 2) (verbose t))
+(defun learn-binary-tree-splits (subspace STEP &key (nsplits 2) (verbose t) &aux (N (first (shape subspace))))
   "
 The function learn-binary-tree-splits computes maddness-hash given subspace X.
 
@@ -269,9 +271,10 @@ X = [C, (0, 1, 2, ... D)]
 
   (let ((buckets (make-toplevel-bucket
 		  ;; B(1, 1) possess all the elements in the subspace.
-		  (loop for i fixnum upfrom 0 below STEP
+		  (loop for i fixnum upfrom 0 below N
 			collect i))))
     (with-cache (col-losses `(1 ,STEP) :dtype (matrix-dtype subspace) :place-key :losses1)
+      (%fill col-losses 0.0)
       ;; Utils
       (macrolet ((maybe-print (object &rest control-objects)
 		   `(when verbose (format t ,object ,@control-objects))))
@@ -287,7 +290,7 @@ X = [C, (0, 1, 2, ... D)]
 
 	  (with-facet (col-losses* col-losses :direction :simple-array)
 	    ;; Sort By [Largest-Loss-Axis, ... , Smallest-Loss-Axis]
-	    (let* ((dim-orders (argsort col-losses*))
+	    (let* ((dim-orders (argsort col-losses* :test #'>))
 		   (dim-size   (length dim-orders)))
 
 	      (with-cache (total-losses `(1 ,dim-size) :place-key :total-loss)
@@ -300,7 +303,9 @@ X = [C, (0, 1, 2, ... D)]
 		      do (loop named training-per-bucket
 			       for level fixnum from 0 to nth-split
 			       do (when (optimal-val-splits! subspace buckets total-losses dth level)
-				    (return-from training-per-bucket))))
+				    
+				    (return-from training-per-bucket)
+				    )))
 
 		;; total-losses = `(Loss1 Loss2 Loss3 ... LossN) where N=axis.
 		;; (The next time nsplits training, The axis whose Loss is large is computes ahaed of time. <- considering col-losses)
@@ -309,8 +314,16 @@ X = [C, (0, 1, 2, ... D)]
 		(let* ((best-trying-dim (first (argsort (convert-into-lisp-array total-losses) :test #'<)))
 		       ;; Transcript dim -> sorted dim
 		       (best-dim (nth best-trying-dim dim-orders)))
+
+		  ;; ここら辺縦横のIndexごちゃになってない？
+		  ;; argsort の predicate確かめる
+		  ;; Binary0Treeの学習がうまく行っていない。
+
+		  (print buckets)
+		  
 		  (optimize-split-thresholds! buckets best-dim)
 		  (optimize-bucket-splits!    buckets best-dim subspace)
+		  
 		  (print buckets)
 		  )))))
 	buckets))))
@@ -335,7 +348,8 @@ X = [C, (0, 1, 2, ... D)]
   (declare (optimize (speed 3) (safety 0))
 	   (type matrix matrix))
   (with-facet (arr* (view matrix t dim) :direction :simple-array)
-    (argsort arr*)))
+    ;; (Smallest-Index ... Largetst-Index)
+    (argsort arr* :test #'<)))
 
 
 ;; (optimize-params bucket)
@@ -364,25 +378,26 @@ Return:
 
 	    ;; Note: split-val[dim~0] <- dont forget to rev it.
 	    ;; that is, dim is on the around way.
-	    
+
+	    ;; candidates:
+	    ;; dim-order[2] ... dim-order[1] dim-order[0]
 	    (push split-val (bucket-threshold-candidates bucket))
 	    ;; Judge early-stoppig-p
 	    (if (= dim 0)
 		nil
-		(%or?
+		(%all?
 		 (%satisfies
 		  (view total-losses t `(0 ,dim))
-		  #'(lambda (x) (> loss-d* (the single-float x)))))))))
+		  #'(lambda (x) (< loss-d* (the single-float x)))))))))
       (let ((next-nodes (bucket-next-nodes bucket)))
 	;; Explore nodes untill reach tree-level
 
 	(when (null next-nodes)
 	  (error "optimal-val-splits! Couldn't find any buckets."))
 
-	(or
-	 (optimal-val-splits! subspace (car next-nodes) total-losses dim tree-level)
-	 (optimal-val-splits! subspace (car next-nodes) total-losses dim tree-level))))
-  nil)
+	(let ((res1 (optimal-val-splits! subspace (car next-nodes) total-losses dim tree-level))
+	      (res2 (optimal-val-splits! subspace (cdr next-nodes) total-losses dim tree-level)))
+	  (or res1 res2)))))
 
 (declaim (ftype (function (matrix Bucket fixnum) (values single-float single-float)) compute-optimal-val-splits))
 (defun compute-optimal-val-splits (subspace bucket dim
@@ -415,12 +430,11 @@ subspace - original subspace
       (cumulative-sse! (view x `(:indices ,@x-sort-indices-rev)) x-tail)
 
 
-      ;; FIXME: Sometimes :indices become nil...
-
-      
       ;; x-head = sses-head, x-tail = sses-tail
       ;; losses <- sses-head 
       ;; losses[1:N-1] <- losses[1:N-1] + sses_tail[2:N]
+
+      ;; Maybe this if clause is not necessary.
       (if (= (the fixnum (car (shape x-head))) 1) ;; Check if N >= 1.
 	  (%adds x-head x-tail)
 	  (%adds (view x-head `(0 -1)) (view x-tail `(1 :~))))
@@ -443,6 +457,7 @@ subspace - original subspace
 	  ;; c1 c2 = [1, 1]
 	  ;; %sumup may slow... -> Add: mats-as-scalar
           ;; when dtype=uint?
+	  
 	  (values (/ (+ (the single-float (%sumup c1))
 			(the single-float (%sumup c2)))
 		     2.0)
@@ -475,6 +490,7 @@ subspace - original subspace
       (%move x* cxc)
       (%move x* cxc2)
       (%square cxc2)
+
       (dotimes (i N)
 	(let ((lr (/ (+ 2.0 i))))
 	  (%adds cumX-cols x*)
@@ -508,13 +524,16 @@ subspace - original subspace
 )
 
 
-(defun test ()
+(defun test (&key (p 0.8))
   ;; How tall matrix is, computation time is constant.
-  (let ((matrix (matrix `(1280 32))))
-    (%index matrix #'(lambda (i) (random 1.0)))
+  (let ((matrix (matrix `(256 32))))
+    (%index matrix #'(lambda (i)
+		       (if (< (random 1.0) p)
+			   1.0
+			   0.0)))
     ;; (sb-ext:gc :full t)
     ;;(sb-profile:profile "CL-XMATRIX")
-    (time (init-and-learn-offline matrix 8))
+    (time (init-and-learn-offline matrix 4))
     ;;(sb-profile:report)
     ;;(sb-profile:unprofile "CL-XMATRIX")
 
