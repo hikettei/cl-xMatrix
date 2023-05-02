@@ -27,7 +27,7 @@
 	       (:file "distribution/random")
 	       
 	       (:file "amm/package")
-	       (:file "amm/mithral")
+	       (:file "amm/maddness")
 	       ;;(:file "mha")
 	       )
   :in-order-to ((test-op (test-op cl-xmatrix/test))))

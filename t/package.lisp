@@ -33,12 +33,12 @@
 
 
 (defun test-mithral ()
-  (let ((a (matrix `(5000 16))))
-   ;; (sb-profile:profile "CL-XMATRIX")
+  (let ((a (matrix `(2000 256))));;(matrix `(5000 16))))
+    ;;(sb-profile:profile "CL-XMATRIX")
     (%filter a #'(lambda (x) (random 1.0)))
     ;; a = 5000 512
     ;;(time (cl-xmatrix.amm.maddness::cumsse-cols a))
-    (time (cl-xmatrix.amm.maddness:init-and-learn-mithral a 16 4))
+    ;;(time (cl-xmatrix.amm.maddness:init-and-learn-mithral a 16 4))
     ;;(sb-profile:report)
     t))
 

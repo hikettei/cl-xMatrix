@@ -4,13 +4,14 @@
 (defpackage :cl-xmatrix.amm.maddness
   (:use :cl :cl-xmatrix)
   (:export
-   #:init-and-learn-mithral))
+   ))
 
 (in-package :cl-xmatrix.amm.maddness)
 
 ;; This is the my reimplementation of Maddness
 
 ;; Indicesの高速化
+;; TODO: Comments for readers
 
 (defun init-and-learn-offline (a-offline
 			       C
@@ -138,6 +139,11 @@ split-val dim"
 
   ;; if bucket-nodes = nil -> Create new
   ;; if t  -> Optimize the old one
+  ;; Add: if indices = nil?
+
+  (when (null (bucket-indices bucket))
+    (error "BUCKET INDICES NIL"))
+
   (flet ((create-new-bucket (points)
 	   (make-sub-bucket points (1+ (bucket-tree-level bucket))))
 	 (make-tflist-indices (tflist)
@@ -154,7 +160,9 @@ split-val dim"
 
     (let* ((jurisdictions (bucket-indices bucket))
 	   (x             (view subspace `(:indices ,@jurisdictions) best-dim))
-	   (split-val     (bucket-threshold bucket)))
+	   (split-val     (bucket-threshold bucket))
+	   (left-side-points)
+	   (right-side-points))
 
       (with-caches ((mask     (shape x) :place-key :mask1)
 		    (not-mask (shape x) :place-key :mask-not1))
@@ -162,39 +170,54 @@ split-val dim"
 	;; FIXME: conversation between lisp-array and matrix...
 
 	;; Note: Having avoided using maddness-hash but using cons to express tree-structure, I am wondering this semantics below is currect?
+	
 	(%>  x split-val :out mask)     ;; left
 	(%<= x split-val :out not-mask) ;; right
 
+	(setq left-side-points (make-tflist-indices mask))
+	(setq right-side-points (make-tflist-indices not-mask))
+	
+	;; When left side child is supposed to be nil...?
+	(when (= (the single-float (%sumup mask)) 0.0)
+	  
+	  )
+
+	;; When right side child is supposed to be nil...?
+	(when (= (the single-float (%sumup not-mask)) 0.0)
+
+	  )
+
+	
 	(if (null (bucket-next-nodes bucket))
 	    ;; If bucket is the end of node...
+	    ;; => Creates a new bucket-tree.
 	    (progn
 	      (setf (bucket-next-nodes bucket)
-		    (cons (create-new-bucket (make-tflist-indices mask))
-			  (create-new-bucket (make-tflist-indices not-mask))))
+		    (cons (create-new-bucket left-side-points)
+			  (create-new-bucket right-side-points)))
 	      nil)
 	    ;; Otherwise -> Go deeper and update nodes.
-	    (progn
+	    (let ((nodes (bucket-next-nodes bucket)))
 	      ;; HELPME: Which is correct.
 	      ;; Update Current Bucket -> Go Deeper? (I'm using it)
 	      ;; Go Deeper -> Update Current Bucket
 
-	      (setf (bucket-next-nodes bucket)
-		    (cons (create-new-bucket (make-tflist-indices mask))
-			  (create-new-bucket (make-tflist-indices not-mask))))
+	      (setf (bucket-indices (car nodes)) left-side-points)
+	      (setf (bucket-indices (cdr nodes)) right-side-points)
 
 	      ;; Update Left-side
 	      (optimize-bucket-splits!
-	       (car (bucket-next-nodes bucket))
+	       (car nodes)
 	       best-dim
 	       subspace)
 
 	      (optimize-bucket-splits!
-	       (cdr (bucket-next-nodes bucket))
+	       (cdr nodes)
 	       best-dim
 	       subspace)))))
     nil))
 
-(defun learn-binary-tree-splits (subspace STEP &key (nsplits 4) (verbose nil))
+(defun learn-binary-tree-splits (subspace STEP &key (nsplits 2) (verbose t))
   "
 The function learn-binary-tree-splits computes maddness-hash given subspace X.
 
@@ -256,7 +279,7 @@ X = [C, (0, 1, 2, ... D)]
 	;; Training
 	(dotimes (nth-split nsplits)
 
-	  (maybe-print "== (~a/~a)Training Binary Tree Splits =========" (1+ nth-split) nsplits)
+	  (maybe-print "== (~a/~a) Training Binary Tree Splits =========~%" (1+ nth-split) nsplits)
 
 	  ;; heuristic = bucket_sse
 	  (%fill col-losses 0.0)
@@ -280,18 +303,17 @@ X = [C, (0, 1, 2, ... D)]
 				    (return-from training-per-bucket))))
 
 		;; total-losses = `(Loss1 Loss2 Loss3 ... LossN) where N=axis.
-		;; (The next time nsplits training, The axis whose Loss is large is computes ahaed of time.)
+		;; (The next time nsplits training, The axis whose Loss is large is computes ahaed of time. <- considering col-losses)
 		;;
 
 		(let* ((best-trying-dim (first (argsort (convert-into-lisp-array total-losses) :test #'<)))
 		       ;; Transcript dim -> sorted dim
 		       (best-dim (nth best-trying-dim dim-orders)))
 		  (optimize-split-thresholds! buckets best-dim)
-		  (optimize-bucket-splits!    buckets best-dim subspace))
-
-		;; Split-buckets
-		
-		))))))))
+		  (optimize-bucket-splits!    buckets best-dim subspace)
+		  (print buckets)
+		  )))))
+	buckets))))
 
 (declaim (ftype (function ((simple-array t (*)) &key (:test function)) list) argsort))
 (defun argsort (array &key (test #'>))
@@ -342,6 +364,7 @@ Return:
 
 	    ;; Note: split-val[dim~0] <- dont forget to rev it.
 	    ;; that is, dim is on the around way.
+	    
 	    (push split-val (bucket-threshold-candidates bucket))
 	    ;; Judge early-stoppig-p
 	    (if (= dim 0)
@@ -352,12 +375,13 @@ Return:
 		  #'(lambda (x) (> loss-d* (the single-float x)))))))))
       (let ((next-nodes (bucket-next-nodes bucket)))
 	;; Explore nodes untill reach tree-level
+
 	(when (null next-nodes)
 	  (error "optimal-val-splits! Couldn't find any buckets."))
 
 	(or
-	 (optimal-val-splits! subspace (car next-nodes) total-losses dim (1+ tree-level))
-	 (optimal-val-splits! subspace (car next-nodes) total-losses dim (1+ tree-level)))))
+	 (optimal-val-splits! subspace (car next-nodes) total-losses dim tree-level)
+	 (optimal-val-splits! subspace (car next-nodes) total-losses dim tree-level))))
   nil)
 
 (declaim (ftype (function (matrix Bucket fixnum) (values single-float single-float)) compute-optimal-val-splits))
@@ -390,11 +414,17 @@ subspace - original subspace
       (cumulative-sse! (view x `(:indices ,@x-sort-indices))     x-head)
       (cumulative-sse! (view x `(:indices ,@x-sort-indices-rev)) x-tail)
 
+
+      ;; FIXME: Sometimes :indices become nil...
+
+      
       ;; x-head = sses-head, x-tail = sses-tail
       ;; losses <- sses-head 
       ;; losses[1:N-1] <- losses[1:N-1] + sses_tail[2:N]
-
-      (%adds (view x-head `(0 -1)) (view x-tail `(1 :~)))
+      (if (= (the fixnum (car (shape x-head))) 1) ;; Check if N >= 1.
+	  (%adds x-head x-tail)
+	  (%adds (view x-head `(0 -1)) (view x-tail `(1 :~))))
+      
       (%sum x-head :axis 1 :out s-out)
 
       ;; matrix->lisp-array conversations may contribute to low performance...
@@ -480,11 +510,11 @@ subspace - original subspace
 
 (defun test ()
   ;; How tall matrix is, computation time is constant.
-  (let ((matrix (matrix `(12800 16))))
+  (let ((matrix (matrix `(1280 32))))
     (%index matrix #'(lambda (i) (random 1.0)))
     ;; (sb-ext:gc :full t)
     ;;(sb-profile:profile "CL-XMATRIX")
-    (time (init-and-learn-offline matrix 4))
+    (time (init-and-learn-offline matrix 8))
     ;;(sb-profile:report)
     ;;(sb-profile:unprofile "CL-XMATRIX")
 
