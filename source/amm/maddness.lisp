@@ -302,7 +302,10 @@ X = [C, (0, 1, 2, ... D)]
 		      for dth in dim-orders
 		      do (loop named training-per-bucket
 			       for level fixnum from 0 to nth-split
-			       do (when (optimal-val-splits! subspace buckets total-losses dth level)
+
+			       ;; dとdth両方が使われていない。
+			       ;; ValSplitsの計算に使うのはdth, lossを格納するのは0, 1, 2, ... dみたいな感じ　ここを直せばOVERFLOW治るはず
+			       do (when (optimal-val-splits! subspace buckets total-losses d dth level)
 				    
 				    (return-from training-per-bucket)
 				    )))
@@ -319,12 +322,15 @@ X = [C, (0, 1, 2, ... D)]
 		  ;; argsort の predicate確かめる
 		  ;; Binary0Treeの学習がうまく行っていない。
 
+		  ;;(print buckets)
+
+		  (print "Optimizing...")
 		  (print buckets)
-		  
 		  (optimize-split-thresholds! buckets best-dim)
 		  (optimize-bucket-splits!    buckets best-dim subspace)
-		  
 		  (print buckets)
+		  
+		  ;;(print buckets)
 		  )))))
 	buckets))))
 
@@ -353,7 +359,7 @@ X = [C, (0, 1, 2, ... D)]
 
 
 ;; (optimize-params bucket)
-(defun optimal-val-splits! (subspace bucket total-losses dim tree-level)
+(defun optimal-val-splits! (subspace bucket total-losses d dim tree-level)
   "Tree-LevelまでBucketを探索してcompute-optimal-val-splitsする
 
 与えれたdimでbinary-treeを学習/loss var (bucket isn't modified.)
@@ -365,13 +371,13 @@ Return:
   (declare (optimize (speed 3))
 	   (type bucket bucket)
 	   (type matrix subspace total-losses)
-	   (type fixnum dim tree-level))
+	   (type fixnum d dim tree-level))
   (if (= (bucket-tree-level bucket) tree-level)
       (multiple-value-bind (split-val loss) (compute-optimal-val-splits subspace bucket dim)
 	(declare (type single-float split-val loss))
 
 	(with-view (loss-d total-losses t 0)
-	  (incf-offsets! loss-d 0 dim)
+	  (incf-offsets! loss-d 0 d)
 	  (%scalar-add loss-d loss)
 	  (let ((loss-d* (%sumup loss-d)))
 	    (declare (type single-float loss-d*))
@@ -383,11 +389,11 @@ Return:
 	    ;; dim-order[2] ... dim-order[1] dim-order[0]
 	    (push split-val (bucket-threshold-candidates bucket))
 	    ;; Judge early-stoppig-p
-	    (if (= dim 0)
+	    (if (= d 0)
 		nil
 		(%all?
 		 (%satisfies
-		  (view total-losses t `(0 ,dim))
+		  (view total-losses t `(0 ,d))
 		  #'(lambda (x) (< loss-d* (the single-float x)))))))))
       (let ((next-nodes (bucket-next-nodes bucket)))
 	;; Explore nodes untill reach tree-level
@@ -395,8 +401,8 @@ Return:
 	(when (null next-nodes)
 	  (error "optimal-val-splits! Couldn't find any buckets."))
 
-	(let ((res1 (optimal-val-splits! subspace (car next-nodes) total-losses dim tree-level))
-	      (res2 (optimal-val-splits! subspace (cdr next-nodes) total-losses dim tree-level)))
+	(let ((res1 (optimal-val-splits! subspace (car next-nodes) total-losses d dim tree-level))
+	      (res2 (optimal-val-splits! subspace (cdr next-nodes) total-losses d dim tree-level)))
 	  (or res1 res2)))))
 
 (declaim (ftype (function (matrix Bucket fixnum) (values single-float single-float)) compute-optimal-val-splits))
@@ -425,6 +431,9 @@ subspace - original subspace
     (with-caches ((x-head `(,N ,D) :dtype (matrix-dtype subspace) :place-key :C1)
 		  (x-tail `(,N ,D) :dtype (matrix-dtype subspace) :place-key :C2)
 		  (s-out  `(,N 1)  :dtype (matrix-dtype subspace) :place-key :C3))
+      (%fill x-head 0.0)
+      (%fill x-tail 0.0)
+      (%fill s-out 0.0)
       
       (cumulative-sse! (view x `(:indices ,@x-sort-indices))     x-head)
       (cumulative-sse! (view x `(:indices ,@x-sort-indices-rev)) x-tail)
@@ -435,6 +444,7 @@ subspace - original subspace
       ;; losses[1:N-1] <- losses[1:N-1] + sses_tail[2:N]
 
       ;; Maybe this if clause is not necessary.
+      
       (if (= (the fixnum (car (shape x-head))) 1) ;; Check if N >= 1.
 	  (%adds x-head x-tail)
 	  (%adds (view x-head `(0 -1)) (view x-tail `(1 :~))))
@@ -464,12 +474,12 @@ subspace - original subspace
 		  (the single-float (%sumup (view x-head best-idx)))))))))
 
 
-(defun cumulative-sse! (x
+(defun cumulative-sse! (xp
 			cumsses
 			&aux
-			  (N (car    (shape x)))
-			  (D (second (shape x)))
-			  (dtype     (dtype x)))
+			  (N (car    (shape xp)))
+			  (D (second (shape xp)))
+			  (dtype     (dtype xp)))
   "Algorithm 4 Cumulative SSE. (Computes SSE Loss)
 
    Input: X [N D]
@@ -477,12 +487,14 @@ subspace - original subspace
    Output: Cumsses [N D]"
   (declare (optimize (speed 3))
 	   (type index N D)
-	   (type matrix x cumsses))
+	   (type matrix xp cumsses))
   
-  (with-caches ((cumX-cols `(1 ,D) :dtype dtype :place-key  :cumsse-col1)
-		(cumX2-cols `(1 ,D) :dtype dtype :place-key :cumsse-col2))
+  (with-caches ((cumX-cols  `(1 ,D) :dtype dtype :place-key  :cumsse-col1)
+		(cumX2-cols `(1 ,D) :dtype dtype :place-key :cumsse-col2)
+		(x          `(,N ,D) :dtype dtype :place-key :cognitious-x))
     (%fill cumX-cols 0.0)
     (%fill cumX2-cols 0.0)
+    (%move xp x)
     (with-views ((cxc cumX-cols 0 t)
 		 (cxc2 cumX2-cols 0 t)
 		 (x* x 0 t)
