@@ -123,7 +123,8 @@ Return:
 	   (type bucket bucket)
 	   (type fixnum index))
 
-  (setf (bucket-threshold bucket) (nth index (reverse (bucket-threshold-candidates bucket))))
+  (when (bucket-next-nodes bucket)
+    (setf (bucket-threshold bucket) (nth index (reverse (bucket-threshold-candidates bucket)))))
 
   (let ((buckets (bucket-next-nodes bucket)))
     (when buckets
@@ -302,13 +303,9 @@ X = [C, (0, 1, 2, ... D)]
 		      for dth in dim-orders
 		      do (loop named training-per-bucket
 			       for level fixnum from 0 to nth-split
-
-			       ;; dとdth両方が使われていない。
-			       ;; ValSplitsの計算に使うのはdth, lossを格納するのは0, 1, 2, ... dみたいな感じ　ここを直せばOVERFLOW治るはず
 			       do (when (optimal-val-splits! subspace buckets total-losses d dth level)
 				    
-				    (return-from training-per-bucket)
-				    )))
+				    (return-from training-per-bucket))))
 
 		;; total-losses = `(Loss1 Loss2 Loss3 ... LossN) where N=axis.
 		;; (The next time nsplits training, The axis whose Loss is large is computes ahaed of time. <- considering col-losses)
@@ -318,17 +315,8 @@ X = [C, (0, 1, 2, ... D)]
 		       ;; Transcript dim -> sorted dim
 		       (best-dim (nth best-trying-dim dim-orders)))
 
-		  ;; ここら辺縦横のIndexごちゃになってない？
-		  ;; argsort の predicate確かめる
-		  ;; Binary0Treeの学習がうまく行っていない。
-
-		  ;;(print buckets)
-
-		  (print "Optimizing...")
-		  (print buckets)
 		  (optimize-split-thresholds! buckets best-dim)
 		  (optimize-bucket-splits!    buckets best-dim subspace)
-		  (print buckets)
 		  
 		  ;;(print buckets)
 		  )))))
@@ -431,13 +419,10 @@ subspace - original subspace
     (with-caches ((x-head `(,N ,D) :dtype (matrix-dtype subspace) :place-key :C1)
 		  (x-tail `(,N ,D) :dtype (matrix-dtype subspace) :place-key :C2)
 		  (s-out  `(,N 1)  :dtype (matrix-dtype subspace) :place-key :C3))
-      (%fill x-head 0.0)
-      (%fill x-tail 0.0)
       (%fill s-out 0.0)
       
       (cumulative-sse! (view x `(:indices ,@x-sort-indices))     x-head)
       (cumulative-sse! (view x `(:indices ,@x-sort-indices-rev)) x-tail)
-
 
       ;; x-head = sses-head, x-tail = sses-tail
       ;; losses <- sses-head 
@@ -494,7 +479,7 @@ subspace - original subspace
 		(x          `(,N ,D) :dtype dtype :place-key :cognitious-x))
     (%fill cumX-cols 0.0)
     (%fill cumX2-cols 0.0)
-    (%move xp x)
+    (%move xp x) ;; x-matrix's bug: move :indices-array into cognitious array.
     (with-views ((cxc cumX-cols 0 t)
 		 (cxc2 cumX2-cols 0 t)
 		 (x* x 0 t)
@@ -541,7 +526,7 @@ subspace - original subspace
   (let ((matrix (matrix `(256 32))))
     (%index matrix #'(lambda (i)
 		       (if (< (random 1.0) p)
-			   1.0
+			   (random 1.0)
 			   0.0)))
     ;; (sb-ext:gc :full t)
     ;;(sb-profile:profile "CL-XMATRIX")
