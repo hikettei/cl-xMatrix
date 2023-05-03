@@ -16,14 +16,15 @@
 ;; TODO: Optimizing Prototypes Ridge Regression
 ;; TODO: Scan
 
-(defun init-and-learn-offline (a-offline
+(defun init-and-learn-offline (a-offline ;; a-offline is modified.
 			       C
 			       &key
 				 (all-prototypes-out nil)
 			       &aux
 				 (N (car (shape a-offline)))
 				 (D (second (shape a-offline)))
-				 (K 16))
+				 (K 16)
+				 (nsplits 4))
   "
 The function init-and-learn-offline clusters the prototypes, and then constructs the encoding function g(a).
 
@@ -63,22 +64,41 @@ Return:
 
   ;; all-prototypes (C, K, D)
 
-  (let ((all-prototypes (or all-prototypes-out
-			    (matrix `(,C ,K ,D) :dtype (dtype a-offline))
-			    ))
-	(step (/ D C)))
-    (declare (ignore all-prototypes))
+  (let* ((step (/ D C))
+	 (all-prototypes (or all-prototypes-out
+			     (matrix `(,C ,K ,STEP) :dtype (dtype a-offline))
+			     )))
     
-    (with-view (a-offline* a-offline t `(0 ,step))
+    (with-views ((a-offline* a-offline t `(0 ,step))
+		 (all-prototypes* all-prototypes 0 0 t))
       ;; subspace = [N, STEP]
-      (loop for i fixnum upfrom 0 below D by step
-	    do (let ((bucket (learn-binary-tree-splits a-offline* STEP)))
-		 ;(print-bucket-with-subspace bucket a-offline*)
-		 )
-	    unless (= i (- D step))
-	      do (incf-view! a-offline* 1 step))
+      (values
+       (loop for i fixnum upfrom 0 below D by step
+	     for c fixnum upfrom 0 below C
+	     collect (let ((bucket (learn-binary-tree-splits a-offline* STEP :nsplits nsplits)))
+		       (with-cache (centroid `(1 ,STEP) :place-key :centroids)
 
-      )))
+			 ;; Update X-centroids
+			 (with-bucket-clusters (id buck nsplits bucket)
+
+			   (%fill centroid 0.0) ;; fill with col-means
+			   (col-means buck a-offline* centroid)
+
+			   (with-views ((a* a-offline* `(:indices ,@(bucket-indices buck)))
+					(c* centroid `(:broadcast ,(length (bucket-indices buck)))))
+			     (%subs a* c*))
+
+			   (incf-view! all-prototypes* 1 id) 
+			   (incf-offsets! all-prototypes* c)
+
+			   (%move (cl-xmatrix::reshape centroid `(1 1 ,STEP)) all-prototypes*)
+			   
+			   (reset-offsets! all-prototypes*)
+			   (incf-view! all-prototypes* 1 (- id))))
+		       bucket)
+	     unless (= i (- D step))
+	       do (incf-view! a-offline* 1 step))
+       all-prototypes))))
 
 ;; B(t, i)
 ;; Each Bucket possess: tree-level, index, threshold, next-nodes
@@ -89,8 +109,7 @@ Return:
 (defstruct (Bucket
 	    (:predicate bucket-)
 	    (:constructor make-toplevel-bucket (indices &aux (tree-level 0)))
-	    (:constructor make-sub-bucket (indices tree-level))
-	    )
+	    (:constructor make-sub-bucket (indices tree-level)))
   (tree-level tree-level :type fixnum)
   (i 0 :type fixnum)
   (index 0 :type fixnum) ;; split-index
@@ -98,6 +117,27 @@ Return:
   (threshold-candidates nil) ;; 0~dim
   (next-nodes nil :type list)
   (indices indices :type list)) ;; The list of indices of A which current bucket posses (C, D), D= 1 3 5 10 2 ... Bucketが管轄するDのIndex
+
+(defmacro with-bucket-clusters ((idx-var bucket-var tree-level top-bucket)
+				 &body body
+				 &aux (bucket-id (gensym)))
+  `(let ((bucket-idx-counter 0))
+     (declare (type fixnum bucket-idx-counter ,tree-level))
+     (labels ((explore-bucket (,bucket-id)
+		(if (= (bucket-tree-level ,bucket-id) ,tree-level)
+		    (let ((,idx-var    bucket-idx-counter)
+			  (,bucket-var ,bucket-id))
+		      (incf bucket-idx-counter 1)
+		      ,@body)
+		    (let ((nodes (bucket-next-nodes ,bucket-id)))
+		      (explore-bucket (car nodes))
+		      (explore-bucket (cdr nodes))))))
+       (explore-bucket ,top-bucket))))
+
+(defun give-idx-to-buckets (buckets &key (nsplits 4))
+  (with-bucket-clusters (id bucket nsplits buckets)
+    (setf (bucket-i bucket) id)))
+  
 
 (defmethod col-variances ((bucket Bucket) subspace &aux (N (length (bucket-indices bucket))))
   (declare (optimize (speed 3))
@@ -117,6 +157,15 @@ Return:
       (%subs ex2 ex)
       (%sum ex2 :out result :axis 0)
       result)))
+
+(defun col-means (bucket subspace out &aux (indices (bucket-indices bucket)))
+  (declare (optimize (speed 3))
+	   (type matrix subspace))
+  (%scalar-div (%sum
+		(view subspace `(:indices ,@indices))
+		:out out
+		:axis 0)
+	       (max 1 (length indices))))
 
 (defun optimize-split-thresholds! (bucket d dth tree-level)
   "Pick up index-th threshold-candiates, and use it as bucket's threshold."
@@ -171,7 +220,7 @@ split-val dim"
 
 	;; FIXME: conversation between lisp-array and matrix...
 
-	;; Note: Having avoided using maddness-hash but using cons to express tree-structure, I am wondering this semantics below is currect?
+	;; Note: Having avoided using maddness-hash but using cons to express binary-tree-structure, I am wondering this semantics below is currect?
 	
 	(%>  x split-val :out mask)     ;; left
 	(%<= x split-val :out not-mask) ;; right
@@ -200,7 +249,6 @@ split-val dim"
 	    (let ((nodes (bucket-next-nodes bucket)))
 	      ;; Update Current Bucket -> Go Deeper
 
-	      ;; Update thresholds?
 	      (setf (bucket-indices (car nodes)) left-side-points)
 	      (setf (bucket-indices (cdr nodes)) right-side-points)
 
@@ -210,6 +258,7 @@ split-val dim"
 	       best-dim
 	       subspace)
 
+	      ;; Update Right-Side
 	      (optimize-bucket-splits!
 	       (cdr nodes)
 	       best-dim
@@ -310,11 +359,8 @@ X = [C, (0, 1, 2, ... D)]
 		       ;; Transcript dim -> sorted dim
 		       (best-dim (nth best-trying-dim dim-orders)))
 
-		  ;;(print buckets)
 		  (optimize-split-thresholds! buckets best-trying-dim best-dim nth-split)
-		  (optimize-bucket-splits!    buckets best-dim subspace)
-		  (print-bucket-with-subspace buckets subspace)
-		  )))))
+		  (optimize-bucket-splits!    buckets best-dim subspace))))))
 	(when verbose
 	  (maybe-print "Loss: ~a~%" (compute-bucket-loss buckets subspace)))
 	buckets))))
@@ -345,14 +391,14 @@ X = [C, (0, 1, 2, ... D)]
 
 ;; (optimize-params bucket)
 (defun optimal-val-splits! (subspace bucket total-losses d dim tree-level)
-  "Tree-LevelまでBucketを探索してcompute-optimal-val-splitsする
+  "The function optimal-val-splits! explores the bucket's nodes untill reaches tree-level, and update total-losses.
 
-与えれたdimでbinary-treeを学習/loss var (bucket isn't modified.)
-split-dimsを決定
-dim de trying
+Input:
+   d   - whichth axis of the total-losses to set the result.
+   dim - the axis to be used.
 
 Return:
-   - (values best-val early-stopping-p)
+   - early-stopping-p
 "
   (declare (optimize (speed 3))
 	   (type bucket bucket)
@@ -475,7 +521,7 @@ subspace - original subspace
 
    Input: X [N D]
           out - the matrix to be overwritten with result. If nil, The function allocates a new matrix.
-   Output: Cumsses [N D]"
+   Output: nil"
   (declare (optimize (speed 3))
 	   (type index N D)
 	   (type matrix xp cumsses))
@@ -629,7 +675,7 @@ subspace - original subspace
 
 	      (multiple-value-bind (_ loss) (compute-optimal-val-splits subspace bucket (bucket-index bucket))
 		(declare (ignore _))
-		(iformat out "B(t=~a) <N=~a, dim=~a, threshold=~a> {SSE -> ~a} ~%" indent (length (bucket-indices bucket)) (bucket-index bucket) (bucket-threshold bucket) loss))
+		(iformat out "B(t=~a, i=~a) <N=~a, dim=~a, threshold=~a> {SSE -> ~a} ~%" indent (bucket-i bucket) (length (bucket-indices bucket)) (bucket-index bucket) (bucket-threshold bucket) loss))
 	      
 	      (when (bucket-next-nodes bucket)
 		(print-bucket-with-subspace
@@ -642,15 +688,16 @@ subspace - original subspace
 		 subspace
 		 :stream out
 		 :indent (1+ indent)))))))
-  
-(defun test (&key (p 0.8))
+
+;; Add: adjust! (for optimizing with-cache)
+(defun test (&key (p 0.5))
   ;; How tall matrix is, computation time is constant.
   (let ((matrix (matrix `(100 64))))
     (%index matrix #'(lambda (i)
-		       (if (< (random 1.0) 0.5)
+		       (if (< (random 1.0) p)
 			   1.0
 			   0.0)))
-    ;;(sb-ext:gc :full t)
+    (sb-ext:gc :full t)
     ;;(sb-profile:profile "CL-XMATRIX.AMM.MADDNESS")
     (time (init-and-learn-offline matrix 16))
     ;;(sb-profile:report)

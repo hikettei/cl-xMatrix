@@ -905,7 +905,7 @@ subscript <- must not include indices"
 	     (typecase obj
 	       (list (map 'list #'add-n obj))
 	       (fixnum (the fixnum (+ obj increment)))
-	       (T (error "incf-view! ~a can't be used." (nth axis (matrix-view matrix)))))))
+	       (T (error "incf-view! the target axis possess this view object:~a but it couldn't be used with incf-view!. This is due to with-view was invaild, the axis you specified is a view of original matrix?" (nth axis (matrix-view matrix)))))))
     (let ((new-view (add-n (nth axis (matrix-view matrix)))))
 
       (when (> (the fixnum
@@ -936,6 +936,11 @@ subscript <- must not include indices"
 	    (incf (viewinstruction-lisp-offset1 lisp-ptr) increment))))
 
       nil)))
+
+@export
+(defun set-view! (matrix axis new-index)
+  "Alias for system-set-view! no guarantee of this function"
+  (system-set-view! matrix axis new-index))
 
 (defun system-set-view! (matrix axis new-index &aux (dims (dims matrix)))
   "DO NOT EXPORT IT"
