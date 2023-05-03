@@ -117,19 +117,20 @@ Return:
       (%sum ex2 :out result :axis 0)
       result)))
 
-(defun optimize-split-thresholds! (bucket d)
+(defun optimize-split-thresholds! (bucket d dth)
   "Pick up index-th threshold-candiates, and use it as bucket's threshold."
   (declare (optimize (speed 3))
 	   (type bucket bucket)
-	   (type fixnum d))
+	   (type fixnum d dth))
 
   (when (bucket-next-nodes bucket)
+    (setf (bucket-index bucket) dth)
     (setf (bucket-threshold bucket) (nth d (reverse (bucket-threshold-candidates bucket)))))
 
   (let ((buckets (bucket-next-nodes bucket)))
     (when buckets
-      (optimize-split-thresholds! (car buckets) d)
-      (optimize-split-thresholds! (cdr buckets) d)))
+      (optimize-split-thresholds! (car buckets) d dth)
+      (optimize-split-thresholds! (cdr buckets) d dth)))
   nil)
 
 (defun optimize-bucket-splits! (bucket best-dim subspace)
@@ -309,7 +310,7 @@ X = [C, (0, 1, 2, ... D)]
 		       (best-dim (nth best-trying-dim dim-orders)))
 
 		  ;;(print buckets)
-		  (optimize-split-thresholds! buckets best-trying-dim) ;dth
+		  (optimize-split-thresholds! buckets best-trying-dim best-dim) ;dth
 		  (optimize-bucket-splits!    buckets best-dim subspace)
 		  ;;(print buckets)
 		  )))))
@@ -426,6 +427,9 @@ subspace - original subspace
       (%fill s-out 0.0)
 
       ;; If the SSE error for all rows is small, then the Bucket has similar rows classified.
+      ;; Note: Replace Loss Functions into: Cosine Simirality.
+      ;; Which excepted to be working as if Reformer.
+      ;; The assumption is that a single (dim, val) set isn't enough to cluster a embedding vector.
       (cumulative-sse! (view x `(:indices ,@x-sort-indices))     x-head)
       (cumulative-sse! (view x `(:indices ,@x-sort-indices-rev)) x-tail)
 
