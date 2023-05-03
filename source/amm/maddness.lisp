@@ -576,6 +576,7 @@ subspace - original subspace
 
 
 #|
+90% of computation time is alloc-mat.
   seconds  |     gc     |     consed    |    calls   |  sec/call  |  name  
 ----------------------------------------------------------------
      4.562 |      0.011 | 1,071,901,488 |      5,243 |   0.000870 | CL-XMATRIX::ALLOCATE-MAT
@@ -690,7 +691,7 @@ subspace - original subspace
 		 :indent (1+ indent)))))))
 
 ;; Add: adjust! (for optimizing with-cache)
-(defun test (&key (p 0.5) (D 128) (C 16))
+(defun test (&key (p 0.6) (D 32) (C 16))
   ;; How tall matrix is, computation time is constant.
   (let ((matrix (matrix `(100 ,D))))
     (%index matrix #'(lambda (i)
@@ -698,7 +699,7 @@ subspace - original subspace
 			   1.0
 			   0.0)))
     (sb-ext:gc :full t)
-    ;;(sb-profile:profile "CL-XMATRIX.AMM.MADDNESS")
+    ;;(sb-profile:profile "CL-XMATRIX")
     (multiple-value-bind (buckets protos) (time (init-and-learn-offline matrix C))
       (format t "The number of buckets: ~a~%" (length buckets))
       (%index matrix #'(lambda (i)
@@ -709,6 +710,6 @@ subspace - original subspace
       (print-bucket-with-subspace (car buckets) (view matrix t `(0 ,(/ D C))))
       )
     ;;(sb-profile:report)
-    ;;(sb-profile:unprofile "CL-XMATRIX.AMM.MADDNESS")
+    ;;(sb-profile:unprofile "CL-XMATRIX")
 
     (free-mat matrix)))

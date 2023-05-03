@@ -39,6 +39,36 @@
   (let* ((thread (get-thread-cached-objects :create-if-nil t)))
     (setf (gethash place-key thread) value)))
 
+(defun adjust (matrix shape)
+  "The function adjust (dedicates to caching API) returns the original/view matrix if matrix.shape == shape, or satisfies matrix.shape[i] < shape[i], otherwise free matrix and creates new one.
+
+Assertion: Matrix != View-Object"
+  (declare (optimize (speed 3))
+	   (type list shape))
+  (let ((return-as-it-is (equal (shape matrix) shape)) 
+	(make-view-and-return (loop for i fixnum ;; find nil = or
+				    upfrom 0 below (dims matrix)
+				    collect (>= ;; can create cache from matrix
+					     (the fixnum (nth i (shape matrix)))
+					     (the fixnum (nth i shape))))))
+    ;; vandr include nil -> C
+    (cond
+      (return-as-it-is
+       matrix)
+      ((not (position-if #'null make-view-and-return))
+       (apply #'view matrix
+	      (map 'list #'(lambda (act-dim required-size)
+			     (declare (type fixnum act-dim required-size))
+			     (if (= act-dim required-size)
+				 t
+				 `(0 ,required-size)))
+	      (shape matrix)
+	      shape)))
+      (T
+       (free-mat matrix)
+       (matrix shape :dtype (matrix-dtype matrix))))))
+
+
 (defmacro with-internal-system-caching ((var place-key)
 					(&key
 					   (if-exists nil)
@@ -64,6 +94,7 @@
 			 (overwrite (matrix ,dimension :dtype ,dtype))))
         :otherwise (overwrite (matrix ,dimension :dtype ,dtype)))
      ,@body))
+
 
 (defmacro with-caches ((&rest forms) &body body)
   ""
