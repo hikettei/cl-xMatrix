@@ -73,7 +73,8 @@ Return:
       ;; subspace = [N, STEP]
       (loop for i fixnum upfrom 0 below D by step
 	    do (let ((bucket (learn-binary-tree-splits a-offline* STEP)))
-		 (print bucket))
+		 ;(print-bucket-with-subspace bucket a-offline*)
+		 )
 	    unless (= i (- D step))
 	      do (incf-view! a-offline* 1 step))
 
@@ -117,20 +118,20 @@ Return:
       (%sum ex2 :out result :axis 0)
       result)))
 
-(defun optimize-split-thresholds! (bucket d dth)
+(defun optimize-split-thresholds! (bucket d dth tree-level)
   "Pick up index-th threshold-candiates, and use it as bucket's threshold."
   (declare (optimize (speed 3))
 	   (type bucket bucket)
-	   (type fixnum d dth))
+	   (type fixnum d dth tree-level))
 
-  (when (bucket-next-nodes bucket)
+  (when (= (bucket-tree-level bucket) tree-level)
     (setf (bucket-index bucket) dth)
     (setf (bucket-threshold bucket) (nth d (reverse (bucket-threshold-candidates bucket)))))
 
   (let ((buckets (bucket-next-nodes bucket)))
     (when buckets
-      (optimize-split-thresholds! (car buckets) d dth)
-      (optimize-split-thresholds! (cdr buckets) d dth)))
+      (optimize-split-thresholds! (car buckets) d dth tree-level)
+      (optimize-split-thresholds! (cdr buckets) d dth tree-level)))
   nil)
 
 (defun optimize-bucket-splits! (bucket best-dim subspace)
@@ -185,7 +186,7 @@ split-val dim"
 
 	;; When right side child is supposed to be nil...?
 	(when (= (the single-float (%sumup not-mask)) 0.0)
-	  (setq left-side-points (bucket-indices bucket)))
+	  (setq right-side-points (bucket-indices bucket)))
 	
 	(if (null (bucket-next-nodes bucket))
 	    ;; If bucket is the end of node...
@@ -310,9 +311,9 @@ X = [C, (0, 1, 2, ... D)]
 		       (best-dim (nth best-trying-dim dim-orders)))
 
 		  ;;(print buckets)
-		  (optimize-split-thresholds! buckets best-trying-dim best-dim) ;dth
+		  (optimize-split-thresholds! buckets best-trying-dim best-dim nth-split)
 		  (optimize-bucket-splits!    buckets best-dim subspace)
-		  ;;(print buckets)
+		  (print-bucket-with-subspace buckets subspace)
 		  )))))
 	(when verbose
 	  (maybe-print "Loss: ~a~%" (compute-bucket-loss buckets subspace)))
@@ -345,8 +346,6 @@ X = [C, (0, 1, 2, ... D)]
 ;; (optimize-params bucket)
 (defun optimal-val-splits! (subspace bucket total-losses d dim tree-level)
   "Tree-LevelまでBucketを探索してcompute-optimal-val-splitsする
-
-TODO: 0~Tree-Levelを学習するんだと思う。
 
 与えれたdimでbinary-treeを学習/loss var (bucket isn't modified.)
 split-dimsを決定
@@ -382,7 +381,7 @@ Return:
 		(%all?
 		 (%satisfies
 		  (view total-losses t `(0 ,d))
-		  #'(lambda (x) (< loss-d* (the single-float x)))))))))
+		  #'(lambda (x) (< (the single-float x) loss-d*))))))))
       (let ((next-nodes (bucket-next-nodes bucket)))
 	;; Explore nodes untill reach tree-level
 
@@ -457,11 +456,13 @@ subspace - original subspace
 	  ;; c1 c2 = [1, 1]
 	  ;; %sumup may slow... -> Add: mats-as-scalar
           ;; when dtype=uint?
+
+	  ;; (values use-split-val use-loss)
 	  
 	  (values (/ (+ (the single-float (%sumup c1))
 			(the single-float (%sumup c2)))
 		     2.0)
-		  (the single-float (%sumup (view x-head best-idx)))))))))
+		  (the single-float (%sumup (view s-out best-idx)))))))))
 
 
 (defun cumulative-sse! (xp
@@ -616,14 +617,42 @@ subspace - original subspace
 
 |#
 
+
+(defun print-bucket-with-subspace (bucket subspace &key (stream t) (indent 0))
+  "Visualizes the bucket."
+  (macrolet ((iformat (stream content &rest args)
+	       `(progn
+		  (dotimes (i (* 2 indent)) (princ " " ,stream))
+		  (format ,stream ,content ,@args))))
+    (format stream "~a"
+	    (with-output-to-string (out)
+
+	      (multiple-value-bind (_ loss) (compute-optimal-val-splits subspace bucket (bucket-index bucket))
+		(declare (ignore _))
+		(iformat out "B(t=~a) <N=~a, dim=~a, threshold=~a> {SSE -> ~a} ~%" indent (length (bucket-indices bucket)) (bucket-index bucket) (bucket-threshold bucket) loss))
+	      
+	      (when (bucket-next-nodes bucket)
+		(print-bucket-with-subspace
+		 (car (bucket-next-nodes bucket))
+		 subspace
+		 :stream out
+		 :indent (1+ indent))
+		(print-bucket-with-subspace
+		 (cdr (bucket-next-nodes bucket))
+		 subspace
+		 :stream out
+		 :indent (1+ indent)))))))
+  
 (defun test (&key (p 0.8))
   ;; How tall matrix is, computation time is constant.
   (let ((matrix (matrix `(100 64))))
     (%index matrix #'(lambda (i)
-		       (random 1.0)))
+		       (if (< (random 1.0) 0.5)
+			   1.0
+			   0.0)))
     ;;(sb-ext:gc :full t)
     ;;(sb-profile:profile "CL-XMATRIX.AMM.MADDNESS")
-    (time (init-and-learn-offline matrix 8))
+    (time (init-and-learn-offline matrix 16))
     ;;(sb-profile:report)
     ;;(sb-profile:unprofile "CL-XMATRIX.AMM.MADDNESS")
 
