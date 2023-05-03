@@ -690,18 +690,25 @@ subspace - original subspace
 		 :indent (1+ indent)))))))
 
 ;; Add: adjust! (for optimizing with-cache)
-(defun test (&key (p 0.5))
+(defun test (&key (p 0.5) (D 128) (C 16))
   ;; How tall matrix is, computation time is constant.
-  (let ((matrix (matrix `(100 64))))
+  (let ((matrix (matrix `(100 ,D))))
     (%index matrix #'(lambda (i)
 		       (if (< (random 1.0) p)
 			   1.0
 			   0.0)))
     (sb-ext:gc :full t)
     ;;(sb-profile:profile "CL-XMATRIX.AMM.MADDNESS")
-    (time (init-and-learn-offline matrix 16))
+    (multiple-value-bind (buckets protos) (time (init-and-learn-offline matrix C))
+      (format t "The number of buckets: ~a~%" (length buckets))
+      (%index matrix #'(lambda (i)
+			 (if (< (random 1.0) p)
+			     1.0
+			     0.0)))
+      (print protos)
+      (print-bucket-with-subspace (car buckets) (view matrix t `(0 ,(/ D C))))
+      )
     ;;(sb-profile:report)
     ;;(sb-profile:unprofile "CL-XMATRIX.AMM.MADDNESS")
 
-    (free-mat matrix)
-    ))
+    (free-mat matrix)))
