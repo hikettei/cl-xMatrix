@@ -16,15 +16,59 @@
 ;; TODO: Optimizing Prototypes Ridge Regression
 ;; TODO: Scan
 
+(defun meanup (matrix)
+  (declare (optimize (speed 3) (safety 0)))
+  (/ (the single-float (%sumup matrix))
+     (the fixnum (apply #'* (shape matrix)))))
+
+(defun learn-prototypes-and-hash-function (X C &key (nsplits 4) (verbose t) (optimize-protos t))
+  (declare (optimize (speed 3))
+	   (type matrix X)
+	   (type fixnum C))
+
+  (with-caches ((X-error (shape X) :dtype (dtype X))
+		(X-tmp   (shape X) :dtype (dtype X)))
+    (%move X X-error)
+
+    (multiple-value-bind (buckets protos)
+	(init-and-learn-offline X-error C :nsplits nsplits :verbose verbose)
+
+      (when verbose
+	(let ((mse-orig
+		(progn
+		  (%move X X-tmp)
+		  (%square X-tmp)
+		  (meanup X-tmp)))
+	      (mse-error
+	 	(progn
+		  (%move X-error X-tmp)
+		  (%square X-tmp)
+		  (meanup X-tmp))))
+	  (declare (type single-float mse-orig mse-error))
+
+	  (format t "== Report: ====~%MSE-Error / MSE-Orig -> ~a~%MSE-Error -> ~a~%MSE-Orig -> ~a~%"
+		  (/ mse-orig mse-error)
+		  mse-orig
+		  mse-error)))
+
+      ;; Optimizing Prototypes
+
+      (when optimize-protos
+	
+	)
+
+      )))
+
 (defun init-and-learn-offline (a-offline ;; a-offline is modified.
 			       C
 			       &key
 				 (all-prototypes-out nil)
+				 (nsplits 4)
+				 (verbose t)
+				 (K 16)
 			       &aux
 				 (N (car (shape a-offline)))
-				 (D (second (shape a-offline)))
-				 (K 16)
-				 (nsplits 4))
+				 (D (second (shape a-offline))))
   "
 The function init-and-learn-offline clusters the prototypes, and then constructs the encoding function g(a).
 
@@ -66,16 +110,16 @@ Return:
 
   (let* ((step (/ D C))
 	 (all-prototypes (or all-prototypes-out
-			     (matrix `(,C ,K ,STEP) :dtype (dtype a-offline))
+			     (matrix `(,C ,K ,D) :dtype (dtype a-offline))
 			     )))
     
     (with-views ((a-offline* a-offline t `(0 ,step))
-		 (all-prototypes* all-prototypes 0 0 t))
+		 (all-prototypes* all-prototypes 0 0 `(0, STEP)))
       ;; subspace = [N, STEP]
       (values
        (loop for i fixnum upfrom 0 below D by step
 	     for c fixnum upfrom 0 below C
-	     collect (let ((bucket (learn-binary-tree-splits a-offline* STEP :nsplits nsplits)))
+	     collect (let ((bucket (learn-binary-tree-splits a-offline* STEP :nsplits nsplits :verbose verbose)))
 		       (with-cache (centroid `(1 ,STEP) :place-key :centroids)
 
 			 ;; Update X-centroids
@@ -88,7 +132,7 @@ Return:
 					(c* centroid `(:broadcast ,(length (bucket-indices buck)))))
 			     (%subs a* c*))
 
-			   (incf-view! all-prototypes* 1 id) 
+			   (incf-view! all-prototypes* 1 id)
 			   (incf-offsets! all-prototypes* c)
 
 			   (%move (cl-xmatrix::reshape centroid `(1 1 ,STEP)) all-prototypes*)
@@ -97,7 +141,9 @@ Return:
 			   (incf-view! all-prototypes* 1 (- id))))
 		       bucket)
 	     unless (= i (- D step))
-	       do (incf-view! a-offline* 1 step))
+	       do (progn
+		    (incf-view! all-prototypes* 2 step)
+		    (incf-view! a-offline* 1 step)))
        all-prototypes))))
 
 ;; B(t, i)
@@ -691,7 +737,7 @@ subspace - original subspace
 		 :indent (1+ indent)))))))
 
 ;; Add: adjust! (for optimizing with-cache)
-(defun test (&key (p 0.6) (D 32) (C 16))
+(defun test (&key (p 0.7) (D 32) (C 16))
   ;; How tall matrix is, computation time is constant.
   (let ((matrix (matrix `(100 ,D))))
     (%index matrix #'(lambda (i)
@@ -700,6 +746,11 @@ subspace - original subspace
 			   0.0)))
     (sb-ext:gc :full t)
     ;;(sb-profile:profile "CL-XMATRIX")
+    (learn-prototypes-and-hash-function matrix C)
+    (%index matrix #'(lambda (i)
+		       (if (< (random 1.0) p)
+			   1.0
+			   0.0)))
     (multiple-value-bind (buckets protos) (time (init-and-learn-offline matrix C))
       (format t "The number of buckets: ~a~%" (length buckets))
       (%index matrix #'(lambda (i)
