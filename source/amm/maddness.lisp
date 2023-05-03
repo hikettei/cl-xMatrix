@@ -11,6 +11,10 @@
 ;; This is the my reimplementation of Maddness
 
 ;; TODO: Comments for readers
+;; TODO: Construct Prototypes
+;; TODO: 8bit Aggregations
+;; TODO: Optimizing Prototypes Ridge Regression
+;; TODO: Scan
 
 (defun init-and-learn-offline (a-offline
 			       C
@@ -21,18 +25,18 @@
 				 (D (second (shape a-offline)))
 				 (K 16))
   "
-The function init-and-learn-offline clusters the prototypes, and constructs the encoding function g(a).
+The function init-and-learn-offline clusters the prototypes, and then constructs the encoding function g(a).
 
 Assertions:
-  1. D must be divided by C (while the original impl doesn't impose it.)
+  1. N must be divided by C (while the original impl doesn't impose it.)
   2. a-offline is a 2d-matrix.
 
 Semantics:
 =========================================================================
-   D        C 
-  +++       +--
-N +++ ->  N +-- <- N*D Matrix is disjointed into N*C Matrix.
-  +++       +--    Binary-Tree-Split is applied into each visible area.
+   D         C      C
+  +++       +--    -+-
+N +++ =>  N +--  N -+-  <- N*D Matrix is disjointed into N*C Matrix.
+  +++       +--,   -+-  ... * (N/D), Binary-Tree-Split is applied into each visible area.
 =========================================================================
 
 Input:
@@ -45,7 +49,7 @@ Return:
 	   (type matrix a-offline)
 	   (type fixnum N D C K))
 
-  (assert (= (mod D C) 0) nil "Assertion Failed with (= (mod N C) 0). N=~a C=~a" N C)
+  (assert (= (mod D C) 0) nil "Assertion Failed with (= (mod D C) 0). D=~a C=~a" N C)
 
   ;; (For zenn.dev reader: 初めに処理する行列の形状を決めて、その後Offsetを加算します。) <- atodekesu
   ;; with-view: Cut out the shape of matrix.
@@ -68,11 +72,8 @@ Return:
     (with-view (a-offline* a-offline t `(0 ,step))
       ;; subspace = [N, STEP]
       (loop for i fixnum upfrom 0 below D by step
-	    do (progn
-		 (learn-binary-tree-splits a-offline* STEP)
-		 ;;(print i)
-		 ;;(print a-offline*)
-		 )
+	    do (let ((bucket (learn-binary-tree-splits a-offline* STEP)))
+		 (print bucket))
 	    unless (= i (- D step))
 	      do (incf-view! a-offline* 1 step))
 
@@ -89,8 +90,8 @@ Return:
 	    (:constructor make-toplevel-bucket (indices &aux (tree-level 0)))
 	    (:constructor make-sub-bucket (indices tree-level))
 	    )
-  ;; (C 0 :type fixnum) 
   (tree-level tree-level :type fixnum)
+  (i 0 :type fixnum)
   (index 0 :type fixnum) ;; split-index
   (threshold  0.0 :type single-float) ;; = split-val
   (threshold-candidates nil) ;; 0~dim
@@ -116,19 +117,19 @@ Return:
       (%sum ex2 :out result :axis 0)
       result)))
 
-(defun optimize-split-thresholds! (bucket index)
+(defun optimize-split-thresholds! (bucket d)
   "Pick up index-th threshold-candiates, and use it as bucket's threshold."
   (declare (optimize (speed 3))
 	   (type bucket bucket)
-	   (type fixnum index))
+	   (type fixnum d))
 
   (when (bucket-next-nodes bucket)
-    (setf (bucket-threshold bucket) (nth index (reverse (bucket-threshold-candidates bucket)))))
+    (setf (bucket-threshold bucket) (nth d (reverse (bucket-threshold-candidates bucket)))))
 
   (let ((buckets (bucket-next-nodes bucket)))
     (when buckets
-      (optimize-split-thresholds! (car buckets) index)
-      (optimize-split-thresholds! (cdr buckets) index)))
+      (optimize-split-thresholds! (car buckets) d)
+      (optimize-split-thresholds! (cdr buckets) d)))
   nil)
 
 (defun optimize-bucket-splits! (bucket best-dim subspace)
@@ -275,7 +276,6 @@ X = [C, (0, 1, 2, ... D)]
 	
 	;; Training
 	(dotimes (nth-split nsplits)
-
 	  (maybe-print "== (~a/~a) Training Binary Tree Splits =========~%" (1+ nth-split) nsplits)
 
 	  ;; heuristic = bucket_sse
@@ -309,10 +309,12 @@ X = [C, (0, 1, 2, ... D)]
 		       (best-dim (nth best-trying-dim dim-orders)))
 
 		  ;;(print buckets)
-		  (optimize-split-thresholds! buckets best-dim)
+		  (optimize-split-thresholds! buckets best-trying-dim) ;dth
 		  (optimize-bucket-splits!    buckets best-dim subspace)
 		  ;;(print buckets)
 		  )))))
+	(when verbose
+	  (maybe-print "Loss: ~a~%" (compute-bucket-loss buckets subspace)))
 	buckets))))
 
 (declaim (ftype (function ((simple-array t (*)) &key (:test function)) list) argsort))
@@ -343,8 +345,11 @@ X = [C, (0, 1, 2, ... D)]
 (defun optimal-val-splits! (subspace bucket total-losses d dim tree-level)
   "Tree-LevelまでBucketを探索してcompute-optimal-val-splitsする
 
+TODO: 0~Tree-Levelを学習するんだと思う。
+
 与えれたdimでbinary-treeを学習/loss var (bucket isn't modified.)
 split-dimsを決定
+dim de trying
 
 Return:
    - (values best-val early-stopping-p)
@@ -368,6 +373,7 @@ Return:
 
 	    ;; candidates:
 	    ;; dim-order[2] ... dim-order[1] dim-order[0]
+	    ;; obtained by d
 	    (push split-val (bucket-threshold-candidates bucket))
 	    ;; Judge early-stoppig-p
 	    (if (= d 0)
@@ -418,15 +424,14 @@ subspace - original subspace
 		  (x-tail `(,N ,D) :dtype (matrix-dtype subspace) :place-key :C2)
 		  (s-out  `(,N 1)  :dtype (matrix-dtype subspace) :place-key :C3))
       (%fill s-out 0.0)
-      
+
+      ;; If the SSE error for all rows is small, then the Bucket has similar rows classified.
       (cumulative-sse! (view x `(:indices ,@x-sort-indices))     x-head)
       (cumulative-sse! (view x `(:indices ,@x-sort-indices-rev)) x-tail)
 
       ;; x-head = sses-head, x-tail = sses-tail
       ;; losses <- sses-head 
       ;; losses[1:N-1] <- losses[1:N-1] + sses_tail[2:N]
-
-      ;; Maybe this if clause is not necessary.
       
       (%adds x-head x-tail)
       
@@ -498,6 +503,12 @@ subspace - original subspace
       (reset-offsets! x*)
       (reset-offsets! cs))
     nil))
+
+(defun compute-bucket-loss (bucket subspace &aux (N (length (bucket-indices bucket))))
+  (let ((loss (%sumup (%scalar-mul (Col-variances bucket subspace) n))))
+    (if (> loss 0.0)
+	loss
+	0.0)))
 
 (defun sumup-col-sum-sqs! (place bucket subspace &aux (N (length (bucket-indices bucket))))
   (declare (optimize (speed 3))
@@ -603,14 +614,12 @@ subspace - original subspace
 
 (defun test (&key (p 0.8))
   ;; How tall matrix is, computation time is constant.
-  (let ((matrix (matrix `(1000 64))))
+  (let ((matrix (matrix `(100 64))))
     (%index matrix #'(lambda (i)
-		       (if (< (random 1.0) p)
-			   (random 1.0)
-			   0.0)))
+		       (random 1.0)))
     ;;(sb-ext:gc :full t)
     ;;(sb-profile:profile "CL-XMATRIX.AMM.MADDNESS")
-    (time (init-and-learn-offline matrix 4))
+    (time (init-and-learn-offline matrix 8))
     ;;(sb-profile:report)
     ;;(sb-profile:unprofile "CL-XMATRIX.AMM.MADDNESS")
 
