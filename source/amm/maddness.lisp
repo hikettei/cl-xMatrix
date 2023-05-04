@@ -2,7 +2,7 @@
 (in-package :cl-user)
 
 (defpackage :cl-xmatrix.amm.maddness
-  (:use :cl :cl-xmatrix)
+  (:use :cl :cl-xmatrix :cffi)
   (:export
    ))
 
@@ -54,10 +54,12 @@
       ;; Optimizing Prototypes
 
       (when optimize-protos
-	
+        ;; atode yaru	
 	)
 
-      )))
+      ;; 8bit
+
+      (values buckets protos))))
 
 (defun init-and-learn-offline (a-offline ;; a-offline is modified.
 			       C
@@ -154,10 +156,10 @@ Return:
 ;; Todo: Unroll Macro: Bucket -> Node
 (defstruct (Bucket
 	    (:predicate bucket-)
-	    (:constructor make-toplevel-bucket (indices &aux (tree-level 0)))
-	    (:constructor make-sub-bucket (indices tree-level)))
+	    (:constructor make-toplevel-bucket (indices &aux (tree-level 0) (id 0)))
+	    (:constructor make-sub-bucket (indices tree-level id)))
   (tree-level tree-level :type fixnum)
-  (i 0 :type fixnum)
+  (i id :type fixnum)
   (index 0 :type fixnum) ;; split-index
   (threshold  0.0 :type single-float) ;; = split-val
   (threshold-candidates nil) ;; 0~dim
@@ -173,6 +175,7 @@ Return:
 		(if (= (bucket-tree-level ,bucket-id) ,tree-level)
 		    (let ((,idx-var    bucket-idx-counter)
 			  (,bucket-var ,bucket-id))
+		      (declare (ignorable ,idx-var ,bucket-var))
 		      (incf bucket-idx-counter 1)
 		      ,@body)
 		    (let ((nodes (bucket-next-nodes ,bucket-id)))
@@ -229,20 +232,25 @@ Return:
       (optimize-split-thresholds! (cdr buckets) d dth tree-level)))
   nil)
 
-(defun optimize-bucket-splits! (bucket best-dim subspace)
+(defun optimize-bucket-splits! (bucket
+				best-dim
+				subspace
+				&aux
+				  (left-idx (+ (* 2 (bucket-i bucket)) 1)) ;; 2x + 1 
+				  (right-idx (* (bucket-i bucket) 2))) ;; 2x
   "Splits bucket's binary-tree
 split-val dim"
   (declare (optimize (speed 3))
 	   (type bucket bucket)
 	   (type matrix subspace)
-	   (type fixnum best-dim))
+	   (type fixnum best-dim right-idx left-idx))
 
   ;; if bucket-nodes = nil -> Create new
   ;; if t  -> Optimize the old one
   ;; Add: if indices = nil?
 
-  (flet ((create-new-bucket (points)
-	   (make-sub-bucket points (1+ (bucket-tree-level bucket))))
+  (flet ((create-new-bucket (points id)
+	   (make-sub-bucket points (1+ (bucket-tree-level bucket)) id))
 	 (make-tflist-indices (tflist)
 	   "(:tflist 1.0 0.0 1.0 ...) => (:indices 1 3 ...)"
 	   (declare (type matrix tflist))
@@ -267,9 +275,18 @@ split-val dim"
 	;; FIXME: conversation between lisp-array and matrix...
 
 	;; Note: Having avoided using maddness-hash but using cons to express binary-tree-structure, I am wondering this semantics below is currect?
+
+	;; x_ij >  val  -> assign to right
+	;; x_ij <= val  -> assign to left
+
+	;; left-side node can be obtained by:
+	;; (car nodes)
+
+	;; right-side node can be obtained by:
+	;; (cdr nodes)
 	
-	(%>  x split-val :out mask)     ;; left
-	(%<= x split-val :out not-mask) ;; right
+	(%>  x split-val :out mask)      ;; left
+	(%<= x split-val :out not-mask)  ;; right
 
 	(setq left-side-points  (make-tflist-indices mask))
 	(setq right-side-points (make-tflist-indices not-mask))
@@ -288,15 +305,15 @@ split-val dim"
 	    ;; => Creates a new bucket-tree.
 	    (progn
 	      (setf (bucket-next-nodes bucket)
-		    (cons (create-new-bucket left-side-points)
-			  (create-new-bucket right-side-points)))
+		    (cons (create-new-bucket left-side-points right-idx)
+			  (create-new-bucket right-side-points left-idx)))
 	      nil)
 	    ;; Otherwise -> Go deeper and update nodes.
 	    (let ((nodes (bucket-next-nodes bucket)))
 	      ;; Update Current Bucket -> Go Deeper
 
-	      (setf (bucket-indices (car nodes)) left-side-points)
-	      (setf (bucket-indices (cdr nodes)) right-side-points)
+	      (setf (bucket-indices (car nodes)) right-side-points)
+	      (setf (bucket-indices (cdr nodes)) left-side-points)
 
 	      ;; Update Left-side
 	      (optimize-bucket-splits!
@@ -405,11 +422,39 @@ X = [C, (0, 1, 2, ... D)]
 		       ;; Transcript dim -> sorted dim
 		       (best-dim (nth best-trying-dim dim-orders)))
 
+		  ;; (learn-quantize-params buckets subspace best-dim nth-split)
+
+		  
+		  ;; apply this split to get next round of buckets
 		  (optimize-split-thresholds! buckets best-trying-dim best-dim nth-split)
 		  (optimize-bucket-splits!    buckets best-dim subspace))))))
 	(when verbose
 	  (maybe-print "Loss: ~a~%" (compute-bucket-loss buckets subspace)))
 	buckets))))
+
+(defun bucket-collect-thresholds (bucket tree-level dim)
+  (let ((result))
+    (with-bucket-clusters (idx buck tree-level bucket)
+      (push (nth dim (bucket-threshold-candidates buck)) result))
+    (reverse result)))
+
+(defun learn-quantize-params (bucket subspace best-dim tree-level)
+  (declare (optimize (speed 3))
+	   (type matrix subspace)
+	   (type fixnum best-dim))
+  (let* ((sorts (sort-rows-based-on-col subspace best-dim))
+	 (min-loss (%sumup (view subspace (car sorts) best-dim)))
+	 (max-loss (%sumup (view subspace (car (last sorts)) best-dim)))
+	 (thresholds (sort (the list (bucket-collect-thresholds bucket tree-level best-dim)) #'<)))
+    (let* ((smallest-threshold (car thresholds))
+	   (largest-threshold  (car (last thresholds)))
+	   (offset (/ (+ min-loss smallest-threshold) 2))
+	   (upper-val (+ (/ (+ max-loss largest-threshold) 2) offset))
+	   (scale (expt 2 (log (/ 254.0 upper-val) 2))))
+      (declare (type single-float min-loss max-loss upper-val smallest-threshold largest-threshold))
+      (print scale)
+      
+      )))
 
 (declaim (ftype (function ((simple-array t (*)) &key (:test function)) list) argsort))
 (defun argsort (array &key (test #'>))
@@ -475,14 +520,15 @@ Return:
 		  (view total-losses t `(0 ,d))
 		  #'(lambda (x) (< (the single-float x) loss-d*))))))))
       (let ((next-nodes (bucket-next-nodes bucket)))
-	;; Explore nodes untill reach tree-level
+	;; Explore nodes until reach tree-level
 
 	(when (null next-nodes)
 	  (error "optimal-val-splits! Couldn't find any buckets."))
 
 	(let ((res1 (optimal-val-splits! subspace (car next-nodes) total-losses d dim tree-level))
-	      (res2 (optimal-val-splits! subspace (cdr next-nodes) total-losses d dim tree-level)))
-	  (or res1 res2)))))
+	      (res2 (optimal-val-splits! subspace (cdr next-nodes) total-losses d dim tree-level))
+	      (res3 (optimal-val-splits! subspace bucket total-losses d dim (bucket-tree-level bucket)))) ;; compute current-level node.
+	  (or res1 res2 res3)))))
 
 (declaim (ftype (function (matrix Bucket fixnum) (values single-float single-float)) compute-optimal-val-splits))
 (defun compute-optimal-val-splits (subspace bucket dim
@@ -620,6 +666,57 @@ subspace - original subspace
       (sumup-col-sum-sqs! place (cdr children) subspace)))
   nil)
 
+;; More TO DO
+;; 8Bit Quantize
+;; APPLY_HASH_FUNCTIOn
+;; Prototype Optimizing
+;; Construct LUT
+
+#|
+mithral_encode_fp32_t(const float *X,
+			     int64_t nrows,
+			     int ncols,
+			     const uint32_t *splitdims,
+			     const int8_t *all_splitvals,
+			     const float *shifts,
+			     const float *offsets,
+			     int ncodebooks,
+			    uint8_t *out)
+|#
+
+(defcfun ("mithral_encode_fp32_t" mithral-encode) :void
+  (X-pointer  (:pointer :float))
+  (nrows       :int64)
+  (ncols       :int)
+  (splitdims   (:pointer :uint32))
+  (all-splitvals (:pointer :uint8))
+  (shifts      (:pointer :float))
+  (offsets     (:pointer :float))
+  (ncodebooks  :int) ;; nsplits
+  (out-pointer (:pointer :uint8)))
+
+
+;; そのまま入力でおk, nrows/ncols
+
+(defun maddness-hash ()
+  )
+
+(defun flatten-bucket (bucket nsplits)
+  (declare (optimize (speed 3))
+	   (type bucket bucket))
+  (with-bucket-clusters (id bucket nsplits bucket)
+    
+    ))
+
+
+(defun maddness-encode (bucket protos x)
+  "Protos ... Look Up tables"
+  )
+
+(defun apply-hash-function (bucket x)
+
+  )
+
 
 #|
 90% of computation time is alloc-mat.
@@ -719,7 +816,6 @@ subspace - original subspace
 		  (format ,stream ,content ,@args))))
     (format stream "~a"
 	    (with-output-to-string (out)
-
 	      (multiple-value-bind (_ loss) (compute-optimal-val-splits subspace bucket (bucket-index bucket))
 		(declare (ignore _))
 		(iformat out "B(t=~a, i=~a) <N=~a, dim=~a, threshold=~a> {SSE -> ~a} ~%" indent (bucket-i bucket) (length (bucket-indices bucket)) (bucket-index bucket) (bucket-threshold bucket) loss))
@@ -737,30 +833,26 @@ subspace - original subspace
 		 :indent (1+ indent)))))))
 
 ;; Add: adjust! (for optimizing with-cache)
-(defun test (&key (p 0.7) (D 32) (C 16))
+(defun test (&key (p 0.5) (D 32) (C 16))
   ;; How tall matrix is, computation time is constant.
   (let ((matrix (matrix `(100 ,D))))
     (%index matrix #'(lambda (i)
 		       (if (< (random 1.0) p)
-			   1.0
+			   (random 0.3)
 			   0.0)))
     (sb-ext:gc :full t)
     ;;(sb-profile:profile "CL-XMATRIX")
-    (learn-prototypes-and-hash-function matrix C)
-    (%index matrix #'(lambda (i)
-		       (if (< (random 1.0) p)
-			   1.0
-			   0.0)))
-    (multiple-value-bind (buckets protos) (time (init-and-learn-offline matrix C))
+    (multiple-value-bind (buckets protos) (time (learn-prototypes-and-hash-function matrix C))
       (format t "The number of buckets: ~a~%" (length buckets))
       (%index matrix #'(lambda (i)
 			 (if (< (random 1.0) p)
-			     1.0
-			     0.0)))
+			     (random 0.3)
+			     0.0)
+			 (random 1.0)))
       (print protos)
       (print-bucket-with-subspace (car buckets) (view matrix t `(0 ,(/ D C))))
-      )
+      (prog1
+	  buckets
+	(free-mat matrix)))))
     ;;(sb-profile:report)
     ;;(sb-profile:unprofile "CL-XMATRIX")
-
-    (free-mat matrix)))
