@@ -438,6 +438,12 @@ X = [C, (0, 1, 2, ... D)]
       (push (nth dim (bucket-threshold-candidates buck)) result))
     (reverse result)))
 
+(defun maxmin (matrix dim)
+  (let* ((sorts (sort-rows-based-on-col matrix dim))
+	 (min-loss (%sumup (view matrix (car sorts) dim)))
+	 (max-loss (%sumup (view matrix (car (last sorts)) dim))))
+    (values min-loss max-loss)))
+
 (defun learn-quantize-params (bucket subspace best-dim tree-level)
   (declare (optimize (speed 3))
 	   (type matrix subspace)
@@ -701,6 +707,12 @@ mithral_encode_fp32_t(const float *X,
 (defun maddness-hash ()
   )
 
+(defun create-luts (protos B)
+  (declare (type matrix protos b))
+  ;; einsum(CKd, McD -> MCK)
+  
+  )
+
 (defun flatten-bucket (bucket nsplits)
   (declare (optimize (speed 3))
 	   (type bucket bucket))
@@ -832,10 +844,54 @@ mithral_encode_fp32_t(const float *X,
 		 :stream out
 		 :indent (1+ indent)))))))
 
+;; N*D @ D*M
+(defclass MaddnessMatmul ()
+  ((N :initarg :N :type fixnum :reader mithral-n)
+   (D :initarg :D :type fixnum :reader mithral-d)
+   (M :initarg :M :type fixnum :reader mithral-m)
+   (C :initarg :C :type fixnum :reader mithral-c)
+   (luts :type matrix :writer write-luts)
+   (protos :type matrix :writer write-protos)
+   (buckets :type list :writer write-buckets)
+   ))
+
+(defmethod initialize-instance :after ((multipler MaddnessMatmul) &key &allow-other-keys)
+  
+
+  )
+
+(defun make-matmul ()
+
+  )
+
+(defmethod set-a-offline ((maddness MaddnessMatmul) a-offline)
+  (multiple-value-bind (buckets protos) (learn-prototypes-and-hash-function a-offline (mithral-c maddness))
+    
+    (write-protos protos maddness)
+    (write-buckets buckets maddness)))
+
+(defmethod set-a ((maddness MaddnessMatmul) A)
+  ;; Encode A
+  )
+
+(defmethod set-b ((maddness MaddnessMatmul) B)
+  ;; Create_Luts B
+  )
+
+(defmethod calc-matmul ((maddness MaddnessMatmul))
+  ;; 
+  )
+
+
+(defmethod show-stats ((maddness maddnessMatmul))
+
+  "A-luts -> T?"
+  )
+
 ;; Add: adjust! (for optimizing with-cache)
 (defun test (&key (p 0.5) (D 32) (C 16))
   ;; How tall matrix is, computation time is constant.
-  (let ((matrix (matrix `(100 ,D))))
+  (let ((matrix (matrix `(1000 ,D))))
     (%index matrix #'(lambda (i)
 		       (if (< (random 1.0) p)
 			   (random 0.3)
