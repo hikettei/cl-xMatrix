@@ -16,6 +16,8 @@ void mithral_encode(const float *X, int64_t nrows, int ncols,
                     uint8_t *out)
 // const float* scales, int ncodebooks, uint8_t* out)
 {
+  // ncodebooks = K
+  // out = [nrows, K]
   static constexpr bool DeferPerm = true;
   static constexpr int block_nrows = 32;
   static constexpr int nsplits_per_codebook = 4;
@@ -64,8 +66,7 @@ void mithral_encode(const float *X, int64_t nrows, int ncols,
         auto voffsets = current_voffsets[s];
         // auto voffsets = _mm256_setzero_si256();
         auto vsplitvals_lut = current_vsplitval_luts[s];
-        auto vsplitvals =
-            _mm256_shuffle_epi8(vsplitvals_lut, codes); // codes = group_ids
+        auto vsplitvals =  _mm256_shuffle_epi8(vsplitvals_lut, codes); // codes = group_ids
 
         auto x_ptr = x_ptrs[s];
         x_ptrs[s] += block_nrows;
