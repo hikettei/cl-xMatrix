@@ -28,7 +28,8 @@
    #:free-mat
    #:dtype
    #:1d-mat-aref
-   #:coerce-to-dtype)
+   #:coerce-to-dtype
+   #:matrix-vec)
 
   ;; Mat Pointer API
   (:export

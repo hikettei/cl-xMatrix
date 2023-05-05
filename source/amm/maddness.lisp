@@ -17,6 +17,23 @@
 ;; TODO: Scan
 (deftype index () `(or fixnum))
 
+(defmacro with-bucket-clusters ((idx-var bucket-var tree-level top-bucket)
+				 &body body
+				 &aux (bucket-id (gensym)))
+  `(let ((bucket-idx-counter 0))
+     (declare (type fixnum bucket-idx-counter ,tree-level))
+     (labels ((explore-bucket (,bucket-id)
+		(if (= (bucket-tree-level ,bucket-id) ,tree-level)
+		    (let ((,idx-var    bucket-idx-counter)
+			  (,bucket-var ,bucket-id))
+		      (declare (ignorable ,idx-var ,bucket-var))
+		      (incf bucket-idx-counter 1)
+		      ,@body)
+		    (let ((nodes (bucket-next-nodes ,bucket-id)))
+		      (explore-bucket (car nodes))
+		      (explore-bucket (cdr nodes))))))
+       (explore-bucket ,top-bucket))))
+
 (defun meanup (matrix)
   (declare (optimize (speed 3) (safety 0)))
   (/ (the single-float (%sumup matrix))
@@ -169,23 +186,6 @@ Return:
   (threshold-candidates nil) ;; 0~dim
   (next-nodes nil :type list)
   (indices indices :type list)) ;; The list of indices of A which current bucket posses (C, D), D= 1 3 5 10 2 ... Bucketが管轄するDのIndex
-
-(defmacro with-bucket-clusters ((idx-var bucket-var tree-level top-bucket)
-				 &body body
-				 &aux (bucket-id (gensym)))
-  `(let ((bucket-idx-counter 0))
-     (declare (type fixnum bucket-idx-counter ,tree-level))
-     (labels ((explore-bucket (,bucket-id)
-		(if (= (bucket-tree-level ,bucket-id) ,tree-level)
-		    (let ((,idx-var    bucket-idx-counter)
-			  (,bucket-var ,bucket-id))
-		      (declare (ignorable ,idx-var ,bucket-var))
-		      (incf bucket-idx-counter 1)
-		      ,@body)
-		    (let ((nodes (bucket-next-nodes ,bucket-id)))
-		      (explore-bucket (car nodes))
-		      (explore-bucket (cdr nodes))))))
-       (explore-bucket ,top-bucket))))
 
 (defun give-idx-to-buckets (buckets &key (nsplits 4))
   (with-bucket-clusters (id bucket nsplits buckets)
@@ -698,7 +698,7 @@ mithral_encode_fp32_t(const float *X,
 			    uint8_t *out)
 |#
 
-(defcfun ("mithral_encode_fp32_t" mithral-encode) :void
+(defcfun ("mithral_encode_fp32_t" maddness-encode-c) :void
   (X-pointer  (:pointer :float))
   (nrows       :int64)
   (ncols       :int)
@@ -721,12 +721,43 @@ mithral_encode_fp32_t(const float *X,
   
   )
 
-(defun flatten-bucket (bucket nsplits)
+(defun flatten (lst)
+  (labels ((rflatten (lst1 acc)
+             (dolist (el lst1)
+               (if (listp el)
+                   (setf acc (rflatten el acc))
+                   (push el acc)))
+             acc))
+    (reverse (rflatten lst nil))))
+
+(defun flatten-bucket (bucket slot)
   (declare (optimize (speed 3))
 	   (type bucket bucket))
-  (with-bucket-clusters (id bucket nsplits bucket)
-    
-    ))
+  (let ((result))
+    (labels ((explore (bucket)
+	       (with-slots ((children next-nodes))
+		   bucket
+		 (push (slot-value bucket slot) result)
+		 (when children
+		   (explore (cdr children))
+		   (explore (car children))))))
+      (explore bucket)
+      (reverse result))))
+
+(defun flatten-buckets (buckets)
+  (declare (type list buckets))
+  (labels ((collect (name dtype)
+	     (let ((result (flatten (map 'list #'(lambda (b) (flatten-bucket b name)) buckets))))
+	       (from-facet
+		`(1 ,(length result))
+		result
+		:direction :list
+		:dtype dtype))))
+    (values
+     (collect 'scale :float)
+     (collect 'offset :float)
+     (collect 'threshold-quantized :int)
+     (collect 'index :int))))
 
 (defun %lognot (matrix)
   (%scalar-mul matrix -1.0)
@@ -1012,7 +1043,8 @@ A[N D] ... matrix to be encoded.
   )
 
 ;; Add: adjust! (for optimizing with-cache)
-(defun test (&key (p 0.5) (N 100) (D 32) (C 16))
+(defun test (&key (p 0.5) (N 128) (D 32) (C 16))
+  ;; (mod N 32) == 0
   ;; How tall matrix is, computation time is constant.
   (let ((matrix (matrix `(,N ,D))))
     (%index matrix #'(lambda (i)
@@ -1026,13 +1058,27 @@ A[N D] ... matrix to be encoded.
       (%index matrix #'(lambda (i)
 			 (if (< (random 1.0) p)
 			     (random 0.3)
-			     0.0)
-			 (random 1.0)))
+			     0.0)))
       (print protos)
       (print-bucket-with-subspace (car buckets) (view matrix t `(0 ,(/ D C))))
+
+      (with-cache (out `(,N 16) :dtype :uint8)
+	(multiple-value-bind (scales offsets thresholds split-dim)
+	    (flatten-buckets buckets)
+	  (maddness-encode-c
+	   (matrix-vec matrix)
+	   N
+	   D
+	   (matrix-vec split-dim)
+	   (matrix-vec thresholds)
+	   (matrix-vec scales)
+	   (matrix-vec offsets)
+	   16
+	   (matrix-vec out)))
+	(print (convert-into-lisp-array out)))
       ;;(maddness-encode buckets protos matrix C)
       (prog1
 	  buckets
 	(free-mat matrix)))))
-    ;;(sb-profile:report)
-    ;;(sb-profile:unprofile "CL-XMATRIX")
+;;(sb-profile:report)
+;;(sb-profile:unprofile "CL-XMATRIX")

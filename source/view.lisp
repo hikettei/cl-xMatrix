@@ -1,6 +1,7 @@
 
 (in-package :cl-xmatrix)
 
+(annot:enable-annot-syntax)
 
 (deftype subscript-t ()
   "An list of types which is allowed to become subscripts of the function view."
@@ -1392,3 +1393,10 @@ Usage:
 						       index)
 					     (aref lisp-array index1))))))
 
+@export
+(defun from-facet (shape obj &key (direction :simple-array) (dtype :float))
+  "list/array -> matrix"
+  (from-foreign-pointer
+   (allocate-mat-with-facet (apply #'* shape) obj dtype direction)
+   shape
+   :dtype dtype))

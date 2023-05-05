@@ -59,6 +59,18 @@ extern "C" {
 			      uint8_t *out) {
     mithral_encode(X, nrows, ncols, splitdims, all_splitvals, shifts, offsets, ncodebooks, out);
   }
+
+  void mithral_encode_fp32_t(const float *X,
+			     int64_t nrows,
+			     int ncols,
+			     const uint32_t *splitdims,
+			     const int8_t *all_splitvals,
+			     const float *scales, // scales
+			     const float *offsets,
+			     int ncodebooks,
+			     uint8_t *out) {
+    mithral_encode(X, nrows, ncols, splitdims, all_splitvals, scales, offsets, ncodebooks, out);
+  }
 }
 
 

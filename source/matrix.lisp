@@ -94,6 +94,26 @@ Example:
       (push result *pinned-matrices*))
     result))
 
+(defun allocate-mat-with-facet (size obj dtype direction)
+  (declare (type fixnum size)
+	   (type keyword dtype direction))
+  ;; obj= list or simple-array
+  (case direction
+    (:list
+     (let ((result
+	     (foreign-alloc
+	      dtype
+	      :count size
+	      :initial-contents (loop for i fixnum upfrom 0 below size
+				      collect (nth i obj)))))
+       (when *pinned-matrices*
+	 (push result *pinned-matrices*))
+       result))
+    (:simple-array
+     (error "Not Implemented"))
+    (t
+     (error "Unknown direction: ~a" direction))))
+
 (defun free-mat (matrix)
   "Frees matrix"
   (declare (type matrix matrix))
@@ -204,6 +224,19 @@ Example:
 			  (projected-p nil)
 			  (strides (calc-strides shape))
 			  (visible-shape (compute-visible-and-broadcasted-shape (visible-shape shape view) broadcasts))))
+	    (:constructor
+		from-foreign-pointer
+		(pointer
+		 shape
+		 &key
+		   (dtype :float)
+		 &aux (view (loop repeat (length (the list shape))
+				  collect t))
+		   (matrix-vec pointer)
+		   (broadcasts nil)
+		   (projected-p nil)
+		   (strides (calc-strides shape))
+		   (visible-shape (compute-visible-and-broadcasted-shape (visible-shape shape view) broadcasts))))
 	    (:constructor
 		reshape (matrix shape
 			 &aux

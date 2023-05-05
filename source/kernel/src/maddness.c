@@ -18,14 +18,15 @@
 static inline float min(float x, float y) { return x < y ? x : y; }
 static inline float max(float x, float y) { return x > y ? x : y; }
 
-
+/*
 void mithral_encode(const float *X, int64_t nrows, int ncols,
                     const uint32_t *splitdims, const int8_t *all_splitvals,
                     const float *scales, const float *offsets, int ncodebooks,
                     uint8_t *out)
 // const float* scales, int ncodebooks, uint8_t* out)
 {
-  // ncodebooks = K
+  // scales, splitdims, all-splitvalsの形状？
+  // ncodebooks = K = 16
   static constexpr bool DeferPerm = true;
   static constexpr int block_nrows = 32;
   static constexpr int nsplits_per_codebook = 4;
@@ -46,6 +47,12 @@ void mithral_encode(const float *X, int64_t nrows, int ncols,
 
   size_t x_col_stride = nrows;
   size_t out_col_stride = nrows;
+
+  
+    [0 1 2 3]
+ +) [index index index index]
+    ...
+   
   const float *x_ptrs[nsplits_per_codebook];
   __m256i current_vsplitval_luts[nsplits_per_codebook];
   __m256 current_vscales[nsplits_per_codebook];
@@ -106,15 +113,15 @@ void mithral_encode(const float *X, int64_t nrows, int ncols,
     }
   }
 }
-
+*/
 
 void fp32_maddness_encode(const float *X,
 			  int m,
 			  int n,
 			  const int *splitdims,
+			  const int *all_splitvals,
 			  const float *scales,
 			  const float *offsets,
-			  int ncodebooks, // The size of prototypes.
 			  int nsplits, // The depth of trees
 			  uint8_t *out) {
   /* split-dims, scales, offsets are given in this format:
@@ -126,13 +133,16 @@ void fp32_maddness_encode(const float *X,
      C0 ... Cn is continuous.
   */
 
-  int K = 2^nsplits;
-  int nsplits_per_codebook = 1 + 2 + 3 + 4;
+  int nsplits_per_codebook = nsplits;
 
+  int K  = 2*nsplits;
+  int block_nrows = 32;
+
+  int64_t nblocks = ceil(m / (double)block_nrows);
   /* First for iteration: Compute by prototypes.
      D
     M++-
-    -++
+    -++-
   N -++-
     -++- C=2,
     -++- The width of M = coffest.
@@ -148,26 +158,35 @@ void fp32_maddness_encode(const float *X,
    */
 
   size_t stride     = m;
-  size_t out_stride = ncodebooks;
+  size_t out_stride = K;
+  int vals_per_split = 1 << K;
 
   // Tmp [Proto(1), Proto(2), Proto(3), ...]
+  //  +  [index(n+1), ... ,] * ntimes
+  //
+  
   const float *x_ptrs[nsplits];
-  __m256i current_vsplitval_luts[nsplits];
-  __m256 current_vscales[nsplits];
-  __m256 current_voffsets[nsplits];
+  __m256i     current_vsplitval_luts[nsplits];
+  __m256      current_vscales[nsplits];
+  __m256      current_voffsets[nsplits];
   
   int split_idx = 0; // whichnth splits? (offset)
-  for (int c=0;c<ncodebooks;c++) {
+  for (int c=0;c<K;c++) {
     uint8_t* out_ptr = out + (out_stride * c);
     
     for (int s = 0; s < nsplits; s++) {
-      float splitdim = splitdims[split_idx + s];
-      x_ptrs[s] = X + (x_col_stride * splitdim);
+      int splitdim = splitdims[split_idx + s];
+      x_ptrs[s] = X + (stride * splitdim);
       
-      auto splitvals_ptr = all_splitvals + (vals_per_split * split_idx);
-      current_vsplitval_luts[s] = _mm256_broadcastsi128_si256(load_si128i((const __m128i *)splitvals_ptr));
-      current_vscales[s] = _mm256_set1_ps(scales[split_idx + s]);
+      int* splitvals_ptr = all_splitvals + (vals_per_split * split_idx);
+
+      // 128bit -> 256bit
+      current_vsplitval_luts[s] = _mm256_broadcastsi128_si256(load_si128i(splitvals_ptr));
+      current_vscales[s]  = _mm256_set1_ps(scales[split_idx + s]);
       current_voffsets[s] = _mm256_set1_ps(offsets[split_idx + s]);
-    }    
+    }
+    split_idx += nsplits;
+
+    
   }  
 }
