@@ -695,7 +695,12 @@ mithral_encode_fp32_t(const float *X,
 			     const float *shifts,
 			     const float *offsets,
 			     int ncodebooks,
-			    uint8_t *out)
+uint8_t *out)
+
+void mithral_lut_dense(const float *Q, int nrows, int ncols, int ncodebooks,
+                       const float *centroids, float &out_offset_sum,
+                       float &out_scale, float *__restrict__ tmp_lut_f32,
+                       uint8_t *out);
 |#
 
 (defcfun ("mithral_encode_fp32_t" maddness-encode-c) :void
@@ -709,11 +714,6 @@ mithral_encode_fp32_t(const float *X,
   (ncodebooks  :int) ;; nsplits
   (out-pointer (:pointer :uint8)))
 
-
-;; そのまま入力でおk, nrows/ncols
-
-(defun maddness-hash ()
-  )
 
 (defun create-luts (protos B)
   (declare (type matrix protos b))
@@ -778,6 +778,7 @@ mithral_encode_fp32_t(const float *X,
 	       (= (the single-float (1d-mat-aref tflist i)) 1.0))
 	  collect i))
 
+;; Not anymore used.
 (defun apply-hash-function! (A idx-out idx-tmp bucket)
   (declare (optimize (speed 3))
 	   (type matrix A idx-out idx-tmp)
@@ -834,6 +835,7 @@ mithral_encode_fp32_t(const float *X,
 	   (cdr children))))
       nil)))
 
+;; Not Anymore used.
 (defun maddness-encode (buckets
 			prototypes
 			A
@@ -997,43 +999,69 @@ A[N D] ... matrix to be encoded.
    (D :initarg :D :type fixnum :reader mithral-d)
    (M :initarg :M :type fixnum :reader mithral-m)
    (C :initarg :C :type fixnum :reader mithral-c)
-   (luts :type matrix :writer write-luts)
+   (nsplits :initarg :nsplits :type fixnum)
+   (K :type fixnum :reader mithral-k)
+   (luts :type matrix   :writer write-luts)
    (protos :type matrix :writer write-protos)
    (buckets :type list :writer write-buckets)
    (A-enc :type matrix :writer write-a-enc)
-   (alpha :type single-float)
-   (beta :type single-float)))
+   (scales    :type matrix :writer write-scales :reader mithral-scales)
+   (offsets   :type matrix :writer write-offsets :reader mithral-offsets)
+   (splitdims :type matrix :writer write-splitdims :reader mithral-splitdims)
+   (splitvals :type matrix :writer write-splitvals :reader mithral-splitvals)))
 
-(defmethod initialize-instance :after ((multipler MaddnessMatmul) &key &allow-other-keys)
-  
+(defun make-mithral (N D M C nsplits)
+  ;; To Add: Assertion
+  (make-instance 'MaddnessMatmul
+		 :N n
+		 :D d
+		 :M m
+		 :C C
+		 :nsplits nsplits))
 
-  )
-
-(defun make-matmul ()
-
-  )
+(defmethod initialize-instance :after ((maddness MaddnessMatmul) &key &allow-other-keys)
+  (with-slots ((K K) (nsplits nsplits)) maddness
+    (setf K (expt 2 nsplits))
+    ))
 
 ;; Performance 諦めた・・・
 ;; Ato yarukto
 (defmethod set-a-offline ((maddness MaddnessMatmul) a-offline)
   (multiple-value-bind (buckets protos) (learn-prototypes-and-hash-function a-offline (mithral-c maddness))
-    
-    (write-protos protos maddness)
-    (write-buckets buckets maddness)))
+    (multiple-value-bind (scales offsets thresholds split-dim)
+	(flatten-buckets buckets)
+      
+      (write-protos  protos maddness)
+      (write-buckets buckets maddness)
+      
+      (write-scales scales maddness)
+      (write-offsets offsets maddness)
+      (write-splitdims split-dim maddness)
+      (write-splitvals thresholds maddness))))
 
 ;; ベンチマークはset-a calc-matmulのものを使う
-
 (defmethod set-a ((maddness MaddnessMatmul) A)
   ;; Encode A
-  (write-a-enc (maddness-encode A) maddness)
-  )
+  (declare (optimize (speed 3))
+	   (type matrix A))
+  (with-cache (out `(,(car (shape A)) ,(mithral-k maddness)) :place-key :out-cache :dtype :uint8)
+    (maddness-encode-c
+     (matrix-vec a)
+     (car    (shape A)) ;; N
+     (second (shape A)) ;; D
+     (matrix-vec (mithral-splitdims maddness))
+     (matrix-vec (mithral-splitvals maddness))
+     (matrix-vec (mithral-scales maddness))
+     (matrix-vec (mithral-offsets maddness))
+     (mithral-k maddness)
+     (matrix-vec out))))
 
 (defmethod set-b ((maddness MaddnessMatmul) B)
-  ;; Create_Luts B
+  ;; Create_Luts from B
   )
 
 (defmethod calc-matmul ((maddness MaddnessMatmul))
-  ;; 
+  ;; Scan
   )
 
 
@@ -1043,42 +1071,34 @@ A[N D] ... matrix to be encoded.
   )
 
 ;; Add: adjust! (for optimizing with-cache)
-(defun test (&key (p 0.5) (N 128) (D 32) (C 16))
+(defun test (&key
+	       (p 0.5) (N 1280) (D 32) (M 16) (C 16) (nsplits 4))
   ;; (mod N 32) == 0
   ;; How tall matrix is, computation time is constant.
-  (let ((matrix (matrix `(,N ,D))))
+  (let ((matrix  (matrix `(,N ,D)))
+	(matrix1 (matrix `(,D ,M))))
     (%index matrix #'(lambda (i)
+		       (declare (ignorable i))
 		       (if (< (random 1.0) p)
-			   (random 0.3)
-			   0.0)))
+			   (random 1.0)
+			   0.0)
+		       (random 1.0)))
+
+    (%index matrix1 #'(lambda (i)
+			(declare (ignorable i))
+			(if (< (random 1.0) p)
+			    (random 1.0)
+			    0.0)
+			(random 1.0)))
     (sb-ext:gc :full t)
     ;;(sb-profile:profile "CL-XMATRIX")
-    (multiple-value-bind (buckets protos) (time (learn-prototypes-and-hash-function matrix C))
-      (format t "The number of buckets: ~a~%" (length buckets))
-      (%index matrix #'(lambda (i)
-			 (if (< (random 1.0) p)
-			     (random 0.3)
-			     0.0)))
-      (print protos)
-      (print-bucket-with-subspace (car buckets) (view matrix t `(0 ,(/ D C))))
-
-      (with-cache (out `(,N 16) :dtype :uint8)
-	(multiple-value-bind (scales offsets thresholds split-dim)
-	    (flatten-buckets buckets)
-	  (maddness-encode-c
-	   (matrix-vec matrix)
-	   N
-	   D
-	   (matrix-vec split-dim)
-	   (matrix-vec thresholds)
-	   (matrix-vec scales)
-	   (matrix-vec offsets)
-	   16
-	   (matrix-vec out)))
-	(print (convert-into-lisp-array out)))
-      ;;(maddness-encode buckets protos matrix C)
-      (prog1
-	  buckets
-	(free-mat matrix)))))
+    (let ((maddness (make-mithral N D M C nsplits)))
+      (time (set-a-offline maddness matrix))  ;; Offline Training
+      (time (set-b         maddness matrix1)) ;; Creating-Luts
+      ;;(time (set-a         maddness matrix)) ;; set matrix (including alloc)
+      
+      (time (set-a         maddness matrix)) ;; set matrix
+      
+      )))
 ;;(sb-profile:report)
 ;;(sb-profile:unprofile "CL-XMATRIX")
