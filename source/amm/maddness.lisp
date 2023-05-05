@@ -697,10 +697,11 @@ mithral_encode_fp32_t(const float *X,
 			     int ncodebooks,
 uint8_t *out)
 
-void mithral_lut_dense(const float *Q, int nrows, int ncols, int ncodebooks,
-                       const float *centroids, float &out_offset_sum,
-                       float &out_scale, float *__restrict__ tmp_lut_f32,
-                       uint8_t *out);
+  void mithral_scan_fp32_t(const uint8_t* encoded_mat,
+			   int ncodebooks,
+			   int M,
+			   const uint8_t* luts,
+			   uint8_t* out_mat) {
 |#
 
 (defcfun ("mithral_encode_fp32_t" maddness-encode-c) :void
@@ -713,6 +714,13 @@ void mithral_lut_dense(const float *Q, int nrows, int ncols, int ncodebooks,
   (offsets     (:pointer :float))
   (ncodebooks  :int) ;; nsplits
   (out-pointer (:pointer :uint8)))
+
+(defcfun "mithral_scan_fp32_t" :void
+  (encoded-mat (:pointer :uint8))
+  (ncodebooks :int)
+  (m :int)
+  (luts (:pointer :uint8))
+  (out  (:pointer :uint8)))
 
 
 (defun maddness-lut! (out-lut b protos
@@ -732,7 +740,9 @@ void mithral_lut_dense(const float *Q, int nrows, int ncols, int ncodebooks,
 
 (defun maddness-quantize-luts! (lut)
   "Appendix B"
-  lut
+  ;;lut
+  ;; tmp
+  (values (matrix (shape lut) :dtype :uint8) 0 1)
   )
 
 (defun create-luts (protos B C K)
@@ -1024,12 +1034,15 @@ A[N D] ... matrix to be encoded.
    (D :initarg :D :type fixnum :reader mithral-d)
    (M :initarg :M :type fixnum :reader mithral-m)
    (C :initarg :C :type fixnum :reader mithral-c)
-   (nsplits :initarg :nsplits :type fixnum)
+   (nsplits :initarg :nsplits :type fixnum :reader mithral-nsplits)
    (K :type fixnum :reader mithral-k)
    (luts :type matrix   :writer write-luts)
    (protos :type matrix :writer write-protos)
    (buckets :type list :writer write-buckets)
    (A-enc :type matrix :writer write-a-enc)
+   (B-mat :type matrix :writer write-b-mat)
+   (alpha :type fixnum :writer write-alpha)
+   (beta  :type fixnum :writer write-beta)
    (scales    :type matrix :writer write-scales :reader mithral-scales)
    (offsets   :type matrix :writer write-offsets :reader mithral-offsets)
    (splitdims :type matrix :writer write-splitdims :reader mithral-splitdims)
@@ -1079,23 +1092,43 @@ A[N D] ... matrix to be encoded.
      (matrix-vec (mithral-scales maddness))
      (matrix-vec (mithral-offsets maddness))
      (mithral-k maddness)
-     (matrix-vec out))))
+     (matrix-vec out))
+    (write-a-enc out maddness)
+    nil))
 
 (defmethod set-b ((maddness MaddnessMatmul) B)
   ;; Create_Luts from B
-  (create-luts
-   (slot-value maddness 'protos)
-   B
-   (mithral-c maddness)
-   (mithral-k maddness)))
+  (multiple-value-bind (luts alpha beta)
+      (create-luts
+       (slot-value maddness 'protos)
+       B
+       (mithral-c maddness)
+       (mithral-k maddness))
+    (write-luts luts maddness)
+    (write-alpha alpha maddness)
+    (write-beta beta maddness)
+    (write-b-mat B maddness)
+    nil))
 
-(defmethod calc-matmul ((maddness MaddnessMatmul))
+(defmethod calc-matmul ((maddness MaddnessMatmul)
+			&aux
+			  (M (mithral-m maddness))
+			  (N (mithral-n maddness)))
   ;; Scan
-  )
+  (with-cache (out `(,N ,M) :place-key :matmul-result :dtype :uint8)
+    (mithral-scan-fp32-t
+     (matrix-vec (slot-value maddness 'a-enc))
+     (mithral-k maddness)
+     M
+     (matrix-vec (slot-value maddness 'luts))
+     (matrix-vec out))
+    
+    (%scalar-mul out (slot-value maddness 'alpha))
+    (%scalar-add out (slot-value maddness 'beta))
+    out))
 
 
 (defmethod show-stats ((maddness maddnessMatmul))
-
   "A-luts -> T?"
   )
 
@@ -1128,6 +1161,8 @@ A[N D] ... matrix to be encoded.
       ;;(time (set-a         maddness matrix)) ;; set matrix (including alloc)
       
       (time (set-a         maddness matrix)) ;; set matrix
+      (let ((result (calc-matmul maddness)))
+	(print result))
       
       )))
 ;;(sb-profile:report)

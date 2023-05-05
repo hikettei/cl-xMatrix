@@ -1417,3 +1417,14 @@ void mithral_scan(const uint8_t *codes, int64_t nblocks, int ncodebooks,
 } // namespace
 
 #endif // __MITHRAL_HPP
+
+extern "C" {
+  void mithral_scan_fp32_t(const uint8_t* encoded_mat,
+			   int ncodebooks,
+			   int M,
+			   const uint8_t* luts,
+			   uint8_t* out_mat) {
+    mithral_scan(encoded_mat, 32, ncodebooks, M, luts,
+                 (uint8_t *)out_mat);
+  };
+}
