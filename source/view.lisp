@@ -50,9 +50,10 @@
 
 (defmacro assure-dimensions (mat1 mat2)
   "Do nothing if mat1 and mat2 are the same shape, otherwise throw shaping-error."
-  `(if (equal (the list (shape ,mat1)) (the list (shape ,mat2)))
-       t
-       (shaping-error "Two matrices: ~a and ~a couldn't operated together." (shape ,mat1) (shape ,mat2))))
+  `(unless *unsafe-mode*
+     (if (equal (the list (shape ,mat1)) (the list (shape ,mat2)))
+	 t
+	 (shaping-error "Two matrices: ~a and ~a couldn't operated together." (shape ,mat1) (shape ,mat2)))))
 
 
 (defun print-view (view stream depth)
@@ -545,7 +546,7 @@ Return: List (Consisted of strings which records error log)"
 	 (let* ((mat (second subscript))
 		(indices (loop for i fixnum upfrom 0
 				 below orig-shape
-			       if (locally (declare (optimize (speed 1)))
+			       if (locally (declare (optimize (speed 3)))
 				    (= 1 (round
 					  (1d-mat-aref mat i))))
 				 collect i)))

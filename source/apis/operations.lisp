@@ -211,7 +211,7 @@ todo: check out's dimensions/error check"
 
 @export
 (defun %>= (matrix scalar
-	   &key (out nil)
+	    &key (out nil)
 	   &aux
 	     (out    (or out (matrix (shape matrix) :dtype (matrix-dtype matrix))))
 	     (scalar (coerce scalar (dtype->lisp-type (matrix-dtype matrix)))))

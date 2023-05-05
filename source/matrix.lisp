@@ -421,3 +421,9 @@ Example:
 	,@body))
     (T
      (error "with-facet: Unknown direction: ~a" direction))))
+
+(defparameter *unsafe-mode* nil "Ignores type-check")
+@export
+(defmacro with-unsafe (&body body)
+  `(let ((*unsafe-mode* t))
+     ,@body))

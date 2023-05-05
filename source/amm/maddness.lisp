@@ -15,6 +15,7 @@
 ;; TODO: 8bit Aggregations
 ;; TODO: Optimizing Prototypes Ridge Regression
 ;; TODO: Scan
+(deftype index () `(or fixnum))
 
 (defun meanup (matrix)
   (declare (optimize (speed 3) (safety 0)))
@@ -160,6 +161,9 @@ Return:
 	    (:constructor make-sub-bucket (indices tree-level id)))
   (tree-level tree-level :type fixnum)
   (i id :type fixnum)
+  (scale  0.0 :type single-float)
+  (offset 0.0 :type single-float)
+  (threshold-quantized 0 :type fixnum)
   (index 0 :type fixnum) ;; split-index
   (threshold  0.0 :type single-float) ;; = split-val
   (threshold-candidates nil) ;; 0~dim
@@ -216,7 +220,7 @@ Return:
 		:axis 0)
 	       (max 1 (length indices))))
 
-(defun optimize-split-thresholds! (bucket d dth tree-level)
+(defun optimize-split-thresholds! (bucket d dth tree-level subspace)
   "Pick up index-th threshold-candiates, and use it as bucket's threshold."
   (declare (optimize (speed 3))
 	   (type bucket bucket)
@@ -224,12 +228,13 @@ Return:
 
   (when (= (bucket-tree-level bucket) tree-level)
     (setf (bucket-index bucket) dth)
-    (setf (bucket-threshold bucket) (nth d (reverse (bucket-threshold-candidates bucket)))))
+    (setf (bucket-threshold bucket) (nth d (reverse (bucket-threshold-candidates bucket))))
+    (learn-quantized-params! bucket subspace dth))
 
   (let ((buckets (bucket-next-nodes bucket)))
     (when buckets
-      (optimize-split-thresholds! (car buckets) d dth tree-level)
-      (optimize-split-thresholds! (cdr buckets) d dth tree-level)))
+      (optimize-split-thresholds! (car buckets) d dth tree-level subspace)
+      (optimize-split-thresholds! (cdr buckets) d dth tree-level subspace)))
   nil)
 
 (defun optimize-bucket-splits! (bucket
@@ -421,12 +426,11 @@ X = [C, (0, 1, 2, ... D)]
 		(let* ((best-trying-dim (first (argsort (convert-into-lisp-array total-losses) :test #'<)))
 		       ;; Transcript dim -> sorted dim
 		       (best-dim (nth best-trying-dim dim-orders)))
+		  (declare (type fixnum nth-split))
 
-		  ;; (learn-quantize-params buckets subspace best-dim nth-split)
-
-		  
 		  ;; apply this split to get next round of buckets
-		  (optimize-split-thresholds! buckets best-trying-dim best-dim nth-split)
+		  (optimize-split-thresholds! buckets best-trying-dim best-dim nth-split subspace)
+		  
 		  (optimize-bucket-splits!    buckets best-dim subspace))))))
 	(when verbose
 	  (maybe-print "Loss: ~a~%" (compute-bucket-loss buckets subspace)))
@@ -444,23 +448,27 @@ X = [C, (0, 1, 2, ... D)]
 	 (max-loss (%sumup (view matrix (car (last sorts)) dim))))
     (values min-loss max-loss)))
 
-(defun learn-quantize-params (bucket subspace best-dim tree-level)
-  (declare (optimize (speed 3))
+(defun learn-quantized-params! (bucket subspace best-dim)
+  "Appendix B"
+  (declare ;;(optimize (speed 3))
 	   (type matrix subspace)
 	   (type fixnum best-dim))
-  (let* ((sorts (sort-rows-based-on-col subspace best-dim))
-	 (min-loss (%sumup (view subspace (car sorts) best-dim)))
-	 (max-loss (%sumup (view subspace (car (last sorts)) best-dim)))
-	 (thresholds (sort (the list (bucket-collect-thresholds bucket tree-level best-dim)) #'<)))
-    (let* ((smallest-threshold (car thresholds))
-	   (largest-threshold  (car (last thresholds)))
-	   (offset (/ (+ min-loss smallest-threshold) 2))
-	   (upper-val (+ (/ (+ max-loss largest-threshold) 2) offset))
-	   (scale (expt 2 (log (/ 254.0 upper-val) 2))))
-      (declare (type single-float min-loss max-loss upper-val smallest-threshold largest-threshold))
-      (print scale)
-      
-      )))
+  (multiple-value-bind (min-loss max-loss) (maxmin subspace best-dim)
+    (let* ((sorts (sort (copy-list (bucket-threshold-candidates bucket)) #'<))
+	   (min-val (car sorts))
+	   (max-val (car (last sorts)))
+	   (offset (/ (+ min-loss min-val) 2))
+	   (upper-val (- (/ (+ max-loss max-val) 2) offset))
+	   (l (log (/ 254.0 upper-val) 2))
+	   (scale (expt 2 l))
+	   (quantized-threshold (round (* (- (bucket-threshold bucket) offset) scale))))
+      (setf (bucket-scale bucket) scale)
+      (setf (bucket-offset bucket) offset)
+      ;; y = af(x)+b
+      ;;(print (bucket-threshold bucket))
+      ;;(print quantized-threshold)
+      (setf (bucket-threshold-quantized bucket) quantized-threshold)
+      nil)))
 
 (declaim (ftype (function ((simple-array t (*)) &key (:test function)) list) argsort))
 (defun argsort (array &key (test #'>))
@@ -720,15 +728,123 @@ mithral_encode_fp32_t(const float *X,
     
     ))
 
+(defun %lognot (matrix)
+  (%scalar-mul matrix -1.0)
+  (%scalar-add matrix 1.0)
+  matrix)
 
-(defun maddness-encode (bucket protos x)
-  "Protos ... Look Up tables"
-  )
+(defun tflist->indices (tflist &key (lognot nil))
+  "(:tflist 1.0 0.0 1.0 ...) => (:indices 1 3 ...)"
+  (declare (type matrix tflist))
+  
+  ;; Assertion: tflist isn't view-matrix
+  (assert (not (cl-xmatrix::matrix-projected-p tflist)) nil "make-tflist-indices: Assertion Failed because the given tflist is a view-object.")
 
-(defun apply-hash-function (bucket x)
+  ;; To Add: matrix but dtype=bit.
+  (loop for i fixnum upfrom 0 below (first (shape tflist))
+	if (if lognot
+	       (not (= (the single-float (1d-mat-aref tflist i)) 0.0))
+	       (= (the single-float (1d-mat-aref tflist i)) 1.0))
+	  collect i))
 
-  )
+(defun apply-hash-function! (A idx-out idx-tmp bucket)
+  (declare (optimize (speed 3))
+	   (type matrix A idx-out idx-tmp)
+	   (type Bucket bucket))
 
+  ;; Move: X-Axis
+  ;; A[N, 1]は多分SIMD化されない・・・
+  ;; Original実装との相違点
+  ;; 速度の利益のTradeoff：
+  ;; 扱う行列のサイズが小さいこと << 毎回の扱う行列が固定である
+  ;; IDXをN=0からN=1に対して書き込んでいく MaddnessHashに従う
+  ;; idx*を一次領域に使う
+  ;; A ... [N, 1]
+  ;; colum-major order is needed...?
+  (with-slots ((v threshold) (children next-nodes)) bucket
+    (declare (type single-float v))
+
+    ;; apply for n times.
+
+    ;; (car children) => left
+    ;; (cdr children) => Right
+    
+    ;; A_ij >  v -> Assign to right: next_idx = 2i+1
+    ;; A_ij <= v -> Assign to left : next_idx = 2i
+
+    ;; MaddnessHash
+    (with-unsafe ;; Shapeの形状を確認しない
+      (%fill idx-tmp 0.0)
+      (%>= A v :out idx-tmp) ;; FIXME: THE RESULT IS SINGLE_FLOAT...
+      (%scalar-mul idx-out 2.0)
+      (%adds idx-out idx-tmp))
+
+    (when children
+      ;; :tflistを使うとSIMD化されない
+      (setq idx-tmp (%copy idx-tmp))
+      
+      (let ((left-indices  (tflist->indices idx-tmp))
+	    (right-indices (tflist->indices idx-tmp :lognot t)))
+	(declare (type list left-indices right-indices))
+	;; Go left
+	(unless (= (length left-indices) 0)
+	  (apply-hash-function!
+	   (view a       `(:indices ,@left-indices))
+	   (view idx-out `(:indices ,@left-indices))
+	   idx-tmp
+	   (car children)))
+	
+	;; Go right
+	(unless (= (length right-indices) 0)
+	  (apply-hash-function!
+	   (view a       `(:indices ,@right-indices))
+	   (view idx-out `(:indices ,@right-indices))
+	   idx-tmp
+	   (cdr children))))
+      nil)))
+
+(defun maddness-encode (buckets
+			prototypes
+			A
+			C
+			&aux
+			  (N    (first  (shape A)))
+			  (D    (second (shape A)))
+			  (STEP (/ D C)))
+  "Buckets ... each subspace's bucket
+prototypes ... prototypes obtained by training process.
+A[N D] ... matrix to be encoded.
+
++++++
++++++
++++++"
+  (declare (optimize (speed 3)) ;; safety 0
+	   (type fixnum C N D STEP)
+	   (type list buckets)
+	   (type matrix A))
+
+  ;; A[N, D] => A[N, C]
+  ;; Prototype:[STEP, 0~4] -> 1,2,3,4,...16のIndexを振り分ける
+  ;; FIXME: FLOAT _> INT
+  (with-caches ((idxs    `(,N ,C) :place-key :encode-cache :dtype :float)
+		(idx-tmp `(,N 1) :place-key  :idxs-tmp     :dtype :float))
+    (%fill idxs 0.0)
+    (%fill idx-tmp 0.0)
+    ;; x's each proto -> idxs.
+    (with-views ((idxs* idxs t 0)
+		 (A*    A    t 0))
+      ;; Move: Y axis
+      (loop for i fixnum upfrom 0 below D by STEP
+	    for c fixnum upfrom 0
+	    do (let ((best-dim (bucket-index (nth c buckets))))
+		 (incf-view! A* 1 best-dim)
+		 (apply-hash-function! A* idxs* idx-tmp (nth c buckets))
+		 (incf-view! A* 1 (- best-dim)))
+	    unless (= i (- D step))
+	      do (progn
+		   (incf-view! A*    1 STEP)
+		   (incf-view! idxs* 1 1))))
+    (print idxs)))
 
 #|
 90% of computation time is alloc-mat.
@@ -853,7 +969,9 @@ mithral_encode_fp32_t(const float *X,
    (luts :type matrix :writer write-luts)
    (protos :type matrix :writer write-protos)
    (buckets :type list :writer write-buckets)
-   ))
+   (A-enc :type matrix :writer write-a-enc)
+   (alpha :type single-float)
+   (beta :type single-float)))
 
 (defmethod initialize-instance :after ((multipler MaddnessMatmul) &key &allow-other-keys)
   
@@ -864,14 +982,19 @@ mithral_encode_fp32_t(const float *X,
 
   )
 
+;; Performance 諦めた・・・
+;; Ato yarukto
 (defmethod set-a-offline ((maddness MaddnessMatmul) a-offline)
   (multiple-value-bind (buckets protos) (learn-prototypes-and-hash-function a-offline (mithral-c maddness))
     
     (write-protos protos maddness)
     (write-buckets buckets maddness)))
 
+;; ベンチマークはset-a calc-matmulのものを使う
+
 (defmethod set-a ((maddness MaddnessMatmul) A)
   ;; Encode A
+  (write-a-enc (maddness-encode A) maddness)
   )
 
 (defmethod set-b ((maddness MaddnessMatmul) B)
@@ -889,9 +1012,9 @@ mithral_encode_fp32_t(const float *X,
   )
 
 ;; Add: adjust! (for optimizing with-cache)
-(defun test (&key (p 0.5) (D 32) (C 16))
+(defun test (&key (p 0.5) (N 100) (D 32) (C 16))
   ;; How tall matrix is, computation time is constant.
-  (let ((matrix (matrix `(1000 ,D))))
+  (let ((matrix (matrix `(,N ,D))))
     (%index matrix #'(lambda (i)
 		       (if (< (random 1.0) p)
 			   (random 0.3)
@@ -907,6 +1030,7 @@ mithral_encode_fp32_t(const float *X,
 			 (random 1.0)))
       (print protos)
       (print-bucket-with-subspace (car buckets) (view matrix t `(0 ,(/ D C))))
+      ;;(maddness-encode buckets protos matrix C)
       (prog1
 	  buckets
 	(free-mat matrix)))))
