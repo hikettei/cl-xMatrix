@@ -115,6 +115,7 @@ void mithral_encode(const float *X, int64_t nrows, int ncols,
 }
 */
 
+/*
 void fp32_maddness_encode(const float *X,
 			  int m,
 			  int n,
@@ -124,14 +125,14 @@ void fp32_maddness_encode(const float *X,
 			  const float *offsets,
 			  int nsplits, // The depth of trees
 			  uint8_t *out) {
-  /* split-dims, scales, offsets are given in this format:
+   split-dims, scales, offsets are given in this format:
      [@Bucket(0).scales, @Bucket(1).scales, @Bucket(2).scales ... @Bucket(4).scales] + f(Prototype-1) + f(Prototype-2) + ...
 
      *X   ... [m, n].T
      *out ... [m, ncodebooks] where each element is the type of (the integer 0 2^4)
      Note: *X is colum-major order (transpose it in advance)?
      C0 ... Cn is continuous.
-  */
+  
 
   int nsplits_per_codebook = nsplits;
 
@@ -139,7 +140,7 @@ void fp32_maddness_encode(const float *X,
   int block_nrows = 32;
 
   int64_t nblocks = ceil(m / (double)block_nrows);
-  /* First for iteration: Compute by prototypes.
+   First for iteration: Compute by prototypes.
      D
     M++-
     -++-
@@ -155,7 +156,7 @@ void fp32_maddness_encode(const float *X,
     ---
     ---
     
-   */
+   
 
   size_t stride     = m;
   size_t out_stride = K;
@@ -190,3 +191,4 @@ void fp32_maddness_encode(const float *X,
     
   }  
 }
+*/

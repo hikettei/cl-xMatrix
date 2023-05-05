@@ -715,11 +715,36 @@ void mithral_lut_dense(const float *Q, int nrows, int ncols, int ncodebooks,
   (out-pointer (:pointer :uint8)))
 
 
-(defun create-luts (protos B)
-  (declare (type matrix protos b))
-  ;; einsum(CKd, McD -> MCK)
-  
+(defun maddness-lut! (out-lut b protos
+		      &aux
+			(C (car (shape protos)))
+			(K (second (shape protos))))
+  (with-caches ((b-tmp (shape b) :place-key :b-tmp)
+		(o-tmp `(,C ,K 1) :place-key :o-tmp)
+		(proto-tmp (shape protos) :place-key :proto-tmp))
+    (%move b b-tmp)
+    (let ((b-tmp (cl-xmatrix::reshape b-tmp `(1 1 ,(apply #'* (shape b))))))
+      (with-view (b-tmp* b-tmp `(:broadcast ,C) `(:broadcast ,K) t)
+	(%move protos proto-tmp)
+	(%muls proto-tmp b-tmp*)
+	(%sum proto-tmp :Axis 2 :out o-tmp)
+	(%move o-tmp out-lut)))))
+
+(defun maddness-quantize-luts! (lut)
+  "Appendix B"
+  lut
   )
+
+(defun create-luts (protos B C K)
+  (declare (type matrix protos b)
+	   (type fixnum C K))
+  ;; einsum(CKd, McD -> MCK)
+  (with-cache (lut `(,(car (shape B)) ,C ,K) :place-key :lut-cache)
+    (loop for i fixnum upfrom 0 below (car (shape B))
+	  do (with-views ((lut* lut t t i)
+			  (b* B i))
+	       (maddness-lut! lut* b* protos)))
+    (maddness-quantize-luts! lut)))
 
 (defun flatten (lst)
   (labels ((rflatten (lst1 acc)
@@ -1058,7 +1083,11 @@ A[N D] ... matrix to be encoded.
 
 (defmethod set-b ((maddness MaddnessMatmul) B)
   ;; Create_Luts from B
-  )
+  (create-luts
+   (slot-value maddness 'protos)
+   B
+   (mithral-c maddness)
+   (mithral-k maddness)))
 
 (defmethod calc-matmul ((maddness MaddnessMatmul))
   ;; Scan
@@ -1072,11 +1101,12 @@ A[N D] ... matrix to be encoded.
 
 ;; Add: adjust! (for optimizing with-cache)
 (defun test (&key
-	       (p 0.5) (N 1280) (D 32) (M 16) (C 16) (nsplits 4))
+	       (p 0.5) (N 128) (D 32) (M 16) (C 16) (nsplits 4))
   ;; (mod N 32) == 0
   ;; How tall matrix is, computation time is constant.
   (let ((matrix  (matrix `(,N ,D)))
-	(matrix1 (matrix `(,D ,M))))
+	(matrix1 (matrix `(,M ,D))))
+    
     (%index matrix #'(lambda (i)
 		       (declare (ignorable i))
 		       (if (< (random 1.0) p)

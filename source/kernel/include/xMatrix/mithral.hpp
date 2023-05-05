@@ -138,7 +138,7 @@ template <class InputT> struct mithral_amm {
         out_mat(N, M) {
     luts.setRandom(); // so profiling without LUT creation isn't undefined
   }
-
+  
   void encode(const InputT *X) {
     // TODO add strides to these funcs so that we can pad number
     // of rows, so scan can rely on nrows being a multiple of 32
