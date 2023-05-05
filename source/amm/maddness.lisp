@@ -738,17 +738,32 @@ uint8_t *out)
 	(%sum proto-tmp :Axis 2 :out o-tmp)
 	(%move o-tmp out-lut)))))
 
-(defun maddness-quantize-luts! (lut)
-  "Appendix B"
+(defun maddness-quantize-luts! (lut &aux (size (apply #'* (shape lut))))
+  "Appendix A: Quantizing Look up Tables"
   ;;lut
-  ;; tmp
-  (values (matrix (shape lut) :dtype :uint8) 0 1)
-  )
+  ;; tmp define for scalar
+  (with-facet (lut* lut :direction :simple-array)
+    (let ((max (loop for i fixnum upfrom 0 below size
+		     maximize (aref lut* i)))
+	  (min (loop for i fixnum upfrom 0 below size
+		     minimize (aref lut* i))))
+      (declare (type single-float max min))
+
+      (let* ((gaps (- max min))
+	     (scale (/ (- 255.5 1e-10) gaps))) 
+
+
+      )
+    ;;(values (quantize-matrix lut) 1 0)
+      ))
+  (values (matrix (shape lut) :dtype :uint8) 1 0))
+
 
 (defun create-luts (protos B C K)
   (declare (type matrix protos b)
 	   (type fixnum C K))
   ;; einsum(CKd, McD -> MCK)
+  ;; M C K
   (with-cache (lut `(,(car (shape B)) ,C ,K) :place-key :lut-cache)
     (loop for i fixnum upfrom 0 below (car (shape B))
 	  do (with-views ((lut* lut t t i)
@@ -1059,11 +1074,8 @@ A[N D] ... matrix to be encoded.
 
 (defmethod initialize-instance :after ((maddness MaddnessMatmul) &key &allow-other-keys)
   (with-slots ((K K) (nsplits nsplits)) maddness
-    (setf K (expt 2 nsplits))
-    ))
+    (setf K (expt 2 nsplits))))
 
-;; Performance 諦めた・・・
-;; Ato yarukto
 (defmethod set-a-offline ((maddness MaddnessMatmul) a-offline)
   (multiple-value-bind (buckets protos) (learn-prototypes-and-hash-function a-offline (mithral-c maddness))
     (multiple-value-bind (scales offsets thresholds split-dim)
@@ -1077,7 +1089,6 @@ A[N D] ... matrix to be encoded.
       (write-splitdims split-dim maddness)
       (write-splitvals thresholds maddness))))
 
-;; ベンチマークはset-a calc-matmulのものを使う
 (defmethod set-a ((maddness MaddnessMatmul) A)
   ;; Encode A
   (declare (optimize (speed 3))
@@ -1134,7 +1145,7 @@ A[N D] ... matrix to be encoded.
 
 ;; Add: adjust! (for optimizing with-cache)
 (defun test (&key
-	       (p 0.5) (N 128) (D 32) (M 16) (C 16) (nsplits 4))
+	       (p 0.5) (N 1280) (D 128) (M 16) (C 16) (nsplits 4) (try-n 1000))
   ;; (mod N 32) == 0
   ;; How tall matrix is, computation time is constant.
   (let ((matrix  (matrix `(,N ,D)))
@@ -1153,7 +1164,7 @@ A[N D] ... matrix to be encoded.
 			    (random 1.0)
 			    0.0)
 			(random 1.0)))
-    (sb-ext:gc :full t)
+    ;;(sb-ext:gc :full t)
     ;;(sb-profile:profile "CL-XMATRIX")
     (let ((maddness (make-mithral N D M C nsplits)))
       (time (set-a-offline maddness matrix))  ;; Offline Training
@@ -1163,7 +1174,21 @@ A[N D] ... matrix to be encoded.
       (time (set-a         maddness matrix)) ;; set matrix
       (let ((result (calc-matmul maddness)))
 	(print result))
-      
-      )))
+
+      (format t "~%try_n=~a~%" try-n)
+      (format t "~%Benchmarking matmul on Maddness (SBCL and C++).~%Size: N*D @ (D*M).T where N=~a D=~a M=~a" N D M)
+      (time (dotimes (i try-n)
+	      (set-a maddness matrix)
+	      (calc-matmul maddness)))
+
+      (let ((a (mgl-mat:make-mat `(,N ,D) :ctype :float))
+	    (b (mgl-mat:make-mat `(,D ,M) :ctype :float))
+	    (c (mgl-mat:make-mat `(,N ,M) :ctype :float)))
+
+	(format t "~%Benchmarking matmul on OpenBLAS (mgl-mat).~%")
+	(time (dotimes (i try-n)
+		(mgl-mat:gemm! 1.0 a b 0.0 c)))
+
+	))))
 ;;(sb-profile:report)
 ;;(sb-profile:unprofile "CL-XMATRIX")
