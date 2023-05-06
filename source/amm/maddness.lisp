@@ -88,7 +88,7 @@
 				  (D (* C K)))				
     "
     returns X_binary from an encoded Matrix [N, C] vals (0-K)
-    to
+    to (One-hot)
     [[0 0 0 ... 0 0 0]
      [0 0 1 ... 0 0 0]
      ...
@@ -847,11 +847,6 @@ uint8_t* out_mat) {
        out-scale*
        (matrix-vec out-lut-f32)
        (matrix-vec out-lut))
-      (print "Result of lut-fp32-t:")
-      (print (convert-into-lisp-array out-lut-f32))
-      (print (convert-into-lisp-array out-lut))
-      (print (mem-aref out-scale*      :float))
-      (print (mem-aref out-offset-sum* :float))
       ;; lut's shape?
       ;; prototypes are invaild?
       ;; anyway read the c codes.
@@ -1375,7 +1370,7 @@ A[N D] ... matrix to be encoded.
     ;; Rewrite it in C cuz it slow
     (%index m* #'(lambda (i)
 		   ;; beta is overflowing.
-		   (+ (* (the fixnum (1d-mat-aref matrix i)) alpha) beta)))
+		   (+ (/ (the fixnum (1d-mat-aref matrix i)) alpha) beta)))
     m*))
 
 (defmethod calc-matmul ((maddness MaddnessMatmul)
@@ -1408,7 +1403,7 @@ A[N D] ... matrix to be encoded.
 
 ;; Add: adjust! (for optimizing with-cache)
 (defun test (&key
-	       (alpha 5.0)
+	       (alpha 7.0)
 	       (beta 2.0)
 	       (N 128) (D 64) (M 32) (C 16) (nsplits 4) (try-n 1000))
   ;; (mod N 32) == 0
