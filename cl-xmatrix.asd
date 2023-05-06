@@ -25,7 +25,8 @@
 	       (:file "apis/operations")
 
 	       (:file "distribution/random")
-	       
+
+	       (:file "amm/least-squares")
 	       (:file "amm/package")
 	       (:file "amm/maddness")
 	       ;;(:file "mha")

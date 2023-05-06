@@ -82,7 +82,7 @@
 				&aux
 				  (N (car (shape a-enc)))
 				  (C (second (shape a-enc)))
-				  (D (* N C)))				
+				  (D (* C K)))				
     "
     returns X_binary from an encoded Matrix [N, C] vals (0-K)
     to
@@ -130,9 +130,25 @@
 
       (let ((x-binary (sparsify-and-int8-a-enc a-enc K)))
 	;; x-binary = [N D]
+	;;(print protos)
 	
+	(let ((result
+		(cl-xmatrix.amm.least-squares:optimize-with-ridge-regression
+		 x-binary
+		 x-error
+		 (shape protos)
+		 :alpha 1.0
+		 :lr 1e-2)))
+	  (declare (type cl-waffe:waffetensor result))
+	  (let ((result (from-facet
+			 (cl-waffe:!shape result)
+			 result
+			 :direction
+			 :foreign-waffe)))
+	    (%adds protos result)
 
-	))))
+	    ;; todo: check how much improvement we got.
+	    ))))))
 
 (defun init-and-learn-offline (a-offline ;; a-offline is modified.
 			       C

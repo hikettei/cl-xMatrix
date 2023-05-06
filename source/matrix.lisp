@@ -110,7 +110,23 @@ Example:
 	 (push result *pinned-matrices*))
        result))
     (:simple-array
-     (error "Not Implemented"))
+     (let ((result
+	     (foreign-alloc
+	      dtype
+	      :count size
+	      :initial-contents (loop for i fixnum upfrom 0 below size
+				      collect (aref obj i)))))
+       (when *pinned-matrices*
+	 (push result *pinned-matrices*))
+       result))
+    (:foreign-ptr
+     ;; todo: type check
+     obj)
+    (:foreign-waffe
+     (let ((mgl-cube:*let-input-through-p* t))
+       (mgl-mat:with-facet (x* ((cl-waffe:data obj)
+				'mgl-mat:foreign-array))
+	 (slot-value x* 'mgl-mat::base-pointer))))
     (t
      (error "Unknown direction: ~a" direction))))
 
