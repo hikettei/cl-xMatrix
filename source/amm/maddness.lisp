@@ -871,8 +871,8 @@ uint8_t* out_mat) {
       (explore bucket)
       (reverse result))))
 
-(defun flatten-buckets (buckets)
-  "[Proto_1(Bucket_0), Proto_2(Bucket_0), ...]"
+(defun flatten-buckets1 (buckets)
+  "[Proto_1(Bucket_0), Proto_2(Bucket_0), ...Proto_0(Bucket_1), ...]"
   (declare (type list buckets))
   (labels ((collect (name dtype)
 	     (let ((result (flatten (map 'list #'(lambda (b) (flatten-bucket b name)) buckets))))
@@ -887,6 +887,42 @@ uint8_t* out_mat) {
      (collect 'offset :float)
      (collect 'threshold-quantized :int)
      (collect 'index :int))))
+
+(defun gather-bucket (bucket slot tree-level)
+  (declare (optimize (speed 3))
+	   (type bucket bucket)
+	   (type fixnum tree-level))
+  (let ((result))
+    (labels ((explore (bucket)
+	       (with-slots ((children next-nodes) (tlevel tree-level))
+		   bucket
+		 (declare (type fixnum tlevel))
+		 (when (= tree-level tlevel)
+		   (push (slot-value bucket slot) result))
+		 (when children
+		   (explore (cdr children))
+		   (explore (car children))))))
+      (explore bucket)
+      (reverse result))))
+
+(defun flatten-buckets (buckets &key (nsplits 4))
+  (labels ((collect (name)
+	     (loop for i fixnum upfrom 0 below nsplits
+		   nconc
+		   (loop for b in buckets
+			 nconc (gather-bucket b name i))))
+	   (findsall (name dtype)
+	     (let ((result (collect name)))
+	       (from-facet
+		`(1 ,(length result))
+		result
+		:direction :list
+		:dtype dtype))))
+    (values
+     (findsall 'scale :float)
+     (findsall 'offset :float)
+     (findsall 'threshold-quantized :int)
+     (findsall 'index :int))))
 
 (defun %lognot (matrix)
   (%scalar-mul matrix -1.0)
@@ -1218,11 +1254,14 @@ A[N D] ... matrix to be encoded.
   "Computes y=ax+b"
   (declare (optimize (speed 3) (safety 0))
 	   (type single-float alpha beta))
-  (with-cache (m* (shape matrix) :dtype :float :place-key :m1)
-    ;; Slow
-    (%index m* #'(lambda (i)
-		   (+ (* alpha (the fixnum (1d-mat-aref matrix i))) beta)))
-    m*))
+  
+  ;(with-cache (m* (shape matrix) :dtype :float :place-key :m1)
+    ;; Slow write in C:
+  ;  (%index m* #'(lambda (i)
+;		   (+ (* alpha (the fixnum (1d-mat-aref matrix i))) beta)))
+   ; m*))
+
+  matrix)
 
 (defmethod calc-matmul ((maddness MaddnessMatmul)
 			&aux
