@@ -448,6 +448,12 @@ X = [C, (0, 1, 2, ... D)]
 	 (max-loss (%sumup (view matrix (car (last sorts)) dim))))
     (values min-loss max-loss)))
 
+(defun maxmin-all (matrix)
+  (with-facet (m* matrix :direction :simple-array)
+    (let ((sorts (argsort m* :test #'>)))
+      (values (coerce (aref m* (car sorts)) 'single-float)
+	      (coerce (aref m* (car (last sorts))) 'single-float)))))
+
 (defun learn-quantized-params! (bucket subspace best-dim)
   "Appendix B"
   (declare ;;(optimize (speed 3))
@@ -701,7 +707,12 @@ uint8_t *out)
 			   int ncodebooks,
 			   int M,
 			   const uint8_t* luts,
-			   uint8_t* out_mat) {
+uint8_t* out_mat) {
+
+  void mithral_lut_fp32_t(const float *Q, int nrows, int ncols, int ncodebooks,
+                       const float *centroids, float &out_offset_sum,
+                       float &out_scale, float *__restrict__ tmp_lut_f32,
+			  uint8_t *out) {
 |#
 
 (defcfun ("mithral_encode_fp32_t" maddness-encode-c) :void
@@ -722,41 +733,106 @@ uint8_t *out)
   (luts (:pointer :uint8))
   (out  (:pointer :uint8)))
 
+(defcfun "mithral_lut_fp32_t" :void
+  (B (:pointer :float))
+  (nrows :int)
+  (ncols :int)
+  (K     :int)
+  (protos (:pointer :float))
+  (out-offset-sum (:pointer :float))
+  (out-scale      (:pointer :float))
+  (tmp-lut-f32    (:pointer :float)) ;; tmp-lut-f32.shape == out.shape
+  (out            (:pointer :uint8)))
 
-(defun maddness-lut! (out-lut b protos
-		      &aux
-			(C (car (shape protos)))
-			(K (second (shape protos))))
-  (with-caches ((b-tmp (shape b) :place-key :b-tmp)
-		(o-tmp `(,C ,K 1) :place-key :o-tmp)
-		(proto-tmp (shape protos) :place-key :proto-tmp))
-    (%move b b-tmp)
-    (let ((b-tmp (cl-xmatrix::reshape b-tmp `(1 1 ,(apply #'* (shape b))))))
-      (with-view (b-tmp* b-tmp `(:broadcast ,C) `(:broadcast ,K) t)
-	(%move protos proto-tmp)
-	(%muls proto-tmp b-tmp*)
-	(%sum proto-tmp :Axis 2 :out o-tmp)
-	(%move o-tmp out-lut)))))
 
-(defun maddness-quantize-luts! (lut &aux (size (apply #'* (shape lut))))
+(defun maddness-create-and-quantize-luts (protos B C K &aux (M (car (shape B))))
+  "LUT -> MCK"
+  (with-caches ((out-lut-f32 `(,M ,C ,K) :dtype :float :place-key :lutf32)
+		(out-lut     `(,M ,C ,K) :dtype :uint8 :place-key :lutuint8))
+    (let ((out-offset-sum* (foreign-alloc :float))
+	  (out-scale*      (foreign-alloc :float)))
+      (mithral-lut-fp32-t
+       (matrix-vec B)
+       (car (shape B))
+       (second (shape B))
+       K
+       (matrix-vec protos)
+       out-offset-sum*
+       out-scale*
+       (matrix-vec out-lut-f32)
+       (matrix-vec out-lut))
+      (values out-lut
+	      (mem-aref out-offset-sum* :float)
+	      (mem-aref out-scale*      :float)))))
+
+;; mithral_dense_lut_f32
+;; centroids = protos
+;; Q* = B
+
+
+
+(defun maddness-lut! (out-lut b protos)
+  ;; out-lut [B[0] ,C ,K]
+  ;; B [M D]
+  (let ((b-flatten (cl-xmatrix::reshape b `(1 1 ,(apply #'* (shape b))))))
+    (with-caches ((out (shape protos) :dtype :float :place-key :ftmp)
+		  (out-tmp `(,(car (shape out-lut)) ,(second (shape out-lut)) 1) :place-key :sum-out-tmp))
+      (with-view (b-flatten b-flatten `(:broadcast ,(car (shape out))) `(:broadcast ,(second (shape out))) t)
+	(%move b-flatten out)
+	(%subs out protos)
+	(%sum out :axis 2 :out out-tmp)
+	(%move out-tmp out-lut)))))
+
+(defun max-multiple-axis=0and2 (matrix C)
+  ;; min(i, j) = matrix where matrix = (1 C)
+  (with-cache (out `(1 ,C) :dtype :float :place-key :max2)
+    (dotimes (i C)
+      ;; explore matrix[0~X, :, 0~Z]
+      (multiple-value-bind (max min) (maxmin-all (view matrix t i t))
+	(declare (ignore min))
+	(setf (1d-mat-aref out i) max)))
+    out))
+
+(defun min-multiple-axis=0and2 (matrix C)
+  ;; min(i, j) = matrix where matrix = (1 C)
+  (with-cache (out `(1 ,C) :dtype :float :place-key :min2)
+    (dotimes (i C)
+      ;; explore matrix[0~X, :, 0~Z]
+      (multiple-value-bind (max min) (maxmin-all (view matrix t i t))
+	(declare (ignore max))
+
+	(setf (1d-mat-aref out i) min)))
+    out))
+
+(defun argmax (matrix)
+  (with-facet (m* matrix :direction :simple-array)
+    (let ((sorts (argsort m* :test #'>)))
+      (aref m* (car sorts)))))
+
+(defun maddness-quantize-luts! (lut)
   "Appendix A: Quantizing Look up Tables"
   ;;lut
   ;; tmp define for scalar
-  (with-facet (lut* lut :direction :simple-array)
-    (let ((max (loop for i fixnum upfrom 0 below size
-		     maximize (aref lut* i)))
-	  (min (loop for i fixnum upfrom 0 below size
-		     minimize (aref lut* i))))
-      (declare (type single-float max min))
+  (let ((max (max-multiple-axis=0and2 lut (second (shape lut))))
+	(min (min-multiple-axis=0and2 lut (second (shape lut)))))
+    (let* ((gaps (%subs max min))
+	   (gap (argmax gaps))
+	   (exponent (+ 1 (round (if (= gap 0.0)
+				3.40e5
+				(log gap 2)))))
+	   (scale (expt 2 (- exponent)))
+	   (scale (* scale (- 255.5 1e-10)))
+	   (offsets (view (cl-xmatrix::reshape min `(1 ,(second (shape lut)) 1)) `(:broadcast ,(car (shape lut))) t `(:broadcast ,(third (shape lut))))))
+      (with-caches ((lut-tmp       (shape lut) :dtype :float :place-key :ltmp)
+		    (lut-quantized (shape lut) :dtype :uint8 :place-key :lut-q))
+	(%move lut lut-tmp)
+	(%subs lut-tmp offsets)
+	(%scalar-mul lut-tmp scale)
+	(%scalar-add lut-tmp 0.5)
 
-      (let* ((gaps (- max min))
-	     (scale (/ (- 255.5 1e-10) gaps))) 
-
-
-      )
-    ;;(values (quantize-matrix lut) 1 0)
-      ))
-  (values (matrix (shape lut) :dtype :uint8) 1 0))
+	(%index lut-quantized
+		#'(lambda (i) (print (1d-mat-aref lut i)) (round (print (1d-mat-aref lut-tmp i)))))
+	(values lut-quantized scale (%sumup offsets))))))
 
 
 (defun create-luts (protos B C K)
@@ -768,6 +844,7 @@ uint8_t *out)
     (loop for i fixnum upfrom 0 below (car (shape B))
 	  do (with-views ((lut* lut t t i)
 			  (b* B i))
+	       
 	       (maddness-lut! lut* b* protos)))
     (maddness-quantize-luts! lut)))
 
@@ -1056,8 +1133,8 @@ A[N D] ... matrix to be encoded.
    (buckets :type list :writer write-buckets)
    (A-enc :type matrix :writer write-a-enc)
    (B-mat :type matrix :writer write-b-mat)
-   (alpha :type fixnum :writer write-alpha)
-   (beta  :type fixnum :writer write-beta)
+   (alpha :type single-float :writer write-alpha)
+   (beta  :type single-float :writer write-beta)
    (scales    :type matrix :writer write-scales :reader mithral-scales)
    (offsets   :type matrix :writer write-offsets :reader mithral-offsets)
    (splitdims :type matrix :writer write-splitdims :reader mithral-splitdims)
@@ -1109,8 +1186,20 @@ A[N D] ... matrix to be encoded.
 
 (defmethod set-b ((maddness MaddnessMatmul) B)
   ;; Create_Luts from B
+  #|
   (multiple-value-bind (luts alpha beta)
       (create-luts
+       (slot-value maddness 'protos)
+       B
+       (mithral-c maddness)
+       (mithral-k maddness))
+    (write-luts luts maddness)
+    (write-alpha alpha maddness)
+    (write-beta beta maddness)
+  (write-b-mat B maddness)
+  |#
+  (multiple-value-bind (luts alpha beta)
+      (maddness-create-and-quantize-luts
        (slot-value maddness 'protos)
        B
        (mithral-c maddness)
@@ -1134,8 +1223,8 @@ A[N D] ... matrix to be encoded.
      (matrix-vec (slot-value maddness 'luts))
      (matrix-vec out))
     
-    (%scalar-mul out (slot-value maddness 'alpha))
-    (%scalar-add out (slot-value maddness 'beta))
+    ;;(%scalar-mul out (slot-value maddness 'alpha))
+    ;;(%scalar-add out (slot-value maddness 'beta))
     out))
 
 
@@ -1145,7 +1234,7 @@ A[N D] ... matrix to be encoded.
 
 ;; Add: adjust! (for optimizing with-cache)
 (defun test (&key
-	       (p 0.5) (N 1280) (D 128) (M 16) (C 16) (nsplits 4) (try-n 1000))
+	       (p 0.8) (N 128) (D 64) (M 16) (C 16) (nsplits 4) (try-n 1000))
   ;; (mod N 32) == 0
   ;; How tall matrix is, computation time is constant.
   (let ((matrix  (matrix `(,N ,D)))
@@ -1153,17 +1242,11 @@ A[N D] ... matrix to be encoded.
     
     (%index matrix #'(lambda (i)
 		       (declare (ignorable i))
-		       (if (< (random 1.0) p)
-			   (random 1.0)
-			   0.0)
-		       (random 1.0)))
+		       (random p)))
 
     (%index matrix1 #'(lambda (i)
 			(declare (ignorable i))
-			(if (< (random 1.0) p)
-			    (random 1.0)
-			    0.0)
-			(random 1.0)))
+			(random p)))
     ;;(sb-ext:gc :full t)
     ;;(sb-profile:profile "CL-XMATRIX")
     (let ((maddness (make-mithral N D M C nsplits)))
@@ -1173,6 +1256,7 @@ A[N D] ... matrix to be encoded.
       
       (time (set-a         maddness matrix)) ;; set matrix
       (let ((result (calc-matmul maddness)))
+	(print "RESULT")
 	(print result))
 
       (format t "~%try_n=~a~%" try-n)
@@ -1188,6 +1272,7 @@ A[N D] ... matrix to be encoded.
 	(format t "~%Benchmarking matmul on OpenBLAS (mgl-mat).~%")
 	(time (dotimes (i try-n)
 		(mgl-mat:gemm! 1.0 a b 0.0 c)))
+	(sb-ext:gc :full t)
 
 	))))
 ;;(sb-profile:report)

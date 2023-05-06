@@ -1419,6 +1419,13 @@ void mithral_scan(const uint8_t *codes, int64_t nblocks, int ncodebooks,
 #endif // __MITHRAL_HPP
 
 extern "C" {
+  void mithral_lut_fp32_t(const float *Q, int nrows, int ncols, int ncodebooks,
+                       const float *centroids, float &out_offset_sum,
+                       float &out_scale, float *__restrict__ tmp_lut_f32,
+			  uint8_t *out) {
+    mithral_lut_dense(Q, nrows, ncols, ncodebooks, centroids, out_offset_sum, out_scale, tmp_lut_f32, out);
+  }
+  
   void mithral_scan_fp32_t(const uint8_t* encoded_mat,
 			   int ncodebooks,
 			   int M,
