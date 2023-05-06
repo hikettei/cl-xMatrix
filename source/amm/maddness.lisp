@@ -15,6 +15,8 @@
 ;; TODO: 8bit Aggregations
 ;; TODO: Optimizing Prototypes Ridge Regression
 ;; TODO: Scan
+;; 二分木の学習がうまくいかない？
+
 (deftype index () `(or fixnum))
 
 (defmacro with-bucket-clusters ((idx-var bucket-var tree-level top-bucket)
@@ -749,11 +751,11 @@ uint8_t* out_mat) {
   "LUT -> MCK"
   (with-caches ((out-lut-f32 `(,M ,C ,K) :dtype :float :place-key :lutf32)
 		(out-lut     `(,M ,C ,K) :dtype :uint8 :place-key :lutuint8))
-    (let ((out-offset-sum* (foreign-alloc :float))
-	  (out-scale*      (foreign-alloc :float)))
+    (let ((out-offset-sum* (foreign-alloc :float :initial-element 0.0))
+	  (out-scale*      (foreign-alloc :float :initial-element 0.0)))
       (mithral-lut-fp32-t
        (matrix-vec B)
-       (car (shape B))
+       (car    (shape B))
        (second (shape B))
        K
        (matrix-vec protos)
@@ -762,8 +764,8 @@ uint8_t* out_mat) {
        (matrix-vec out-lut-f32)
        (matrix-vec out-lut))
       (values out-lut
-	      (mem-aref out-offset-sum* :float)
-	      (mem-aref out-scale*      :float)))))
+	      (mem-aref out-scale*      :float)
+	      (mem-aref out-offset-sum* :float)))))
 
 ;; mithral_dense_lut_f32
 ;; centroids = protos
@@ -1209,6 +1211,7 @@ A[N D] ... matrix to be encoded.
   (declare (optimize (speed 3))
 	   (type matrix A))
   (with-cache (out `(,(car (shape A)) ,(mithral-k maddness)) :place-key :out-cache :dtype :uint8)
+    
     (maddness-encode-c
      (matrix-vec a)
      (car    (shape A)) ;; N
@@ -1255,13 +1258,11 @@ A[N D] ... matrix to be encoded.
   (declare (optimize (speed 3) (safety 0))
 	   (type single-float alpha beta))
   
-  ;(with-cache (m* (shape matrix) :dtype :float :place-key :m1)
-    ;; Slow write in C:
-  ;  (%index m* #'(lambda (i)
-;		   (+ (* alpha (the fixnum (1d-mat-aref matrix i))) beta)))
-   ; m*))
-
-  matrix)
+  (with-cache (m* (shape matrix) :dtype :float :place-key :m1)
+    ;; Rewrite it in C cuz it slow
+    (%index m* #'(lambda (i)
+		   (+ (* alpha (the fixnum (1d-mat-aref matrix i))) beta)))
+    m*))
 
 (defmethod calc-matmul ((maddness MaddnessMatmul)
 			&aux
@@ -1290,19 +1291,23 @@ A[N D] ... matrix to be encoded.
 
 ;; Add: adjust! (for optimizing with-cache)
 (defun test (&key
-	       (p 0.8) (N 128) (D 64) (M 16) (C 16) (nsplits 4) (try-n 1000))
+	       (alpha 5.0)
+	       (beta 2.0)
+	       (N 128) (D 64) (M 32) (C 16) (nsplits 4) (try-n 1000))
   ;; (mod N 32) == 0
   ;; How tall matrix is, computation time is constant.
   (let ((matrix  (matrix `(,N ,D)))
 	(matrix1 (matrix `(,M ,D))))
     
-    (%index matrix #'(lambda (i)
-		       (declare (ignorable i))
-		       (random p)))
-
+    (%index matrix  #'(lambda (i)
+			(declare (ignorable i))
+			(cl-xmatrix::beta-bb alpha alpha beta)))
+    
     (%index matrix1 #'(lambda (i)
 			(declare (ignorable i))
-			(random p)))
+			(cl-xmatrix::beta-bb alpha alpha beta)))
+
+
     ;;(sb-ext:gc :full t)
     ;;(sb-profile:profile "CL-XMATRIX")
     (let ((maddness (make-mithral N D M C nsplits)))
@@ -1311,13 +1316,13 @@ A[N D] ... matrix to be encoded.
       (clear-caches)
       (sb-ext:gc :full t)
       
-      (time (set-b         maddness matrix1)) ;; Creating-Luts
-      ;;(time (set-a         maddness matrix)) ;; set matrix (including alloc)
+      (time (set-b maddness matrix1)) ;; Creating-Luts
+      ;;(time (set-a maddness matrix)) ;; set matrix (including alloc)
 
       (clear-caches)
       (sb-ext:gc :full t)
       
-      (time (set-a         maddness matrix)) ;; set matrix
+      (time (set-a maddness matrix)) ;; set matrix
       (let ((result (calc-matmul maddness)))
 	(print "RESULT")
 	(print result))
@@ -1333,7 +1338,7 @@ A[N D] ... matrix to be encoded.
       (sb-ext:gc :full t)
       
       (let ((ma (mgl-mat:make-mat `(,N ,D) :ctype :float))
-	    (mb (mgl-mat:make-mat `(,D ,M) :ctype :float))
+	    (mb (mgl-mat:make-mat `(,M ,D) :ctype :float))
 	    (mc (mgl-mat:make-mat `(,N ,M) :ctype :float)))
 
 	(move-array-to-matrix matrix ma)
@@ -1341,8 +1346,8 @@ A[N D] ... matrix to be encoded.
 	
 	(format t "~%Benchmarking matmul on OpenBLAS (mgl-mat).~%")
 	(time (dotimes (i try-n)
-		(mgl-mat:gemm! 1.0 ma mb 0.0 mc)))
-	(print (mgl-mat:gemm! 1.0 ma mb 0.0 mc))
+		(mgl-mat:gemm! 1.0 ma mb 0.0 mc :transpose-b? t)))
+	(print (mgl-mat:gemm! 1.0 ma mb 0.0 mc :transpose-b? t))
 
 	(clear-caches)
 	(sb-ext:gc :full t)
