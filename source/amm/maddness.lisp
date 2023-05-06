@@ -16,7 +16,9 @@
 ;; TODO: Optimizing Prototypes Ridge Regression
 ;; TODO: Scan
 ;; 二分木の学習がうまくいかない？
-
+;; MaddnessHashのLossが小さい...
+;; AlphaとBetaのパラメーターがおかしい
+;; 変な軸でsum取ってる気がする, the larger N -> more likelihood to make overflow.
 (deftype index () `(or fixnum))
 
 (defmacro with-bucket-clusters ((idx-var bucket-var tree-level top-bucket)
@@ -106,6 +108,10 @@
     out))
 
 (defun optimize-protos-with-ridge! (protos x x-error buckets nsplits
+				    &key
+				      (lmd 1.0)
+				      (required-loss 0.1)
+				      (lr 1e-2)
 				    &aux (K (expt 2 nsplits)))
   " minimize loss of |Y - Xw|^2 + alpha * |w|^2
     X is binary in our case -> w without entry in X
@@ -137,8 +143,9 @@
 		 x-binary
 		 x-error
 		 (shape protos)
-		 :alpha 1.0
-		 :lr 1e-2)))
+		 :alpha lmd
+		 :required-loss required-loss
+		 :lr lr)))
 	  (declare (type cl-waffe:waffetensor result))
 	  (let ((result (from-facet
 			 (cl-waffe:!shape result)
@@ -146,7 +153,6 @@
 			 :direction
 			 :foreign-waffe)))
 	    (%adds protos result)
-
 	    ;; todo: check how much improvement we got.
 	    ))))))
 
@@ -267,20 +273,22 @@ Return:
   (declare (optimize (speed 3))
 	   (type matrix subspace))
   (with-view (s* subspace `(:indices ,@(bucket-indices bucket)) t)
-    (with-caches ((ex2 (shape s*) :place-key :col-variances1)
+    (with-caches ((mu `(,(car (shape s*)) 1) :place-key :col-variances1)
 		  (ex  (shape s*) :place-key :col-variances2)
 		  (result `(1 ,(second (shape s*))) :place-key :sum-out1))
-      (%fill result 0.0)
-      ;; Sum(E[x^2] - E[x]^2, axis=0)
-      (%move s* ex2)
-      (%move s* ex)
-      (%square ex2)
-      (%scalar-div ex2 N)
-      (%scalar-div ex N)
-      (%square ex)
-      (%subs ex2 ex)
-      (%sum ex2 :out result :axis 0)
-      result)))
+      (%fill result 0.0) ;; %sum is just broadcasting
+      (%fill mu     0.0)
+      
+      (%sum s* :axis 1 :out mu)                    ;;
+      (%scalar-div mu (second (shape s*))) ;; mu <- mean(s*, axis=1)
+
+      (with-view (mu mu t `(:broadcast ,(second (shape s*))))
+	(%move s* ex) ;; ex <- s*
+	(%subs ex mu) ;;
+	(%square ex)  ;; (xi - mu)^2
+	(%scalar-div ex N)
+	(%sum ex :out result :axis 0)
+	result))))
 
 (defun col-means (bucket subspace out &aux (indices (bucket-indices bucket)))
   (declare (optimize (speed 3))
@@ -474,6 +482,7 @@ X = [C, (0, 1, 2, ... D)]
 
 	  (with-facet (col-losses* col-losses :direction :simple-array)
 	    ;; Sort By [Largest-Loss-Axis, ... , Smallest-Loss-Axis]
+	    
 	    (let* ((dim-orders (argsort col-losses* :test #'>))
 		   (dim-size   (length dim-orders)))
 
@@ -571,7 +580,6 @@ X = [C, (0, 1, 2, ... D)]
     (argsort arr* :test #'<)))
 
 
-;; (optimize-params bucket)
 (defun optimal-val-splits! (subspace bucket total-losses d dim tree-level)
   "The function optimal-val-splits! explores the bucket's nodes untill reaches tree-level, and update total-losses.
 
@@ -582,7 +590,7 @@ Input:
 Return:
    - early-stopping-p
 "
-  (declare (optimize (speed 3))
+  (declare (optimize (speed 3) (safety 0))
 	   (type bucket bucket)
 	   (type matrix subspace total-losses)
 	   (type fixnum d dim tree-level))
@@ -905,7 +913,7 @@ uint8_t* out_mat) {
 		#'(lambda (i) (print (1d-mat-aref lut i)) (round (print (1d-mat-aref lut-tmp i)))))
 	(values lut-quantized scale (%sumup offsets))))))
 
-
+;; not used
 (defun create-luts (protos B C K)
   (declare (type matrix protos b)
 	   (type fixnum C K))
@@ -1365,7 +1373,7 @@ A[N D] ... matrix to be encoded.
 (defun test (&key
 	       (alpha 5.0)
 	       (beta 2.0)
-	       (N 128) (D 64) (M 32) (C 16) (nsplits 4) (try-n 1000))
+	       (N 1280) (D 64) (M 32) (C 16) (nsplits 4) (try-n 1000))
   ;; (mod N 32) == 0
   ;; How tall matrix is, computation time is constant.
   (let ((matrix  (matrix `(,N ,D)))
