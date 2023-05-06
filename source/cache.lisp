@@ -10,6 +10,8 @@
 ;;
 ;;                ...
 
+(annot:enable-annot-syntax)
+
 (defvar *cache-threads* (tg:make-weak-hash-table :weakness :key)
   "Cached object by cl-xMatrix")
 
@@ -107,5 +109,14 @@ Assertion: Matrix != View-Object"
 	            ,(expand-caches (cdr binding-specs) body)))))
     (expand-caches forms body)))
 
-
+@export
+(defun clear-caches (&key (verbose nil))
+  (maphash #'(lambda (key value)
+	       (declare (ignore key))
+	       (maphash #'(lambda (place-key matrix)
+			    (when verbose
+			      (format t "Clear: ~a~%" place-key))
+			    (free-mat matrix))
+			value))
+	   *cache-threads*))
 ;; with-cache (:adjustable t)

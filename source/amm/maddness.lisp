@@ -872,6 +872,7 @@ uint8_t* out_mat) {
       (reverse result))))
 
 (defun flatten-buckets (buckets)
+  "[Proto_1(Bucket_0), Proto_2(Bucket_0), ...]"
   (declare (type list buckets))
   (labels ((collect (name dtype)
 	     (let ((result (flatten (map 'list #'(lambda (b) (flatten-bucket b name)) buckets))))
@@ -880,6 +881,7 @@ uint8_t* out_mat) {
 		result
 		:direction :list
 		:dtype dtype))))
+    
     (values
      (collect 'scale :float)
      (collect 'offset :float)
@@ -1210,6 +1212,18 @@ A[N D] ... matrix to be encoded.
     (write-b-mat B maddness)
     nil))
 
+
+(declaim (ftype (function (matrix single-float single-float) matrix) retain-fp32-matrix))
+(defun retain-fp32-matrix (matrix alpha beta)
+  "Computes y=ax+b"
+  (declare (optimize (speed 3) (safety 0))
+	   (type single-float alpha beta))
+  (with-cache (m* (shape matrix) :dtype :float :place-key :m1)
+    ;; Slow
+    (%index m* #'(lambda (i)
+		   (+ (* alpha (the fixnum (1d-mat-aref matrix i))) beta)))
+    m*))
+
 (defmethod calc-matmul ((maddness MaddnessMatmul)
 			&aux
 			  (M (mithral-m maddness))
@@ -1222,15 +1236,18 @@ A[N D] ... matrix to be encoded.
      M
      (matrix-vec (slot-value maddness 'luts))
      (matrix-vec out))
-    
-    ;;(%scalar-mul out (slot-value maddness 'alpha))
-    ;;(%scalar-add out (slot-value maddness 'beta))
-    out))
+
+    (retain-fp32-matrix out (slot-value maddness 'alpha) (slot-value maddness 'beta))))
 
 
 (defmethod show-stats ((maddness maddnessMatmul))
   "A-luts -> T?"
   )
+
+(defun move-array-to-matrix (xmat mgl-mat &aux (size (apply #'* (shape xmat))))
+  (mgl-mat:with-facet (m* (mgl-mat 'mgl-mat:backing-array :direction :output))
+    (loop for i fixnum upfrom 0 below size
+	  do (setf (aref m* i) (1d-mat-aref xmat i)))))
 
 ;; Add: adjust! (for optimizing with-cache)
 (defun test (&key
@@ -1251,27 +1268,44 @@ A[N D] ... matrix to be encoded.
     ;;(sb-profile:profile "CL-XMATRIX")
     (let ((maddness (make-mithral N D M C nsplits)))
       (time (set-a-offline maddness matrix))  ;; Offline Training
+
+      (clear-caches)
+      (sb-ext:gc :full t)
+      
       (time (set-b         maddness matrix1)) ;; Creating-Luts
       ;;(time (set-a         maddness matrix)) ;; set matrix (including alloc)
+
+      (clear-caches)
+      (sb-ext:gc :full t)
       
       (time (set-a         maddness matrix)) ;; set matrix
       (let ((result (calc-matmul maddness)))
 	(print "RESULT")
 	(print result))
 
+      ;; matrix @ matrix1
       (format t "~%try_n=~a~%" try-n)
       (format t "~%Benchmarking matmul on Maddness (SBCL and C++).~%Size: N*D @ (D*M).T where N=~a D=~a M=~a" N D M)
       (time (dotimes (i try-n)
 	      (set-a maddness matrix)
 	      (calc-matmul maddness)))
 
-      (let ((a (mgl-mat:make-mat `(,N ,D) :ctype :float))
-	    (b (mgl-mat:make-mat `(,D ,M) :ctype :float))
-	    (c (mgl-mat:make-mat `(,N ,M) :ctype :float)))
+      (clear-caches)
+      (sb-ext:gc :full t)
+      
+      (let ((ma (mgl-mat:make-mat `(,N ,D) :ctype :float))
+	    (mb (mgl-mat:make-mat `(,D ,M) :ctype :float))
+	    (mc (mgl-mat:make-mat `(,N ,M) :ctype :float)))
 
+	(move-array-to-matrix matrix ma)
+	(move-array-to-matrix matrix1 mb)
+	
 	(format t "~%Benchmarking matmul on OpenBLAS (mgl-mat).~%")
 	(time (dotimes (i try-n)
-		(mgl-mat:gemm! 1.0 a b 0.0 c)))
+		(mgl-mat:gemm! 1.0 ma mb 0.0 mc)))
+	(print (mgl-mat:gemm! 1.0 ma mb 0.0 mc))
+
+	(clear-caches)
 	(sb-ext:gc :full t)
 
 	))))

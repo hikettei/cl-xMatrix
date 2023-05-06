@@ -37,8 +37,8 @@
     (:float
      'single-float)
     (:int 'fixnum)
-    (:uint8 'fixnum)  ;;'(integer -256 256))
-    (:uint16 'fixnum) ;;'(integer -65536 65536))
+    (:uint8 '(unsigned-byte 8))  ;;'(integer -256 256))
+    (:uint16 '(unsigned-byte 16)) ;;'(integer -65536 65536))
     (T (error "The given type is unknown:~a.~% Available dtype is following: ~a" dtype *available-dtypes*))))
 
 @export
@@ -117,10 +117,12 @@ Example:
 (defun free-mat (matrix)
   "Frees matrix"
   (declare (type matrix matrix))
+  ;; Todo: Free ViewInstruction-ptr
   ;; Todo: check if matrix exists
   ;; Todo: Count total-mem-usage not to forget memfree.
-  (unless (matrix-freep matrix)
-    (foreign-free (matrix-vec matrix)))
+  (unless (matrix-freep matrix) ;; FIXME: Heap Corruption???
+    ;(foreign-free (matrix-vec matrix))
+    )
   (setf (matrix-freep matrix) t)
   nil)
 
