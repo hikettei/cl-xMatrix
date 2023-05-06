@@ -44,12 +44,28 @@ void mithral_encode(const float *X, int64_t nrows, int ncols,
   __m256 current_voffsets[nsplits_per_codebook];
 
   int split_idx = 0;
+  /*
+    out
+    →
+    +++++++
+    +++++++
+   */
+
+  // Proto_0 ~ Proto_ncodebooks, ncodebooks=16 when nsplits=4.
   for (int c = 0; c < ncodebooks; c++) {
     // compute input and output column starts
     auto out_ptr = out + (out_col_stride * c);
+    // out
+    // ++++++++ ↓
+    // ++++++++ ↓ x nblock
     for (int s = 0; s < nsplits_per_codebook; s++) {
+      // 1 + 2 + 3 + 4 ...
+      // ++++ corresponds with [Proto_1[Bucket(0)], Proto_1[Bucket(1)], ...]
+      //
+      
       auto splitdim = splitdims[split_idx + s];
       x_ptrs[s] = X + (x_col_stride * splitdim);
+      // vals_per_split == the all_splitvals' stride.
       auto splitvals_ptr = all_splitvals + (vals_per_split * split_idx);
       current_vsplitval_luts[s] = _mm256_broadcastsi128_si256(
           load_si128i((const __m128i *)splitvals_ptr));
@@ -81,6 +97,7 @@ void mithral_encode(const float *X, int64_t nrows, int ncols,
         // map -1 -> 1; 0 stays the same
         auto masks_0_or_1 = _mm256_sign_epi8(masks, masks);
 
+	// MaddnessHash
         if (s > 0) {
           // shift left by multiplying by 2, by adding to itself
           codes = _mm256_add_epi8(codes, codes);
