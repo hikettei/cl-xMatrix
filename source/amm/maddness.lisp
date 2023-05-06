@@ -74,12 +74,65 @@
       ;; Optimizing Prototypes
 
       (when optimize-protos
-        ;; atode yaru	
-	)
-
-      ;; 8bit
+        (optimize-protos-with-ridge! protos x x-error buckets nsplits))
 
       (values buckets protos))))
+
+(defun sparsify-and-int8-a-enc (a-enc K
+				&aux
+				  (N (car (shape a-enc)))
+				  (C (second (shape a-enc)))
+				  (D (* N C)))				
+    "
+    returns X_binary from an encoded Matrix [N, C] vals (0-K)
+    to
+    [[0 0 0 ... 0 0 0]
+     [0 0 1 ... 0 0 0]
+     ...
+     [0 0 0 ... 0 0 0]
+     [0 0 0 ... 1 0 0]
+     [0 0 0 ... 0 0 0]]
+    "
+  (declare (optimize (speed 3) (safety 0))
+	   (type fixnum N C D K))
+  (let ((out (make-array (* N D) :element-type '(unsigned-byte 256))))
+    (declare (type (simple-array (unsigned-byte 256) (*)) out))
+    (dotimes (nth N)
+      (dotimes (cth C)
+	(let* ((code-left (round (the single-float (%sumup (view a-enc nth cth)))))
+	       (dim-left  (+ (the fixnum (* K cth)) code-left)))
+	  (declare (type fixnum code-left))
+	  (setf (aref out (+ (the fixnum (* N nth)) dim-left)) 1))))
+    out))
+
+(defun optimize-protos-with-ridge! (protos x x-error buckets nsplits
+				    &aux (K (expt 2 nsplits)))
+  " minimize loss of |Y - Xw|^2 + alpha * |w|^2
+    X is binary in our case -> w without entry in X
+    X [N, C * K]
+    Y [N, C]
+    W [D, C * K] -> W.T [C * K, D] later reshaped to
+    [C, K, D] -> prototype dimensons"
+  (with-cache (A-enc `(,(car (shape X)) ,K) :place-key :out-cache :dtype :uint8)
+    (multiple-value-bind (scales offsets thresholds dims) (flatten-buckets buckets :nsplits nsplits)
+
+      ;; Encoding A
+      (maddness-encode-c
+       (matrix-vec X)
+       (car    (shape X)) ;; N
+       (second (shape X)) ;; D
+       (matrix-vec dims)
+       (matrix-vec thresholds)
+       (matrix-vec scales)
+       (matrix-vec offsets)
+       K
+       (matrix-vec A-enc))
+
+      (let ((x-binary (sparsify-and-int8-a-enc a-enc K)))
+	;; x-binary = [N D]
+	
+
+	))))
 
 (defun init-and-learn-offline (a-offline ;; a-offline is modified.
 			       C
@@ -1201,8 +1254,8 @@ A[N D] ... matrix to be encoded.
       (write-protos  protos maddness)
       (write-buckets buckets maddness)
       
-      (write-scales scales maddness)
-      (write-offsets offsets maddness)
+      (write-scales    scales maddness)
+      (write-offsets   offsets maddness)
       (write-splitdims split-dim maddness)
       (write-splitvals thresholds maddness))))
 
@@ -1279,6 +1332,9 @@ A[N D] ... matrix to be encoded.
 
     (retain-fp32-matrix out (slot-value maddness 'alpha) (slot-value maddness 'beta))))
 
+(defmethod display-all-the-buckets ((maddness MaddnessMatmul) subspace)
+  (dolist (i (slot-value maddness 'buckets))
+    (print-bucket-with-subspace i subspace)))
 
 (defmethod show-stats ((maddness maddnessMatmul))
   "A-luts -> T?"
@@ -1323,6 +1379,9 @@ A[N D] ... matrix to be encoded.
       (sb-ext:gc :full t)
       
       (time (set-a maddness matrix)) ;; set matrix
+      
+      ;; (display-all-the-buckets maddness (view matrix t `(0, (/ D C))))
+      
       (let ((result (calc-matmul maddness)))
 	(print "RESULT")
 	(print result))
