@@ -59,13 +59,12 @@ Inputs:
 	  (sparse (mgl-mat:array-to-mat x-binary))
 	  (inputs (mgl-mat:array-to-mat
 		   (cl-xmatrix:convert-into-lisp-array y))))
-      (let ((loss (+ 0.1 required-loss)))
-	(loop while (< loss required-loss)
-	      do (setq loss (data
-			     (step-model
-			      model
-			      (!reshape (const inputs) `(,input t))
-			      (!reshape (const sparse) `(,input t)))))))
+
+      (step-model
+       model
+       (!reshape (const inputs) `(,input t))
+       (!reshape (const sparse) `(,input t)))
+      
       ;; weight [D, C * K]
       (let ((coeff (slot-value
 		    (slot-value

@@ -19,6 +19,7 @@
 ;; MaddnessHashのLossが小さい...
 ;; AlphaとBetaのパラメーターがおかしい
 ;; 変な軸でsum取ってる気がする, the larger N -> more likelihood to make overflow.
+;; lutのscale offset
 (deftype index () `(or fixnum))
 
 (defmacro with-bucket-clusters ((idx-var bucket-var tree-level top-bucket)
@@ -119,7 +120,9 @@
     Y [N, C]
     W [D, C * K] -> W.T [C * K, D] later reshaped to
     [C, K, D] -> prototype dimensons"
-  (with-cache (A-enc `(,(car (shape X)) ,K) :place-key :out-cache :dtype :uint8)
+  (with-caches ((A-enc `(,(car (shape X)) ,K) :place-key :out-cache :dtype :uint8)
+		
+		(ofs    `(1 ,K) :place-key :offsets :dtype :uint8))
     (multiple-value-bind (scales offsets thresholds dims) (flatten-buckets buckets :nsplits nsplits)
 
       ;; Encoding A
@@ -133,6 +136,10 @@
        (matrix-vec offsets)
        K
        (matrix-vec A-enc))
+
+      (%index ofs #'(lambda (i) i))
+      (%scalar-mul ofs K)
+      (%adds A-enc (view ofs `(:broadcast ,(car (shape X)))))
 
       (let ((x-binary (sparsify-and-int8-a-enc a-enc K)))
 	;; x-binary = [N D]
@@ -320,8 +327,8 @@ Return:
 				best-dim
 				subspace
 				&aux
-				  (left-idx (+ (* 2 (bucket-i bucket)) 1)) ;; 2x + 1 
-				  (right-idx (* (bucket-i bucket) 2))) ;; 2x
+				  (right-idx (+ (* 2 (bucket-i bucket)) 1)) ;; 2x + 1 
+				  (left-idx (* (bucket-i bucket) 2))) ;; 2x
   "Splits bucket's binary-tree
 split-val dim"
   (declare (optimize (speed 3))
@@ -389,8 +396,8 @@ split-val dim"
 	    ;; => Creates a new bucket-tree.
 	    (progn
 	      (setf (bucket-next-nodes bucket)
-		    (cons (create-new-bucket left-side-points right-idx)
-			  (create-new-bucket right-side-points left-idx)))
+		    (cons (create-new-bucket left-side-points left-idx)
+			  (create-new-bucket right-side-points right-idx)))
 	      nil)
 	    ;; Otherwise -> Go deeper and update nodes.
 	    (let ((nodes (bucket-next-nodes bucket)))
@@ -825,7 +832,7 @@ uint8_t* out_mat) {
 
 
 (defun maddness-create-and-quantize-luts (protos B C K &aux (M (car (shape B))))
-  "LUT -> MCK"
+  "LUT ... a matrix where shape = (M C K) B = [N D]"
   (with-caches ((out-lut-f32 `(,M ,C ,K) :dtype :float :place-key :lutf32)
 		(out-lut     `(,M ,C ,K) :dtype :uint8 :place-key :lutuint8))
     (let ((out-offset-sum* (foreign-alloc :float :initial-element 0.0))
@@ -840,6 +847,15 @@ uint8_t* out_mat) {
        out-scale*
        (matrix-vec out-lut-f32)
        (matrix-vec out-lut))
+      (print "Result of lut-fp32-t:")
+      (print (convert-into-lisp-array out-lut-f32))
+      (print (convert-into-lisp-array out-lut))
+      (print (mem-aref out-scale*      :float))
+      (print (mem-aref out-offset-sum* :float))
+      ;; lut's shape?
+      ;; prototypes are invaild?
+      ;; anyway read the c codes.
+      ;; prototypes in lisp is similar to python'sone.
       (values out-lut
 	      (mem-aref out-scale*      :float)
 	      (mem-aref out-offset-sum* :float)))))
@@ -936,7 +952,17 @@ uint8_t* out_mat) {
              acc))
     (reverse (rflatten lst nil))))
 
+#|
+Proto1 Proto2
++++++++++++++
++++++++++++++
++++++++++++++
++++++++++++++
+横に並列化している。
+だからProto1は隣り合う
+|#
 (defun flatten-bucket (bucket slot)
+  "Following MaddnessHash"
   (declare (optimize (speed 3))
 	   (type bucket bucket))
   (let ((result))
@@ -949,10 +975,11 @@ uint8_t* out_mat) {
 		   (explore (car children))))))
       (explore bucket)
       (reverse result))))
-
-(defun flatten-buckets1 (buckets)
-  "[Proto_1(Bucket_0), Proto_2(Bucket_0), ...Proto_0(Bucket_1), ...]"
-  (declare (type list buckets))
+;; del it.
+(defun flatten-buckets1 (buckets &key (nsplits 4))
+  "[Proto_1(Bucket_0), Proto_1(Bucket_1), ...Proto_1(Bucket_0), ...]"
+  (declare (type list buckets)
+	   (ignore nsplits))
   (labels ((collect (name dtype)
 	     (let ((result (flatten (map 'list #'(lambda (b) (flatten-bucket b name)) buckets))))
 	       (from-facet
@@ -982,9 +1009,11 @@ uint8_t* out_mat) {
 		   (explore (cdr children))
 		   (explore (car children))))))
       (explore bucket)
-      (reverse result))))
+      result)))
 
 (defun flatten-buckets (buckets &key (nsplits 4))
+  "[Proto_1(Bucket_0), Proto_2(Bucket_0), ...Proto_0(Bucket_1), ...]
+Flatten buckets trained parameters following MaddnessHash."
   (labels ((collect (name)
 	     (loop for i fixnum upfrom 0 below nsplits
 		   nconc
@@ -1287,18 +1316,25 @@ A[N D] ... matrix to be encoded.
   ;; Encode A
   (declare (optimize (speed 3))
 	   (type matrix A))
-  (with-cache (out `(,(car (shape A)) ,(mithral-k maddness)) :place-key :out-cache :dtype :uint8)
+  (with-caches ((out `(,(car (shape A)) ,(mithral-k maddness)) :place-key :out-cache :dtype :uint8)
+		(offsets `(1 ,(mithral-k maddness)) :place-key :offsets :dtype :uint8))
     
     (maddness-encode-c
      (matrix-vec a)
      (car    (shape A)) ;; N
-     (second (shape A)) ;; D
+     (second (shape A)) ;; C
      (matrix-vec (mithral-splitdims maddness))
      (matrix-vec (mithral-splitvals maddness))
      (matrix-vec (mithral-scales maddness))
      (matrix-vec (mithral-offsets maddness))
      (mithral-k maddness)
      (matrix-vec out))
+    
+    (%index offsets #'(lambda (i) i))
+    (%scalar-mul offsets (mithral-k maddness))
+
+    ;; offsets = [ 0  16  32  48  64  80  96 112 128 144 160 176 192 208 224 240]
+    (%adds out (view offsets `(:broadcast ,(car (shape A)))))
     (write-a-enc out maddness)
     nil))
 
@@ -1338,7 +1374,8 @@ A[N D] ... matrix to be encoded.
   (with-cache (m* (shape matrix) :dtype :float :place-key :m1)
     ;; Rewrite it in C cuz it slow
     (%index m* #'(lambda (i)
-		   (+ (* alpha (the fixnum (1d-mat-aref matrix i))) beta)))
+		   ;; beta is overflowing.
+		   (+ (* (the fixnum (1d-mat-aref matrix i)) alpha) beta)))
     m*))
 
 (defmethod calc-matmul ((maddness MaddnessMatmul)
@@ -1353,8 +1390,8 @@ A[N D] ... matrix to be encoded.
      M
      (matrix-vec (slot-value maddness 'luts))
      (matrix-vec out))
-
-    (retain-fp32-matrix out (slot-value maddness 'alpha) (slot-value maddness 'beta))))
+    (retain-fp32-matrix
+     out (slot-value maddness 'alpha) (slot-value maddness 'beta))))
 
 (defmethod display-all-the-buckets ((maddness MaddnessMatmul) subspace)
   (dolist (i (slot-value maddness 'buckets))
@@ -1373,7 +1410,7 @@ A[N D] ... matrix to be encoded.
 (defun test (&key
 	       (alpha 5.0)
 	       (beta 2.0)
-	       (N 1280) (D 64) (M 32) (C 16) (nsplits 4) (try-n 1000))
+	       (N 128) (D 64) (M 32) (C 16) (nsplits 4) (try-n 1000))
   ;; (mod N 32) == 0
   ;; How tall matrix is, computation time is constant.
   (let ((matrix  (matrix `(,N ,D)))
