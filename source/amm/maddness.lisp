@@ -2,7 +2,7 @@
 (in-package :cl-user)
 
 (defpackage :cl-xmatrix.amm.maddness
-  (:use :cl :cl-xmatrix :cffi)
+  (:use :cl :cl-xmatrix :cffi :clgplot)
   (:export
    ))
 
@@ -1521,3 +1521,40 @@ A[N D] ... matrix to be encoded.
 	    (result2 (compute-on-openblas a b :try-n try-n)))
 	;; (values maddness-result openblas-result)
 	(values result1 result2)))))
+
+;;; n = 0~16324
+(defun start-benchmark (&key
+			  (n-from 6) 
+			  (n-end 14)  ;; 14
+			  (base 2)
+			  (D 128)
+			  (M 256)
+			  (C 16)
+			  (try-n 1000)
+			  (nsplits 4)
+			  (output-dir "./result.png"))
+
+  (let ((maddness-results)
+	(openblas-results)
+	(x-axis))
+
+    (loop for nth fixnum upfrom n-from to n-end
+	  do (let ((n (expt base nth)))
+	       (format t "Testing on N=~a case...~%" n)
+	       (multiple-value-bind (m-result blas-result)
+		   (benchmark-on-n-case N D M C :try-n try-n :nsplits nsplits)
+		 (push n x-axis)
+		 (push m-result maddness-results)
+		 (push blas-result openblas-results))))
+
+    (plots (list (reverse maddness-results)
+		 (reverse openblas-results))
+	   :x-seqs (list (reverse x-axis)
+			 (reverse x-axis))
+	   :title-list (list "Maddness(via cl-xMatrix/C++)" "OpenBLAS(via mgl-mat)")
+	   :y-label "Time (second)"
+	   :x-label "Scale (N)"
+	   :x-logscale t
+	   :y-logscale t
+	   :output output-dir))
+  nil)
