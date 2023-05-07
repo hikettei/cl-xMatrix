@@ -49,8 +49,8 @@
 	   (type matrix X)
 	   (type fixnum C))
 
-  (with-caches ((X-error (shape X) :dtype (dtype X))
-		(X-tmp   (shape X) :dtype (dtype X)))
+  (with-caches ((X-error (shape X) :dtype (dtype X) :place-key :x-err)
+		(X-tmp   (shape X) :dtype (dtype X) :place-key :x-tmp))
     (%move X X-error)
 
     (multiple-value-bind (buckets protos)
@@ -207,6 +207,7 @@ Return:
   ;;   +++    C +--
   ;; N +++ =>   +--
   ;;   +++      +--
+
   ;;
   ;; Symbols: + ... Visible / - ... Invisible
 
@@ -1360,17 +1361,22 @@ A[N D] ... matrix to be encoded.
     nil))
 
 
-(declaim (ftype (function (matrix single-float single-float) matrix) retain-fp32-matrix))
-(defun retain-fp32-matrix (matrix alpha beta)
+(declaim (ftype (function (matrix single-float single-float fixnum) matrix) retain-fp32-matrix))
+(defun retain-fp32-matrix (matrix alpha beta C &aux (upcast-every 32))
   "Computes y=ax+b"
   (declare (optimize (speed 3) (safety 0))
-	   (type single-float alpha beta))
-  
+	   (type single-float alpha beta)
+	   (type fixnum C))
+
+  ;; upcast_every = 32 is fixed.
   (with-cache (m* (shape matrix) :dtype :float :place-key :m1)
     ;; Rewrite it in C cuz it slow
-    (%index m* #'(lambda (i)
+    (%index m* #'(lambda (i &aux (read-lut (1d-mat-aref matrix i)))
+		   (declare (type fixnum read-lut))
 		   ;; beta is overflowing.
-		   (+ (/ (the fixnum (1d-mat-aref matrix i)) alpha) beta)))
+		   (let ((bias (the single-float (* (/ C 4.0)
+						    (log upcast-every 2)))))
+		     (* -1.0 (+ (/ (+ read-lut bias) alpha) beta)))))
     m*))
 
 (defmethod calc-matmul ((maddness MaddnessMatmul)
@@ -1386,7 +1392,10 @@ A[N D] ... matrix to be encoded.
      (matrix-vec (slot-value maddness 'luts))
      (matrix-vec out))
     (retain-fp32-matrix
-     out (slot-value maddness 'alpha) (slot-value maddness 'beta))))
+     out
+     (slot-value maddness 'alpha)
+     (slot-value maddness 'beta)
+     (slot-value maddness 'C))))
 
 (defmethod display-all-the-buckets ((maddness MaddnessMatmul) subspace)
   (dolist (i (slot-value maddness 'buckets))
@@ -1470,3 +1479,25 @@ A[N D] ... matrix to be encoded.
 	))))
 ;;(sb-profile:report)
 ;;(sb-profile:unprofile "CL-XMATRIX")
+
+
+(defun test-binary-hashing-tree ()
+  (let ((matrix (matrix `(128 16))))
+    (%index matrix #'(lambda (i)
+		       (cl-xmatrix::beta-bb 5.0 5.0 2.0)))
+    
+    ;;(sb-ext:gc :full t)
+    ;;(sb-profile:profile "CL-XMATRIX")
+    (let ((bucket (learn-binary-tree-splits matrix 16)))
+      (print-bucket-with-subspace bucket matrix))
+    ;;(sb-profile:report)
+    ;;(sb-profile:unprofile "CL-XMATRIX")
+    (free-mat matrix)))
+
+(defun matmul-openblas (a b)
+  (cl-waffe:with-no-grad
+    (with-facets ((a* a :direction :simple-array)
+		  (b* b :direction :simple-array))
+	(let ((a* (cl-waffe:!reshape (cl-waffe:const a*) (shape a)))
+	      (b* (cl-waffe:!reshape (cl-waffe:const b*) (shape b))))
+	  (cl-waffe:!matmul a* (cl-waffe:!transpose b*))))))
