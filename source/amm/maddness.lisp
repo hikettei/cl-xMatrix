@@ -948,47 +948,6 @@ uint8_t* out_mat) {
              acc))
     (reverse (rflatten lst nil))))
 
-#|
-Proto1 Proto2
-+++++++++++++
-+++++++++++++
-+++++++++++++
-+++++++++++++
-横に並列化している。
-だからProto1は隣り合う
-|#
-(defun flatten-bucket (bucket slot)
-  "Following MaddnessHash"
-  (declare (optimize (speed 3))
-	   (type bucket bucket))
-  (let ((result))
-    (labels ((explore (bucket)
-	       (with-slots ((children next-nodes))
-		   bucket
-		 (push (slot-value bucket slot) result)
-		 (when children
-		   (explore (cdr children))
-		   (explore (car children))))))
-      (explore bucket)
-      (reverse result))))
-;; del it.
-(defun flatten-buckets1 (buckets &key (nsplits 4))
-  "[Proto_1(Bucket_0), Proto_1(Bucket_1), ...Proto_1(Bucket_0), ...]"
-  (declare (type list buckets)
-	   (ignore nsplits))
-  (labels ((collect (name dtype)
-	     (let ((result (flatten (map 'list #'(lambda (b) (flatten-bucket b name)) buckets))))
-	       (from-facet
-		`(1 ,(length result))
-		result
-		:direction :list
-		:dtype dtype))))
-    
-    (values
-     (collect 'scale :float)
-     (collect 'offset :float)
-     (collect 'threshold-quantized :int)
-     (collect 'index :int))))
 
 (defun gather-bucket (bucket slot tree-level)
   (declare (optimize (speed 3))
@@ -1379,6 +1338,8 @@ A[N D] ... matrix to be encoded.
 		     (* -1.0 (+ (/ (+ read-lut bias) alpha) beta)))))
     m*))
 
+(defparameter *benchmark-mode* nil "If t, the ugly part restore-fp32-matrix is ignored.")
+
 (defmethod calc-matmul ((maddness MaddnessMatmul)
 			&aux
 			  (M (mithral-m maddness))
@@ -1391,11 +1352,12 @@ A[N D] ... matrix to be encoded.
      M
      (matrix-vec (slot-value maddness 'luts))
      (matrix-vec out))
-    (retain-fp32-matrix
-     out
-     (slot-value maddness 'alpha)
-     (slot-value maddness 'beta)
-     (slot-value maddness 'C))))
+    (unless *benchmark-mode*
+      (retain-fp32-matrix
+       out
+       (slot-value maddness 'alpha)
+       (slot-value maddness 'beta)
+       (slot-value maddness 'C)))))
 
 (defmethod display-all-the-buckets ((maddness MaddnessMatmul) subspace)
   (dolist (i (slot-value maddness 'buckets))
@@ -1411,6 +1373,7 @@ A[N D] ... matrix to be encoded.
 	  do (setf (aref m* i) (1d-mat-aref xmat i)))))
 
 ;; Add: adjust! (for optimizing with-cache)
+;; Benchmarks
 (defun test (&key
 	       (alpha 7.0)
 	       (beta 2.0)
@@ -1431,12 +1394,9 @@ A[N D] ... matrix to be encoded.
 
     ;;(sb-ext:gc :full t)
     ;;(sb-profile:profile "CL-XMATRIX")
+    ;; Preparing
     (let ((maddness (make-mithral N D M C nsplits)))
-      (time (set-a-offline maddness matrix))  ;; Offline Training
-
-      (clear-caches)
-      (sb-ext:gc :full t)
-      
+      (time (set-a-offline maddness matrix))
       (time (set-b maddness matrix1)) ;; Creating-Luts
       ;;(time (set-a maddness matrix)) ;; set matrix (including alloc)
 
@@ -1494,10 +1454,70 @@ A[N D] ... matrix to be encoded.
     ;;(sb-profile:unprofile "CL-XMATRIX")
     (free-mat matrix)))
 
-(defun matmul-openblas (a b)
+;; (disassemble #'compute-on-openblas)
+(defun compute-on-openblas (a b &key (try-n 100))
+  (declare (optimize (speed 3) (safety 0))
+	   (type matrix a b)
+	   (type fixnum try-n)
+	   (inline cl-waffe:data))
   (cl-waffe:with-no-grad
     (with-facets ((a* a :direction :simple-array)
 		  (b* b :direction :simple-array))
-	(let ((a* (cl-waffe:!reshape (cl-waffe:const a*) (shape a)))
-	      (b* (cl-waffe:!reshape (cl-waffe:const b*) (shape b))))
-	  (cl-waffe:!matmul a* (cl-waffe:!transpose b*))))))
+      (let* ((a* (cl-waffe:!reshape (cl-waffe:const a*) (shape a)))
+	     (b* (cl-waffe:!reshape (cl-waffe:const b*) (shape b)))
+	     (c* (cl-waffe:!matmul a* (cl-waffe:!transpose b*)))) ;; outする領域をalloc
+	;; gc in advance for fair comparisons
+	(sb-ext:gc :full t)
+
+	(let ((t1 (get-internal-real-time)))
+	  (dotimes (i try-n)
+	    (mgl-mat:gemm!
+	     1.0
+	     (cl-waffe:data a*)
+	     (cl-waffe:data b*)
+	     0.0
+	     (cl-waffe:data c*)
+	     :transpose-b? t)) 
+	  (let ((t2 (get-internal-real-time)))
+	    (locally (declare (optimize (speed 1) (safety 1)))
+	      (coerce
+	       (/ (- t2 t1)
+		  try-n
+		  internal-time-units-per-second)
+	       'single-float))))))))
+
+(defun compute-on-maddness (maddness a &key (try-n 100))
+  (declare (optimize (speed 3) (safety 0))
+	   (type matrix a b)
+	   (type fixnum try-n))
+
+  (sb-ext:gc :full t)
+  
+  (let ((t1 (get-internal-real-time)))
+    (dotimes (i try-n)
+      (set-a maddness a)
+      (calc-matmul maddness))
+    (let ((t2 (get-internal-real-time)))
+      (locally (declare (optimize (speed 1) (safety 1)))
+	(coerce
+	 (/ (- t2 t1)
+	    try-n
+	    internal-time-units-per-second)
+	 'single-float)))))
+
+(defun benchmark-on-n-case (N D M C &key (try-n 100) (nsplits 4))
+  (let ((a (matrix `(,N ,D)))
+	(b (matrix `(,M ,D)))
+	(maddness (make-mithral N D M C nsplits)))
+
+    (%index a #'(lambda (i) (declare (ignore i)) (random 1.0)))
+    (%index b #'(lambda (i) (declare (ignore i)) (random 1.0)))
+
+    (set-a-offline maddness a)
+    (set-b maddness b)
+
+    (let ((*benchmark-mode* t))
+      (let ((result1 (compute-on-maddness maddness a :try-n try-n))
+	    (result2 (compute-on-openblas a b :try-n try-n)))
+	;; (values maddness-result openblas-result)
+	(values result1 result2)))))
