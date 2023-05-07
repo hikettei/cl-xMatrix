@@ -473,6 +473,15 @@ Example:
     (T
      (error "with-facet: Unknown direction: ~a" direction))))
 
+@export
+(defmacro with-facets ((&rest forms) &body body)
+  (labels ((expand-facet (binding-specs body)
+	     (if (endp binding-specs)
+		 `(progn ,@body)
+		 `(with-facet ,(first binding-specs)
+		    ,(expand-facet (cdr binding-specs) body)))))
+    (expand-facet forms body)))
+
 (defparameter *unsafe-mode* nil "Ignores type-check")
 @export
 (defmacro with-unsafe (&body body)
