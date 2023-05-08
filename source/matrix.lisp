@@ -1,15 +1,7 @@
 
 (in-package :cl-xmatrix)
-
-;; Todo: Refactor
-;; Memo: https://www.lispforum.com/viewtopic.php?t=4296
-
-;; (define-mat-dtype
-;;        :uint8
-;;        available-transfer :retained-by ~~)
-;; todo: support define-vop
-
 (annot:enable-annot-syntax)
+
 
 @export
 (defparameter *available-dtypes*
@@ -71,16 +63,6 @@ Example:
   "x >= 0"
   `(and (or fixnum)
 	(satisfies index-p)))
-
-
-(eval-when (:compile-toplevel :execute :load-toplevel)
-  (macrolet ((define-allocate-cfun (fname dtype)
-	       `(defcfun ,fname (:pointer ,dtype)
-		  (size :int))))
-    (define-allocate-cfun "fp32_allocate_aligned_mat" :float)
-    (define-allocate-cfun "fp16_allocate_aligned_mat" :uint16)
-    (define-allocate-cfun "fp8_allocate_aligned_mat"  :uint8)
-    (define-allocate-cfun "int_allocate_aligned_mat"  :int)))
 
 (defun allocate-mat (size &key (dtype :float))
   (declare (type matrix-dtype dtype)
@@ -231,13 +213,29 @@ Example:
 ;; Note: view-of-matrix is NOT ALLOWED to use the view-object's information
 ;; Use the original matrix's SHAPE, strides and so on...
 
+(defun cl-array->foreign-ptr (array size dtype)
+  (declare (type simple-array array)
+	   (type keyword dtype)
+	   (type fixnum size)
+	   (ignorable dtype size))
+  #+sbcl
+  (sb-sys:vector-sap (sb-ext:array-storage-vector array))
+  #-(or sbcl)
+  (allocate-mat size :dtype dtype)) ;;Add: Allocate Array -> CFFI
+
 (defstruct (Matrix
 	    (:print-function print-matrix)
 	    (:constructor
-		matrix (shape &key (dtype :float)
-			&aux (view (loop repeat (length (the list shape))
-					 collect t))
-			  (matrix-vec (allocate-mat (apply #'* shape) :dtype dtype))
+		matrix (shape
+			&key
+			  (dtype :float)
+			  (initial-element 0.0)
+			&aux
+			  (storage (make-array (apply #'* shape)
+					       :initial-element initial-element
+					       :element-type (dtype->lisp-type dtype)))
+			  (view (loop repeat (length (the list shape)) collect t))
+			  (matrix-vec (cl-array->foreign-ptr storage (apply #'* shape) dtype))
 			  (broadcasts nil)
 			  (projected-p nil)
 			  (strides (calc-strides shape))
@@ -248,8 +246,10 @@ Example:
 		 shape
 		 &key
 		   (dtype :float)
-		 &aux (view (loop repeat (length (the list shape))
-				  collect t))
+		 &aux
+		   (storage nil)
+		   (view (loop repeat (length (the list shape))
+			       collect t))
 		   (matrix-vec pointer)
 		   (broadcasts nil)
 		   (projected-p nil)
@@ -258,6 +258,7 @@ Example:
 	    (:constructor
 		reshape (matrix shape
 			 &aux
+			   (storage (matrix-storage matrix))
 			   (dtype (dtype matrix))
 			   (strides (calc-strides shape))
 			   (matrix-vec (matrix-vec matrix))
@@ -271,6 +272,7 @@ Example:
 				broadcasts
 				&rest view
 				&aux
+				  (storage    (matrix-storage matrix))
 				  (shape      (matrix-shape matrix))
 				  (dtype      (matrix-dtype matrix))
 				  (strides    (matrix-strides matrix))
@@ -288,6 +290,7 @@ Example:
 		 visible-shape
 		 &rest view
 		 &aux
+		   (storage    (matrix-storage matrix))
 		   (shape      (matrix-shape matrix))
 		   (dtype      (matrix-dtype matrix))
 		   (strides    (matrix-strides matrix))
@@ -306,6 +309,7 @@ Example:
 					(matrix-vec matrix)
 					(matrix-shape matrix)
 					quantize-into))
+				   (storage nil)
 				   (strides (matrix-strides matrix))
 				   (dtype (vec-dtype-quantized quantize-into))
 				   (shape (matrix-shape matrix))
@@ -317,6 +321,7 @@ Example:
 				   (visible-shape (compute-visible-and-broadcasted-shape (visible-shape shape view) broadcasts)))))
   (freep nil :type boolean)
   (projected-p projected-p :type boolean) ;; Is view-object?
+  (storage storage :type (or null simple-array))
   (vec matrix-vec) ;; The ORIGINAL Matrix's CFFI Pointer
   (dtype dtype :type matrix-dtype)
   (shape shape :type cons) ;; The ORIGINAL Matrix's shape

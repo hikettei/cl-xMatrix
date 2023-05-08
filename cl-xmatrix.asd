@@ -15,6 +15,7 @@
   :depends-on (:cffi :cffi-libffi #:trivial-garbage #:bordeaux-threads #:alexandria #:cl-annot #:mgl-mat #:cl-waffe :clgplot) ;; mgl-mat is only used for benchmarking 
   :components ((:file "package")
 	       (:file "matrix")
+	       (:file "facet")
 	       (:file "render")
 	       (:file "view")
 	       (:file "quantize")
