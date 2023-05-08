@@ -33,6 +33,16 @@
     (:uint16 '(unsigned-byte 16)) ;;'(integer -65536 65536))
     (T (error "The given type is unknown:~a.~% Available dtype is following: ~a" dtype *available-dtypes*))))
 
+
+@export
+(defun lisp-type->dtype (lisp-type)
+  (cond
+    ((eql lisp-type 'single-float) :float)
+    ((eql lisp-type 'fixnum) :int)
+    ((eql lisp-type '(unsigned-byte 8)) :uint8)  ;;'(integer -256 256))
+    ((eql lisp-type '(unsigned-byte 16)) :uint16) ;;'(integer -65536 65536))
+    (T (error "The given type is unknown:~a.~% Available dtype is following: ~a" lisp-type *available-dtypes*))))
+
 @export
 (defun coerce-to-dtype (element dtype)
   "This function coerces the given element (type of number) into dtype.
@@ -210,10 +220,8 @@ Example:
 	      (format nil ":offset ~a" (matrix-offset matrix)))
 	  (render-matrix matrix :indent 6))) ; TODO: more infos
 
-;; Note: view-of-matrix is NOT ALLOWED to use the view-object's information
-;; Use the original matrix's SHAPE, strides and so on...
-
 (defun cl-array->foreign-ptr (array size dtype)
+  ""
   (declare (type simple-array array)
 	   (type keyword dtype)
 	   (type fixnum size)
@@ -221,121 +229,161 @@ Example:
   #+sbcl
   (sb-sys:vector-sap (sb-ext:array-storage-vector array))
   #-(or sbcl)
-  (allocate-mat size :dtype dtype)) ;;Add: Allocate Array -> CFFI
+  (allocate-mat size :dtype dtype)) ;; Error
 
-(defstruct (Matrix
-	    (:print-function print-matrix)
-	    (:constructor
-		matrix (shape
-			&key
-			  (dtype :float)
-			  (initial-element 0.0)
-			&aux
-			  (storage (make-array (apply #'* shape)
-					       :initial-element initial-element
-					       :element-type (dtype->lisp-type dtype)))
-			  (view (loop repeat (length (the list shape)) collect t))
-			  (matrix-vec (cl-array->foreign-ptr storage (apply #'* shape) dtype))
-			  (broadcasts nil)
-			  (projected-p nil)
-			  (strides (calc-strides shape))
-			  (visible-shape (compute-visible-and-broadcasted-shape (visible-shape shape view) broadcasts))))
-	    (:constructor
-		from-foreign-pointer
-		(pointer
-		 shape
-		 &key
-		   (dtype :float)
-		 &aux
-		   (storage nil)
-		   (view (loop repeat (length (the list shape))
-			       collect t))
-		   (matrix-vec pointer)
-		   (broadcasts nil)
-		   (projected-p nil)
-		   (strides (calc-strides shape))
-		   (visible-shape (compute-visible-and-broadcasted-shape (visible-shape shape view) broadcasts))))
-	    (:constructor
-		reshape (matrix shape
-			 &aux
-			   (storage (matrix-storage matrix))
-			   (dtype (dtype matrix))
-			   (strides (calc-strides shape))
-			   (matrix-vec (matrix-vec matrix))
-			   (projected-p nil)
-			   (broadcasts nil)
-			   (view (loop repeat (length (the list shape))
-				       collect t))
-			   (visible-shape (compute-visible-and-broadcasted-shape (visible-shape shape view) broadcasts))))
-	    (:constructor
-		view-of-matrix (matrix
-				broadcasts
-				&rest view
-				&aux
-				  (storage    (matrix-storage matrix))
-				  (shape      (matrix-shape matrix))
-				  (dtype      (matrix-dtype matrix))
-				  (strides    (matrix-strides matrix))
-				  (matrix-vec (matrix-vec matrix))
-				  (projected-p t)
-				  (broadcasts
-				   (if broadcasts
-				       broadcasts
-				       (matrix-broadcasts matrix)))
-				  (visible-shape (compute-visible-and-broadcasted-shape (visible-shape shape view) broadcasts))))
-	    (:constructor
-		view-of-matrix-with-shape
-		(matrix
-		 broadcasts
-		 visible-shape
-		 &rest view
-		 &aux
-		   (storage    (matrix-storage matrix))
-		   (shape      (matrix-shape matrix))
-		   (dtype      (matrix-dtype matrix))
-		   (strides    (matrix-strides matrix))
-		   (matrix-vec (matrix-vec matrix))
-		   (projected-p t)
-		   (broadcasts
-		    (if broadcasts
-			broadcasts
-			(matrix-broadcasts matrix)))))
-	    (:constructor
-		;; Todo: Debug (for view ga ayasii)
-		quantize-matrix (matrix
-				 &key (quantize-into :fp16)
-				 &aux (matrix-vec
-				       (vec-quantize-into
-					(matrix-vec matrix)
-					(matrix-shape matrix)
-					quantize-into))
-				   (storage nil)
-				   (strides (matrix-strides matrix))
-				   (dtype (vec-dtype-quantized quantize-into))
-				   (shape (matrix-shape matrix))
-				   (view (loop repeat (length (the list shape))
-					       collect t))
-				   (broadcasts nil)
-				   (projected-p
-				    (matrix-projected-p matrix))
-				   (visible-shape (compute-visible-and-broadcasted-shape (visible-shape shape view) broadcasts)))))
-  (freep nil :type boolean)
-  (projected-p projected-p :type boolean) ;; Is view-object?
-  (storage storage :type (or null simple-array))
-  (vec matrix-vec) ;; The ORIGINAL Matrix's CFFI Pointer
-  (dtype dtype :type matrix-dtype)
-  (shape shape :type cons) ;; The ORIGINAL Matrix's shape
-  (view view :type cons) ;; view instruction
-  (external-operation nil)
+;; visible-vec
+
+;; ViewInstruction
+;; Matrix-Vec
+
+;; with-facetで, matrix-vecの値などを切り変える。
+
+(defmacro mref ()
+  "Matrix-vecarefの補助 strideをもとにIndexを再計算してくれる (Unroll sitai)"
+  )
+
+;; Matrix(simple-array, lisp-view-object)
+;; |-> CFFIFacet(simple-array.pointer, cffi-view-object)
+;; |-> LispFacet(simple-array, lisp-view-object)
+;; |-> MetalFacet(simple-array.pointer, cffi-view-object)
+;; ...
+;; Each vector can be obtained by (matrix-vec matrix)
+;; Each facet can be switched with (activate-facet! matrix ~) or with-facet macro.
+;;
+
+(defstruct (Matrix  (:print-function print-matrix))
+  (active-facet-name 'ForeignFacet :type symbol)
+  (freep
+   #+sbcl t
+   #-sbcl nil
+   :type boolean)
+  (projected-p nil :type boolean)
+  
+  (original-vec  nil :type (or null simple-array))
+  (original-view nil :type (or null ViewInstruction-Lisp))
+  
+  (facets nil :type hash-table) ;; Matrix as CFFI Pointer, Simple-Array...
+  
+  (active-facet nil)
+
+  ;; Shaping APIs
+  (dtype :float :type matrix-dtype)
+  (shape nil :type cons)
+  
+  (view nil :type list)
+  (visible-shape nil :type list)
+
+  ;; :indices
+  (external-operation     nil)
   (external-operation-dim nil)
-  (visible-shape visible-shape :type cons) ;; visible area's shape following viewinstruction
-  (broadcasts broadcasts :type list)
-  (strides strides :type cons)
-  (view-foreign-ptr nil) ;; Todo: Free by free-mat.
-  (view-lisp-ptr nil)
-  (created-offsets nil :type list)
-  (offset 0 :type fixnum))
 
+  ;; :broadcast
+  (broadcasts nil  :type list)
+  (strides    nil  :type cons)
+
+  ;; Offset APIs (used in the iters located in the deepest)
+  (created-offsets nil :type list)
+  (offset            0 :type fixnum))
+
+@export
+(defun matrix (shape &key (dtype :float) (initial-contents nil) (initial-element nil) (default-facet 'ForeignFacet))
+  (let* ((shape (if (= (length shape) 1)
+		    `(1 ,@shape)
+		    shape))
+	 (view (loop for m in shape collect t))
+	 (strides (calc-strides shape))
+	 (strides-rev (reverse strides))
+	 (shape-rev   (reverse shape))
+	 (storage (cond
+		    ((and initial-element
+			  (null initial-contents))
+		     (make-array (apply #'* shape)
+				 :element-type
+				 (dtype->lisp-type dtype)
+				 :initial-element
+				 initial-element))
+		    ((and initial-contents
+			  (null initial-element))
+		     (make-array (apply #'* shape)
+				 :element-type
+				 (dtype->lisp-type dtype)
+				 :initial-element
+				 initial-element))
+		    ((and (null initial-element)
+			  (null initial-contents))
+		     (make-array (apply #'* shape)
+				 :element-type
+				 (dtype->lisp-type dtype)))
+		    (T
+		     (error "Couldn't make a new matrix because can't specify both :initial-element and :initial-contents"))))
+	 (view-lisp-ptr
+	   (view-instruction
+	    0
+	    0
+	    (second shape-rev)
+	    (car shape-rev)
+	    (second strides-rev)
+	    (car strides-rev)
+	    0
+	    0
+	    1
+	    1)))
+    (let ((result
+	    (make-matrix :active-facet-name default-facet
+			 :original-vec storage
+			 :original-view view-lisp-ptr
+			 :facets (make-hash-table)
+			 :dtype dtype
+			 :shape shape
+			 :view view
+			 :visible-shape shape
+			 :strides strides)))
+      (activate-facet! default-facet result)
+      result)))
+;; FacetのViewの更新どうするか？
+;; View -> view-lisp-ptrを更新
+;; view-lisp-ptr -> 各FacetのViewにTranscript
+(defun matrix-update-view! (matrix broadcast-options &rest parsed-view)
+  (with-slots ((projected-p projected-p)
+	       (visible-shape visible-shape)
+	       (broadcasts broadcasts)
+	       (view view))
+      matrix
+    (setf projected-p t
+	  view parsed-view
+	  broadcasts (if broadcast-options ;; If broadcast-options are specified, use it. Otherwise, keep using the old value.
+			 broadcast-options
+			 broadcasts))
+    ;; Recompute visible-shape
+    (setf visible-shape
+	  (compute-visible-and-broadcasted-shape
+	   (visible-shape (matrix-shape matrix) parsed-view)
+	   broadcasts))
+    matrix))
+
+;; 作成元のViewと同期してるか？
+(defun view-of-matrix (matrix broadcast-options &rest parsed-view)
+  ;; Creates a new instance 
+  (apply #'matrix-update-view! (copy-matrix matrix) broadcast-options parsed-view))
+
+(defun view-of-matrix-with-shape (base-matrix broadcast-options visible-shape &rest parsed-view)
+  (let ((view (copy-matrix base-matrix)))
+    (with-slots ((projected-p projected-p)
+		 (vs          visible-shape)
+		 (broadcasts  broadcasts)
+		 (viewp view))
+	view
+      (setf projected-p t
+	    vs visible-shape
+	    broadcasts (if broadcast-options
+			   broadcast-options
+			   broadcasts)
+	    viewp parsed-view)
+      view)))
+
+(defun from-foreign-pointer ())
+(defun reshape ())
+  
 
 ;; Accessors
 (declaim (ftype (function (matrix) index) dims))

@@ -521,6 +521,7 @@ Return: List (Consisted of strings which records error log)"
       (values subscript nil)))
 
 
+;; FixME: Optimize this function.
 (declaim (ftype (function (fixnum subscript-t) subscript-t) replace-tflist)
 	 (inline replace-tflist))
 (defun replace-tflist (orig-shape subscript)
@@ -908,35 +909,26 @@ subscript <- must not include indices"
 	       (list (map 'list #'add-n obj))
 	       (fixnum (the fixnum (+ obj increment)))
 	       (T (error "incf-view! the target axis possess this view object:~a but it couldn't be used with incf-view!. This is due to with-view was invaild, the axis you specified is a view of original matrix?" (nth axis (matrix-view matrix)))))))
-    (let ((new-view (add-n (nth axis (matrix-view matrix)))))
+    (let ((new-view (add-n (nth axis (matrix-view matrix))))
+	  (direction (matrix-direction matrix)))
 
+      ;; kokokara saikai
       (when (> (the fixnum
 		    (typecase new-view
 		      (fixnum new-view)
 		      (list (second new-view))))
 	       (the fixnum (nth axis (matrix-shape matrix))))
-	(view-indexing-error "incf-view! increments beyonds matrix'size"))
+	(view-indexing-error "incf-view! increments beyonds matrix's size"))
 
       (setf (nth axis (matrix-view matrix)) new-view)
 
       (when (= axis (- dims 2))
 	;; axis=M
-	(let ((foreign-ptr (matrix-view-foreign-ptr matrix))
-	      (lisp-ptr    (matrix-view-lisp-ptr matrix)))
-	  (when foreign-ptr
-	    (incf (foreign-slot-value foreign-ptr `(:struct ViewInstruction) 'offset2) increment))
-	  (when lisp-ptr
-	    (incf (viewinstruction-lisp-offset2 lisp-ptr) increment))))
-
+	(incf-slot-view matrix offset2 increment :direction direction))
+      
       (when (= axis (- dims 1))
 	;; axis=N
-	(let ((foreign-ptr (matrix-view-foreign-ptr matrix))
-	      (lisp-ptr    (matrix-view-lisp-ptr matrix)))
-	  (when foreign-ptr
-	    (incf (foreign-slot-value foreign-ptr `(:struct ViewInstruction) 'offset1) increment))
-	  (when lisp-ptr
-	    (incf (viewinstruction-lisp-offset1 lisp-ptr) increment))))
-
+	(incf-slot-view matrix offset1 increment :direction direction))
       nil)))
 
 @export
@@ -957,21 +949,13 @@ subscript <- must not include indices"
 
   (when (= axis (- dims 2))
     ;; axis=M
-    (let ((foreign-ptr (matrix-view-foreign-ptr matrix))
-	  (lisp-ptr    (matrix-view-lisp-ptr matrix)))
-      (when foreign-ptr
-	(setf (foreign-slot-value foreign-ptr `(:struct ViewInstruction) 'offset2) new-index))
-      (when lisp-ptr
-	(setf (viewinstruction-lisp-offset2 lisp-ptr) new-index))))
+    (let ((direction (matrix-direction matrix)))
+      (setf-slot-view matrix offset2 new-index :direction direction)))
 
   (when (= axis (- dims 1))
     ;; axis=N
-    (let ((foreign-ptr (matrix-view-foreign-ptr matrix))
-	  (lisp-ptr    (matrix-view-lisp-ptr matrix)))
-      (when foreign-ptr
-	(setf (foreign-slot-value foreign-ptr `(:struct ViewInstruction) 'offset1) new-index))
-      (when lisp-ptr
-	(setf (viewinstruction-lisp-offset1 lisp-ptr) new-index))))
+    (let ((direction (matrix-direction matrix)))
+      (setf-slot-view matrix offset1 new-index :direction direction)))
   
   nil)
 
@@ -1162,6 +1146,15 @@ Constraints: matrix.dims == mat-operated-with.dims, matrix.dims >= 2."
   (unless (or (eql direction :lisp)
 	      (eql direction :foreign))
     (error "Unknwon direction ~a. Available directions: :lisp :foreign" direction))
+
+  (if (eql direction :lisp)
+      (activate-facet! 'Simple-Array-Facet matrix)
+      (activate-facet! 'ForeignFacet matrix))
+
+  (when mat-operated-with
+    (if (eql direction :lisp)
+	(activate-facet! 'Simple-Array-Facet mat-operated-with)
+	(activate-facet! 'ForeignFacet mat-operated-with)))
   
   ;; Assert matrix doesn't have broadcast
   ;; check if matrix's subscript include :indices (not :broadcast)
@@ -1193,41 +1186,10 @@ Constraints: matrix.dims == mat-operated-with.dims, matrix.dims >= 2."
 	(broadcasts1 (if mat-operated-with
 			 (matrix-broadcasts mat-operated-with)
 			 nil))
-	(view-ptr1 (if (eql direction :foreign)
-		       (or
-			(matrix-view-foreign-ptr matrix)
-			(let ((ptr (foreign-alloc '(:struct ViewInstruction))))
-			  (initialize-views
-			   ptr
-			   matrix
-			   direction)
-			  ptr))
-		       (or
-			(matrix-view-lisp-ptr matrix)
-			(let ((ptr (view-instruction 0 0 0 0 0 0 0 0 0 0)))
-			  (initialize-views
-			   ptr
-			   matrix
-			   direction)
-			  ptr))))
+	(view-ptr1 (matrix-view-ptr matrix))
 	(view-ptr2 (when (not (null mat-operated-with))
-		     (if (eql direction :foreign)
-			 (or
-			  (matrix-view-foreign-ptr mat-operated-with)
-			  (let ((ptr (foreign-alloc '(:struct ViewInstruction))))
-			    (initialize-views
-			     ptr
-			     mat-operated-with
-			     direction)
-			    ptr))
-			 (or
-			  (matrix-view-lisp-ptr mat-operated-with)
-			  (let ((ptr (view-instruction 0 0 0 0 0 0 0 0 0 0)))
-			    (initialize-views
-			     ptr
-			     mat-operated-with
-			     direction)
-			    ptr))))))
+		     (matrix-view-ptr mat-operated-with))))
+    
     (labels ((explore-batch (total-offset  ;; Offsets considered broadcast
 			     actual-offset ;; No broadcast (for output)
 			     dim-indicator
@@ -1302,14 +1264,8 @@ Constraints: matrix.dims == mat-operated-with.dims, matrix.dims >= 2."
 		 ((= rest-dims 1)
 		  ;; Reshaping `(M) into `(1 M) and regard it as 2d MAT
 		  (error "Not Supported (TODO)")
-		  (setq dims `(1 ,@dims))
-		  (setq views `(t ,@views))
-		  (setq strides (calc-strides dims))
-		  (explore-batch
-		   0
-		   0
-		   0
-		   2))
+
+		  )
 		 (T (error "Scalar value fell through.")))
 	       nil))
       
@@ -1323,15 +1279,13 @@ Constraints: matrix.dims == mat-operated-with.dims, matrix.dims >= 2."
        (length dims))
 
       (inject-offsets view-ptr1 direction 0 0)
-      (if (eql direction :foreign)
-	  (setf (matrix-view-foreign-ptr matrix) view-ptr1)
-	  (setf (matrix-view-lisp-ptr    matrix) view-ptr1))
+      
+      (setf (matrix-view-ptr matrix) view-ptr1)
 
       (when (not (null mat-operated-with))
 	(inject-offsets view-ptr2 direction 0 0)
-	(if (eql direction :foreign)
-	    (setf (matrix-view-foreign-ptr mat-operated-with) view-ptr2)
-	    (setf (matrix-view-lisp-ptr    mat-operated-with) view-ptr2)))
+	(setf (matrix-view-ptr mat-operated-with) view-ptr2))
+	    
       nil)))
 
 ;; (disassemble #'matrix-visible-row-major-index)
@@ -1371,15 +1325,13 @@ Usage:
 			  (apply #'* (shape matrix))
 			  :element-type t ;; FixMe
 			  )))
-    (with-pointer-barricade
-      (call-with-visible-area
-       matrix
-       #'(lambda (x)
-	   (with-view-visible-strides (index x :absolute index1)
-	     (setf (aref returning-array index1)
-		   (mem-aref (matrix-vec matrix)
-			     (matrix-dtype matrix)
-			     index))))))
+    (call-with-visible-area
+     matrix
+     #'(lambda (x)
+	 (with-view-visible-strides (index x :absolute index1)
+	   (setf (aref returning-array index1)
+		 (aref (matrix-vec matrix) index))))
+     :direction :lisp)
     (if freep
 	(free-mat matrix))
     returning-array))

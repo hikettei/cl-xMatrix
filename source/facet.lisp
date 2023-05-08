@@ -1,6 +1,7 @@
 
 (in-package :cl-xmatrix)
 
+(annot:enable-annot-syntax)
 ;; Facet API Handling multiple facet of array.
 
 ;;
@@ -35,13 +36,130 @@
 ;; -> define-backend matrix (with generics)
 ;; Handling in multiple devices, and 微分可能に
 
-(defun cl-array->foreign-ptr (array dtype)
-  (declare (type simple-array array)
-	   (ignorable dtype))
-  #+sbcl
-  (sb-sys:vector-sap (sb-ext:array-storage-vector array))
-  #-(or sbcl)
-  (error "TODO")) ;;Add: Allocate Array -> CFFI
+
+(defclass Facet-Of-Matrix ()
+  ((original-mat :initarg :orig-mat :reader facet-orig-mat)
+   (vec :initarg :vec :reader facet-vec :writer write-facet-vec)
+   (view :initarg :view :reader facet-view :writer write-facet-view)))
 
 
+(defgeneric synchronize-vec  (facet array))
+(defgeneric synchronize-view (facet view))
+
+(defun synchronize-facet-and-matrix (facet &aux (orig-mat (facet-orig-mat facet)))
+  (when (null (matrix-active-facet orig-mat))
+    (activate-facet! (matrix-active-facet-name orig-mat)
+		     orig-mat)))
+
+(defun synchronize-facet (matrix)
+  (when (null (matrix-active-facet matrix))
+    (activate-facet! (matrix-active-facet-name matrix)
+		     matrix)))
+
+(defmethod initialize-instance :after ((facet Facet-Of-Matrix) &key &allow-other-keys)
+  (with-slots ((vec vec) (view view)) facet
+    (synchronize-vec  facet vec)
+    (synchronize-view facet view)))
+
+(defclass Simple-Array-Facet (Facet-Of-Matrix)
+  ((original-mat :initarg :orig-mat :reader facet-orig-mat)
+   (vec  :initarg :vec  :reader facet-vec  :writer write-facet-vec :type simple-array)
+   (view :initarg :view :reader facet-view :writer write-facet-view :type viewinstruction-lisp))
+  (:documentation "An fundamental facet of Lisp-Array (simple-array)"))
+
+(defmethod synchronize-vec ((facet Simple-Array-Facet) array)
+  (write-facet-vec array facet))
+
+(defmethod synchronize-view ((facet Simple-Array-Facet) view)
+  (write-facet-view view facet))
+
+
+#+sbcl(progn
+(defclass ForeignFacet (Facet-Of-Matrix)
+  ((original-mat :initarg :orig-mat :reader facet-orig-mat)
+   (vec :initarg :vec :reader facet-vec :writer write-facet-vec)
+   (view :initarg :view :reader facet-view :writer write-facet-view))
+  (:documentation "An fundamental facet of CFFI Array. If cl-xMatrix is working on SBCL, CFFI pointer and Lisp-Array are automatically synchronized, otherwise synchronized manually."))
+
+(defmethod synchronize-vec ((facet ForeignFacet) array)
+  (write-facet-vec (cl-array->foreign-ptr
+		    (facet-vec facet)
+		    (array-total-size array)
+		    (lisp-type->dtype (array-element-type array)))
+		   facet))
+
+(defmethod synchronize-view ((facet ForeignFacet) view)
+  (write-facet-view
+   (let ((foreign-view (foreign-alloc '(:struct ViewInstruction))))
+     (initialize-views foreign-view (facet-orig-mat facet) :foreign)
+     foreign-view)
+   facet)))
+
+;; #-sbcl <- TODO
+
+(defun make-facet (matrix facet-name storage view)
+  (make-instance facet-name :orig-mat matrix :vec storage :view view))
+
+
+@export
+(defun activate-facet! (facet-name matrix &key (if-doesnt-exist :create))
+  "TODO: DOC"
+  (declare (type (and keyword (member :create :error)) if-doesnt-exist)
+	   (type matrix matrix))
+
+  (let ((target-facet (or
+		       (gethash facet-name (matrix-facets matrix))
+		       (case if-doesnt-exist
+			 (:create
+			  (setf (gethash facet-name (matrix-facets matrix))
+				(make-facet matrix facet-name (matrix-original-vec matrix) (matrix-original-view matrix))))
+			 (:error
+			  (error "FacetNotFound")
+			  ;; Add Conditions: FacetNotFound
+			  )))))
+    (setf (matrix-active-facet matrix) target-facet)))
+
+@export
+(defun matrix-vec (matrix)
+  ""
+  (declare (type matrix matrix))
+  (let ((active-facet (matrix-active-facet matrix)))
+    (facet-vec active-facet)))
+
+@export
+(defun matrix-view-ptr (matrix)
+  ""
+  (declare (type matrix matrix))
+  (let ((active-facet (matrix-active-facet matrix)))
+    (facet-view active-facet)))
+
+(defun (setf matrix-view-ptr) (value matrix)
+  (declare (type matrix matrix))
+  (let ((active-facet (matrix-active-facet matrix)))
+    (write-facet-view value active-facet)))
+
+@export
+(defmacro slot-view (matrix name &key (direction :lisp))
+  "TODO: DOC"
+  `(if (eql ,direction :lisp)
+      (slot-value (matrix-view-ptr ,matrix) ',name)
+      (foreign-slot-value (matrix-view-ptr ,matrix) '(:struct ViewInstruction) ',name)))
+
+(defmacro incf-slot-view (matrix name incr &key (direction :lisp))
+  "TODO: DOC"
+  `(if (eql ,direction :lisp)
+      (incf (the fixnum (slot-value (matrix-view-ptr ,matrix) ',name)) ,incr)
+      (incf (the fixnum (foreign-slot-value (matrix-view-ptr ,matrix) '(:struct ViewInstruction) ',name)) ,incr)))
+
+(defmacro setf-slot-view (matrix name value &key (direction :lisp))
+  "TODO: DOC"
+  `(if (eql ,direction :lisp)
+      (setf (slot-value (matrix-view-ptr ,matrix) ',name) ,value)
+      (setf (foreign-slot-value (matrix-view-ptr ,matrix) '(:struct ViewInstruction) ',name) ,value)))
+
+@export
+(defun matrix-direction (matrix)
+  (typecase (matrix-view-ptr matrix)
+    (ViewInstruction-Lisp :lisp)
+    (t :foreign)))
 
