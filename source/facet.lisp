@@ -126,17 +126,19 @@
   (let ((active-facet (matrix-active-facet matrix)))
     (facet-vec active-facet)))
 
+
+;; 基本的に、incf-view!などで変更するのは、orig-view
+;; matrix-view-ptrが呼び出された時、MOVEする。
 @export
 (defun matrix-view-ptr (matrix)
   ""
   (declare (type matrix matrix))
   (let ((active-facet (matrix-active-facet matrix)))
-    (facet-view active-facet)))
-
-(defun (setf matrix-view-ptr) (value matrix)
-  (declare (type matrix matrix))
-  (let ((active-facet (matrix-active-facet matrix)))
-    (write-facet-view value active-facet)))
+    (if (eql (matrix-direction matrix) :lisp)
+	(copy-viewinstruction-lisp (matrix-original-view matrix))
+	(let ((ptr (facet-view active-facet)))
+	  (transcript-view (matrix-original-view matrix) ptr)
+	  ptr))))
 
 @export
 (defmacro slot-view (matrix name &key (direction :lisp))

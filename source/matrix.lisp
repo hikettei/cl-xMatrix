@@ -366,11 +366,12 @@ Example:
     (initialize-views view-struct matrix :lisp)
     matrix))
 
-;; 作成元のViewと同期してるか？
 (defun view-of-matrix (matrix broadcast-options &rest parsed-view)
   ;; Creates a new instance 
   (apply #'matrix-update-view! (copy-matrix matrix) broadcast-options parsed-view))
 
+;; Viewの同期がおかしい気がする。
+;; FacetのViewの同期する。
 (defun view-of-matrix-with-shape (base-matrix broadcast-options visible-shape &rest parsed-view)
   (let ((view (copy-matrix base-matrix)))
     (with-slots ((projected-p projected-p)
@@ -384,7 +385,6 @@ Example:
 			   broadcast-options
 			   broadcasts)
 	    viewp parsed-view)
-
       
       (setf (matrix-original-view view) (view-instruction 0 0 0 0 0 0 0 0 0 0))
       (initialize-views (matrix-original-view view) view :lisp)
@@ -392,7 +392,6 @@ Example:
 
 (defun from-foreign-pointer ())
 (defun reshape ())
-  
 
 ;; Accessors
 (declaim (ftype (function (matrix) index) dims))

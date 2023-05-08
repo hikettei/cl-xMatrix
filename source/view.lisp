@@ -909,8 +909,7 @@ subscript <- must not include indices"
 	       (list (map 'list #'add-n obj))
 	       (fixnum (the fixnum (+ obj increment)))
 	       (T (error "incf-view! the target axis possess this view object:~a but it couldn't be used with incf-view!. This is due to with-view was invaild, the axis you specified is a view of original matrix?" (nth axis (matrix-view matrix)))))))
-    (let ((new-view (add-n (nth axis (matrix-view matrix))))
-	  (direction (matrix-direction matrix)))
+    (let ((new-view (add-n (nth axis (matrix-view matrix)))))
 
       ;; kokokara saikai
       (when (> (the fixnum
@@ -924,11 +923,11 @@ subscript <- must not include indices"
 
       (when (= axis (- dims 2))
 	;; axis=M
-	(incf-slot-view matrix offset2 increment :direction direction))
+	(incf (viewinstruction-lisp-offset2 (matrix-original-view matrix)) increment))
       
       (when (= axis (- dims 1))
 	;; axis=N
-	(incf-slot-view matrix offset1 increment :direction direction))
+	(incf (viewinstruction-lisp-offset1 (matrix-original-view matrix)) increment))
       nil)))
 
 @export
@@ -949,14 +948,11 @@ subscript <- must not include indices"
 
   (when (= axis (- dims 2))
     ;; axis=M
-    (let ((direction (matrix-direction matrix)))
-      (setf-slot-view matrix offset2 new-index :direction direction)))
+    (incf (viewinstruction-lisp-offset2 (matrix-original-view matrix)) new-index))
 
   (when (= axis (- dims 1))
     ;; axis=N
-    (let ((direction (matrix-direction matrix)))
-      (setf-slot-view matrix offset1 new-index :direction direction)))
-  
+    (incf (viewinstruction-lisp-offset1 (matrix-original-view matrix)) new-index))
   nil)
 
 
