@@ -1189,6 +1189,7 @@ Constraints: matrix.dims == mat-operated-with.dims, matrix.dims >= 2."
 	(view-ptr1 (matrix-view-ptr matrix))
 	(view-ptr2 (when (not (null mat-operated-with))
 		     (matrix-view-ptr mat-operated-with))))
+
     
     (labels ((explore-batch (total-offset  ;; Offsets considered broadcast
 			     actual-offset ;; No broadcast (for output)

@@ -343,11 +343,13 @@ Example:
 ;; FacetのViewの更新どうするか？
 ;; View -> view-lisp-ptrを更新
 ;; view-lisp-ptr -> 各FacetのViewにTranscript
+;; Side Effects
 (defun matrix-update-view! (matrix broadcast-options &rest parsed-view)
   (with-slots ((projected-p projected-p)
 	       (visible-shape visible-shape)
 	       (broadcasts broadcasts)
-	       (view view))
+	       (view view)
+	       (view-struct original-view))
       matrix
     (setf projected-p t
 	  view parsed-view
@@ -359,6 +361,9 @@ Example:
 	  (compute-visible-and-broadcasted-shape
 	   (visible-shape (matrix-shape matrix) parsed-view)
 	   broadcasts))
+
+    (setf view-struct (view-instruction 0 0 0 0 0 0 0 0 0 0))
+    (initialize-views view-struct matrix :lisp)
     matrix))
 
 ;; 作成元のViewと同期してるか？
@@ -379,6 +384,10 @@ Example:
 			   broadcast-options
 			   broadcasts)
 	    viewp parsed-view)
+
+      
+      (setf (matrix-original-view view) (view-instruction 0 0 0 0 0 0 0 0 0 0))
+      (initialize-views (matrix-original-view view) view :lisp)
       view)))
 
 (defun from-foreign-pointer ())
