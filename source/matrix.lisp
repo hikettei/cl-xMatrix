@@ -251,7 +251,8 @@ Example:
 ;; Each facet can be switched with (activate-facet! matrix ~) or with-facet macro.
 ;;
 
-(defstruct (Matrix  (:print-function print-matrix))
+(defstruct (Matrix  (:print-function print-matrix)
+		    (:copier copy-matrix-structure))
   (active-facet-name 'ForeignFacet :type symbol)
   (freep
    #+sbcl t
@@ -284,6 +285,19 @@ Example:
   ;; Offset APIs (used in the iters located in the deepest)
   (created-offsets nil :type list)
   (offset            0 :type fixnum))
+
+(defun copy-matrix (matrix)
+  (make-matrix
+   :active-facet-name (matrix-active-facet-name matrix)
+   :freep (matrix-freep matrix)
+   :projected-p (matrix-projected-p matrix)
+   :original-vec (matrix-original-vec matrix)
+   :original-view (matrix-original-view matrix)
+   :facets (matrix-facets matrix)
+   :active-facet (matrix-active-facet matrix)
+   :dtype (matrix-dtype matrix)
+   :shape (matrix-shape matrix)
+   :strides (matrix-strides matrix)))
 
 @export
 (defun matrix (shape &key (dtype :float) (initial-contents nil) (initial-element nil) (default-facet 'ForeignFacet))
@@ -370,8 +384,7 @@ Example:
   ;; Creates a new instance 
   (apply #'matrix-update-view! (copy-matrix matrix) broadcast-options parsed-view))
 
-;; Viewの同期がおかしい気がする。
-;; FacetのViewの同期する。
+
 (defun view-of-matrix-with-shape (base-matrix broadcast-options visible-shape &rest parsed-view)
   (let ((view (copy-matrix base-matrix)))
     (with-slots ((projected-p projected-p)
