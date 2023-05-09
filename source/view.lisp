@@ -1277,11 +1277,8 @@ Constraints: matrix.dims == mat-operated-with.dims, matrix.dims >= 2."
 
       (inject-offsets view-ptr1 direction 0 0)
       
-      (setf (matrix-view-ptr matrix) view-ptr1)
-
       (when (not (null mat-operated-with))
-	(inject-offsets view-ptr2 direction 0 0)
-	(setf (matrix-view-ptr mat-operated-with) view-ptr2))
+	(inject-offsets view-ptr2 direction 0 0))
 	    
       nil)))
 

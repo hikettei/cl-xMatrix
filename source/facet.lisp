@@ -161,7 +161,14 @@
 
 @export
 (defun matrix-direction (matrix)
-  (typecase (matrix-view-ptr matrix)
+  (typecase (facet-view (matrix-active-facet matrix))
     (ViewInstruction-Lisp :lisp)
     (t :foreign)))
 
+
+;; Facet APIs
+
+
+(defmacro with-facet (var (matrix facet-name))
+
+  )
