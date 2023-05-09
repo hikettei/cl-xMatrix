@@ -22,12 +22,11 @@
     (declare (optimize (safety 0)))
     (call-with-facet-and-visible-area
      matrix
-     :foreign
+     :lisp
      #'(lambda (x)
 	 (with-view-object (index x)
 	   (incf total
-		 (mem-aref
-		  (matrix-vec matrix) (matrix-dtype matrix) index)))))
+		 (1d-mat-aref matrix index)))))
     total))
 
 (defun %sum (matrix &key (axis 0) (out nil))
@@ -53,8 +52,10 @@ todo: check out's dimensions/error check"
 (declaim (inline 1d-mat-aref))
 (defun 1d-mat-aref (matrix index)
   ""
+  (declare (optimize (speed 3)))
   (with-facet (matrix (matrix 'backing-array))
-    (aref (the (simple-array t (*)) (matrix-vec matrix)) index)))
+    ;; Fixme: can't optimize
+    (aref (matrix-vec matrix) index)))
 
 (defun (setf 1d-mat-aref) (value matrix index)
   "To Add: TypeCheck"
