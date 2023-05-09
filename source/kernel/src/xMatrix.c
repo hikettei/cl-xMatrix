@@ -198,10 +198,10 @@ void fp32_abs(const struct ViewInstruction* view, single_float* vec) {
 #define WITH_ELWISE_VIEW(view, index, element_wise_operation)		\
   do {									\
     for (int mi = 0; mi < view->m; mi++) {				\
-      int tmp = view->offset + mi * view->stride2 * view->broadcast2;	\
+      int tmp = view->offset + (mi + view->offset2) * view->stride2 * view->broadcast2;	\
       if (view->broadcast1 == 1) {					\
 	for (int ni = 0; ni < view->n; ni++) {				\
-	  int index = tmp + ni;						\
+	  int index = tmp + ni + view->offset1;				\
 	  (element_wise_operation);					\
 	}								\
       } else {								\

@@ -1143,6 +1143,8 @@ Constraints: matrix.dims == mat-operated-with.dims, matrix.dims >= 2."
 	      (eql direction :foreign))
     (error "Unknwon direction ~a. Available directions: :lisp :foreign" direction))
 
+  ;; Fix here later.
+
   (if (eql direction :lisp)
       (activate-facet! 'Simple-Array-Facet matrix)
       (activate-facet! 'ForeignFacet matrix))
@@ -1151,8 +1153,9 @@ Constraints: matrix.dims == mat-operated-with.dims, matrix.dims >= 2."
     (if (eql direction :lisp)
 	(activate-facet! 'Simple-Array-Facet mat-operated-with)
 	(activate-facet! 'ForeignFacet mat-operated-with)))
+
   
-  ;; Assert matrix doesn't have broadcast
+  ;; check matrix doesn't have broadcast
   ;; check if matrix's subscript include :indices (not :broadcast)
   
   (when (let ((op (matrix-external-operation matrix)))
@@ -1185,7 +1188,7 @@ Constraints: matrix.dims == mat-operated-with.dims, matrix.dims >= 2."
 	(view-ptr1 (matrix-view-ptr matrix))
 	(view-ptr2 (when (not (null mat-operated-with))
 		     (matrix-view-ptr mat-operated-with))))
-
+    
     
     (labels ((explore-batch (total-offset  ;; Offsets considered broadcast
 			     actual-offset ;; No broadcast (for output)
@@ -1346,3 +1349,4 @@ Usage:
    (allocate-mat-with-facet (apply #'* shape) obj dtype direction)
    shape
    :dtype dtype))
+
