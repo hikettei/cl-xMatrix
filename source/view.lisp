@@ -1146,13 +1146,13 @@ Constraints: matrix.dims == mat-operated-with.dims, matrix.dims >= 2."
   ;; Fix here later.
 
   (if (eql direction :lisp)
-      (activate-facet! 'Simple-Array-Facet matrix)
-      (activate-facet! 'ForeignFacet matrix))
+      (activate-facet! matrix 'Simple-Array-Facet)
+      (activate-facet! matrix 'ForeignFacet))
 
   (when mat-operated-with
     (if (eql direction :lisp)
-	(activate-facet! 'Simple-Array-Facet mat-operated-with)
-	(activate-facet! 'ForeignFacet mat-operated-with)))
+	(activate-facet! mat-operated-with 'Simple-Array-Facet)
+	(activate-facet! mat-operated-with 'ForeignFacet)))
 
   
   ;; check matrix doesn't have broadcast

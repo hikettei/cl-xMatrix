@@ -48,13 +48,13 @@
 
 (defun synchronize-facet-and-matrix (facet &aux (orig-mat (facet-orig-mat facet)))
   (when (null (matrix-active-facet orig-mat))
-    (activate-facet! (matrix-active-facet-name orig-mat)
-		     orig-mat)))
+    (activate-facet! orig-mat
+		     (matrix-active-facet-name orig-mat))))
 
 (defun synchronize-facet (matrix)
   (when (null (matrix-active-facet matrix))
-    (activate-facet! (matrix-active-facet-name matrix)
-		     matrix)))
+    (activate-facet! matrix
+		     (matrix-active-facet-name matrix))))
 
 (defmethod initialize-instance :after ((facet Facet-Of-Matrix) &key &allow-other-keys)
   (with-slots ((vec vec) (view view)) facet
@@ -102,7 +102,7 @@
 
 
 @export
-(defun activate-facet! (facet-name matrix &key (if-doesnt-exist :create))
+(defun activate-facet! (matrix facet-name &key (if-doesnt-exist :create))
   "TODO: DOC"
   (declare (type (and keyword (member :create :error)) if-doesnt-exist)
 	   (type matrix matrix))
@@ -127,8 +127,6 @@
     (facet-vec active-facet)))
 
 
-;; 基本的に、incf-view!などで変更するのは、orig-view
-;; matrix-view-ptrが呼び出された時、MOVEする。
 @export
 (defun matrix-view-ptr (matrix)
   ""
@@ -165,10 +163,5 @@
     (ViewInstruction-Lisp :lisp)
     (t :foreign)))
 
-
 ;; Facet APIs
-
-
-(defmacro with-facet (var (matrix facet-name))
-
-  )
+;; TODO: Simple-Array <-> ForeignArray, Quantizing MatrixあたりのAPIをまとめておく。

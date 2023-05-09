@@ -229,7 +229,7 @@ Example:
   #+sbcl
   (sb-sys:vector-sap (sb-ext:array-storage-vector array))
   #-(or sbcl)
-  (allocate-mat size :dtype dtype)) ;; Error
+  (allocate-mat size :dtype dtype)) ;; TODO: Error
 
 ;; visible-vec
 
@@ -338,7 +338,7 @@ Example:
 			 :view view
 			 :visible-shape shape
 			 :strides strides)))
-      (activate-facet! default-facet result)
+      (activate-facet! result default-facet)
       result)))
 ;; FacetのViewの更新どうするか？
 ;; View -> view-lisp-ptrを更新
@@ -390,8 +390,49 @@ Example:
       (initialize-views (matrix-original-view view) view :lisp)
       view)))
 
-(defun from-foreign-pointer ())
-(defun reshape ())
+(defun matrix-from-array (storage
+			  shape
+			  &key
+			    (dtype :float))
+  (let* ((shape (if (= (length shape) 1)
+		    `(1 ,@shape)
+		    shape))
+	 (view        (loop for m in shape collect t))
+	 (strides     (calc-strides shape))
+	 (strides-rev (reverse strides))
+	 (shape-rev   (reverse shape))
+	 (view-lisp-ptr
+	   (view-instruction
+	    0
+	    0
+	    (second shape-rev)
+	    (car shape-rev)
+	    (second strides-rev)
+	    (car strides-rev)
+	    0
+	    0
+	    1
+	    1)))
+    (let ((result (make-matrix :active-facet-name 'ForeignFacet
+			       :original-vec storage
+			       :original-view view-lisp-ptr
+			       :facets (make-hash-table)
+			       :dtype dtype
+			       :shape shape
+			       :view view
+			       :visible-shape shape
+			       :strides strides)))
+      (activate-facet! result 'ForeignFacet)
+      result)))
+
+(defun reshape (base-matrix new-shape)
+  "Resets all view object created
+TODO: Type check, -1 args etc..."
+  (matrix-from-array
+   (matrix-original-vec base-matrix)
+   new-shape
+   :dtype
+   (matrix-dtype base-matrix)))
 
 ;; Accessors
 (declaim (ftype (function (matrix) index) dims))
