@@ -563,26 +563,6 @@ TODO: Type check, -1 args etc..."
 		(free-mat m)))
 	*pinned-matrices*))))
 
-@export
-(defmacro with-facet ((var matrix &key (direction 'simple-array))
-		      &body body)
-  "TMP"
-  (case direction
-    (:simple-array
-     `(let ((,var (convert-into-lisp-array ,matrix :freep nil)))
-	(declare (type (simple-array t (*)) ,var))
-	,@body))
-    (T
-     (error "with-facet: Unknown direction: ~a" direction))))
-
-@export
-(defmacro with-facets ((&rest forms) &body body)
-  (labels ((expand-facet (binding-specs body)
-	     (if (endp binding-specs)
-		 `(progn ,@body)
-		 `(with-facet ,(first binding-specs)
-		    ,(expand-facet (cdr binding-specs) body)))))
-    (expand-facet forms body)))
 
 (defparameter *unsafe-mode* nil "Ignores type-check")
 @export

@@ -73,6 +73,18 @@
 (defmethod synchronize-view ((facet Simple-Array-Facet) view)
   (write-facet-view view facet))
 
+(defclass backing-array (Facet-Of-Matrix)
+  ((original-mat :initarg :orig-mat :reader facet-orig-mat)
+   (vec  :initarg :vec  :reader facet-vec  :writer write-facet-vec :type simple-array)
+   (view :initarg :view :reader facet-view :writer write-facet-view :type viewinstruction-lisp))
+  (:documentation "An alias for Simple-Array-Facet"))
+
+(defmethod synchronize-vec ((facet backing-array) array)
+  (write-facet-vec array facet))
+
+(defmethod synchronize-view ((facet backing-array) view)
+  (write-facet-view view facet))
+
 
 #+sbcl(progn
 (defclass ForeignFacet (Facet-Of-Matrix)
@@ -164,4 +176,27 @@
     (t :foreign)))
 
 ;; Facet APIs
-;; TODO: Simple-Array <-> ForeignArray, Quantizing MatrixあたりのAPIをまとめておく。
+@export
+(defun activate-facet (matrix facet-name &key (if-doesnt-exist :create) &aux (new-mat (copy-matrix matrix)))
+  "TODO: DOC"
+  (activate-facet! new-mat facet-name :if-doesnt-exist if-doesnt-exist)
+  new-mat)
+
+@export
+(defmacro with-facet ((var
+		       (matrix facet-name &key (if-doesnt-exist :create)))
+		      &body body)
+  "TODO: DOC"
+  `(let ((,var (activate-facet ,matrix ,facet-name :if-doesnt-exist ,if-doesnt-exist)))
+     ,@body))
+
+@export
+(defmacro with-facets ((&rest forms) &body body)
+  "TODO:DOC"
+  (labels ((expand-facets (binding-specs body)
+	     (if (endp binding-specs)
+		 `(progn ,@body)
+		 `(with-facet ,(first binding-specs)
+		    ,(expand-facets (cdr binding-specs) body)))))
+    (expand-facets forms body)))
+

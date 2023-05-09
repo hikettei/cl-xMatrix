@@ -145,8 +145,9 @@
 		    ,docstring
 		    (declare (optimize (speed 3) (safety 0))
 			     (type matrix matrix))
-		    (call-with-visible-area
+		    (call-with-facet-and-visible-area
 		     matrix
+		     :foreign
 		     #'(lambda (view)
 			 (dtypecase matrix
 			   (:float
@@ -156,8 +157,7 @@
 			   (:uint8
 			    (funcall #',(symb 'fp8- name) view (matrix-vec matrix)))
 			   (:int
-			    (funcall #',(symb 'int- name) view (matrix-vec matrix)))))
-		     :direction :foreign)
+			    (funcall #',(symb 'int- name) view (matrix-vec matrix))))))
 		    matrix))))
 
     (define-elwise-1dfunc %abs

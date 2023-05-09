@@ -20,12 +20,14 @@
 (defun %sumup (matrix)
   (let ((total 0.0))
     (declare (optimize (safety 0)))
-    (call-with-visible-area
-     matrix #'(lambda (x)
-		(with-view-object (index x)
-		  (incf total
-		   (mem-aref
-		    (matrix-vec matrix) (matrix-dtype matrix) index)))))
+    (call-with-facet-and-visible-area
+     matrix
+     :foreign
+     #'(lambda (x)
+	 (with-view-object (index x)
+	   (incf total
+		 (mem-aref
+		  (matrix-vec matrix) (matrix-dtype matrix) index)))))
     total))
 
 (defun %sum (matrix &key (axis 0) (out nil))
@@ -51,11 +53,13 @@ todo: check out's dimensions/error check"
 (declaim (inline 1d-mat-aref))
 (defun 1d-mat-aref (matrix index)
   ""
-  (mem-aref (matrix-vec matrix) (matrix-dtype matrix) index))
+  (with-facet (matrix (matrix 'backing-array))
+    (aref (the (simple-array t (*)) (matrix-vec matrix)) index)))
 
 (defun (setf 1d-mat-aref) (value matrix index)
   "To Add: TypeCheck"
-  (setf (mem-aref (matrix-vec matrix) (matrix-dtype matrix) index) value))
+  (with-facet (matrix (matrix 'backing-array))
+    (setf (aref (matrix-vec matrix) index) value)))
 
 ;; (defun add (), alias for %scalar-add %broadcast-add %adds, +
 ;; m+= instead of add is more intuitive naming?
@@ -65,8 +69,9 @@ todo: check out's dimensions/error check"
   (declare (optimize (speed 3) (safety 0))
 	   (type matrix matrix)
 	   (type function function))
-  (call-with-visible-area
+  (call-with-facet-and-visible-area
    matrix
+   :lisp
    #'(lambda (view)
        (with-view-object (i view)
 	 (setf (1d-mat-aref matrix i) (funcall function (1d-mat-aref matrix i))))))
@@ -78,8 +83,9 @@ todo: check out's dimensions/error check"
   (declare (optimize (speed 3) (safety 0))
 	   (type matrix matrix)
 	   (type function function))
-  (call-with-visible-area
+  (call-with-facet-and-visible-area
    matrix
+   :lisp
    #'(lambda (view)
        (with-view-object (i view)
 	 (setf (1d-mat-aref matrix i) (funcall function i)))))
@@ -94,8 +100,9 @@ todo: check out's dimensions/error check"
   (let ((result (matrix (shape matrix) :dtype (dtype matrix)))
 	(true-i  (coerce-to-mat-dtype 1 matrix))
 	(false-i (coerce-to-mat-dtype 0 matrix)))
-    (call-with-visible-area
+    (call-with-facet-and-visible-area
      matrix
+     :lisp
      #'(lambda (view)
 	 (with-view-object (i view :absolute ri)
 	   (setf (1d-mat-aref result ri)
@@ -113,8 +120,9 @@ todo: check out's dimensions/error check"
   (let ((result (matrix (shape matrix) :dtype (dtype matrix)))
 	(true-i  (coerce-to-mat-dtype 1 matrix))
 	(false-i (coerce-to-mat-dtype 0 matrix)))
-    (call-with-visible-area
+    (call-with-facet-and-visible-area
      matrix
+     :lisp
      #'(lambda (view1 view2)
 	 (with-two-of-views ((i view1) (k view2) :absolute ri)
 	   (setf (1d-mat-aref result ri)
@@ -164,8 +172,9 @@ todo: check out's dimensions/error check"
   (assert-dtype matrix out)
   (assure-dimensions matrix out)
   
-  (call-with-visible-area
+  (call-with-facet-and-visible-area
    matrix
+   :foreign
    #'(lambda (x-view x1-view)
        (dtypecase matrix
 	 (:float
@@ -176,8 +185,7 @@ todo: check out's dimensions/error check"
 	  (fp32-scalar-greater-than x-view x1-view (matrix-vec matrix) (matrix-vec out) scalar))
 	 (:int
 	  (fp32-scalar-greater-than x-view x1-view (matrix-vec matrix) (matrix-vec out) scalar))))
-   :mat-operated-with out
-   :direction :foreign)
+   :mat-operated-with out)
   out)
 
 @export
@@ -193,8 +201,9 @@ todo: check out's dimensions/error check"
   (assert-dtype matrix out)
   (assure-dimensions matrix out)
   
-  (call-with-visible-area
+  (call-with-facet-and-visible-area
    matrix
+   :foreign
    #'(lambda (x-view x1-view)
        (dtypecase matrix
 	 (:float
@@ -205,8 +214,7 @@ todo: check out's dimensions/error check"
 	  (fp32-scalar-less-than x-view x1-view (matrix-vec matrix) (matrix-vec out) scalar))
 	 (:int
 	  (fp32-scalar-less-than x-view x1-view (matrix-vec matrix) (matrix-vec out) scalar))))
-   :mat-operated-with out
-   :direction :foreign)
+   :mat-operated-with out)
   out)
 
 @export
@@ -222,8 +230,9 @@ todo: check out's dimensions/error check"
   (assert-dtype matrix out)
   (assure-dimensions matrix out)
   
-  (call-with-visible-area
+  (call-with-facet-and-visible-area
    matrix
+   :foreign
    #'(lambda (x-view x1-view)
        (dtypecase matrix
 	 (:float
@@ -234,8 +243,7 @@ todo: check out's dimensions/error check"
 	  (fp32-scalar-greater-than-eq x-view x1-view (matrix-vec matrix) (matrix-vec out) scalar))
 	 (:int
 	  (fp32-scalar-greater-than-eq x-view x1-view (matrix-vec matrix) (matrix-vec out) scalar))))
-   :mat-operated-with out
-   :direction :foreign)
+   :mat-operated-with out)
   out)
 
 
@@ -252,8 +260,9 @@ todo: check out's dimensions/error check"
   (assert-dtype matrix out)
   (assure-dimensions matrix out)
   
-  (call-with-visible-area
+  (call-with-facet-and-visible-area
    matrix
+   :foreign
    #'(lambda (x-view x1-view)
        (dtypecase matrix
 	 (:float
@@ -264,7 +273,6 @@ todo: check out's dimensions/error check"
 	  (fp32-scalar-less-than-eq x-view x1-view (matrix-vec matrix) (matrix-vec out) scalar))
 	 (:int
 	  (fp32-scalar-less-than-eq x-view x1-view (matrix-vec matrix) (matrix-vec out) scalar))))
-   :mat-operated-with out
-   :direction :foreign)
+   :mat-operated-with out)
   out)
 

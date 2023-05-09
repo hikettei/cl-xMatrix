@@ -67,9 +67,10 @@ Return:
 
   (assert-dtype matrix matrix1)
   (assure-dimensions matrix matrix1)
-  
-  (call-with-visible-area
+
+  (call-with-facet-and-visible-area
    matrix
+   :foreign
    #'(lambda (x-view x1-view)
        (dtypecase matrix
 	 (:float
@@ -80,8 +81,7 @@ Return:
 	  (fp8-add x-view x1-view (matrix-vec matrix) (matrix-vec matrix1)))
 	 (:int
 	  (int-add x-view x1-view (matrix-vec matrix) (matrix-vec matrix1)))))
-   :mat-operated-with matrix1
-   :direction :foreign)
+   :mat-operated-with matrix1)
   matrix)
 
 
@@ -101,8 +101,9 @@ Return:
 
   (assert-dtype matrix matrix1)
   (assure-dimensions matrix matrix1)
-  (call-with-visible-area
+  (call-with-facet-and-visible-area
    matrix
+   :foreign
    #'(lambda (x-view x1-view)
        (dtypecase matrix
 	 (:float
@@ -113,8 +114,7 @@ Return:
 	  (fp8-sub  x-view x1-view (matrix-vec matrix) (matrix-vec matrix1)))
 	 (:int
 	  (int-sub  x-view x1-view (matrix-vec matrix) (matrix-vec matrix1)))))
-   :mat-operated-with matrix1
-   :direction :foreign)
+   :mat-operated-with matrix1)
   matrix)
 
 
@@ -135,8 +135,9 @@ Return:
   (assert-dtype matrix matrix1)
   (assure-dimensions matrix matrix1)
   
-  (call-with-visible-area
+  (call-with-facet-and-visible-area
    matrix
+   :foreign
    #'(lambda (x-view x1-view)
        (dtypecase matrix
 	 (:float
@@ -147,8 +148,7 @@ Return:
 	  (fp8-mul  x-view x1-view (matrix-vec matrix) (matrix-vec matrix1)))
 	 (:int
 	  (int-mul  x-view x1-view (matrix-vec matrix) (matrix-vec matrix1)))))
-   :mat-operated-with matrix1
-   :direction :foreign)
+   :mat-operated-with matrix1)
   matrix)
 
 
@@ -169,8 +169,9 @@ Return:
   (assert-dtype matrix matrix1)
   (assure-dimensions matrix matrix1)
   
-  (call-with-visible-area
+  (call-with-facet-and-visible-area
    matrix
+   :foreign
    #'(lambda (x-view x1-view)
        (dtypecase matrix
 	 (:float
@@ -181,8 +182,7 @@ Return:
 	  (fp8-div  x-view x1-view (matrix-vec matrix) (matrix-vec matrix1)))
 	 (:int
 	  (int-div  x-view x1-view (matrix-vec matrix) (matrix-vec matrix1)))))
-   :mat-operated-with matrix1
-   :direction :foreign)
+   :mat-operated-with matrix1)
   matrix)
 
 
@@ -203,8 +203,9 @@ Return:
   (assert-dtype matrix matrix1)
   (assure-dimensions matrix matrix1)
   
-  (call-with-visible-area
+  (call-with-facet-and-visible-area
    matrix
+   :foreign
    #'(lambda (x-view x1-view)
        (dtypecase matrix
 	 (:float
@@ -212,11 +213,10 @@ Return:
 	 (:uint16
 	  (fp16-copy x-view x1-view (matrix-vec matrix) (matrix-vec matrix1)))
 	 (:uint8
-	  (fp8-copy x-view x1-view (matrix-vec matrix) (matrix-vec matrix1)))
+	  (fp8-copy x-view x1-view  (matrix-vec matrix) (matrix-vec matrix1)))
 	 (:int
-	  (int-copy x-view x1-view (matrix-vec matrix) (matrix-vec matrix1)))))
-   :mat-operated-with matrix1
-   :direction :foreign)
+	  (int-copy x-view x1-view  (matrix-vec matrix) (matrix-vec matrix1)))))
+   :mat-operated-with matrix1)
   matrix1)
 
 
@@ -283,18 +283,19 @@ SideEffects:
 Return:
   - modified matrix."
   (declare (optimize (speed 3) (safety 0)))
-  (call-with-visible-area
-   matrix #'(lambda (x)
-	      (dtypecase matrix
-		(:float
-		 (fp32-scalar-add x (matrix-vec matrix) scalar))
-		(:uint16
-		 (fp16-scalar-add x (matrix-vec matrix) scalar))
-		(:uint8
-		 (fp8-scalar-add x (matrix-vec matrix) scalar))
-		(:int
-		 (int-scalar-add x (matrix-vec matrix) scalar))))
-   :direction :foreign)
+  (call-with-facet-and-visible-area
+   matrix
+   :foreign
+   #'(lambda (x)
+       (dtypecase matrix
+	 (:float
+	  (fp32-scalar-add x (matrix-vec matrix) scalar))
+	 (:uint16
+	  (fp16-scalar-add x (matrix-vec matrix) scalar))
+	 (:uint8
+	  (fp8-scalar-add x (matrix-vec matrix) scalar))
+	 (:int
+	  (int-scalar-add x (matrix-vec matrix) scalar)))))
   matrix)
 
 (defun %scalar-sub (matrix scalar &aux (scalar (coerce scalar (dtype->lisp-type (matrix-dtype matrix)))))
@@ -311,18 +312,19 @@ SideEffects:
 Return:
   - modified matrix."
   (declare (optimize (speed 3) (safety 0)))
-  (call-with-visible-area
-   matrix #'(lambda (x)
-	      (dtypecase matrix
-		(:float
-		 (fp32-scalar-sub x (matrix-vec matrix) scalar))
-		(:uint16
-		 (fp16-scalar-sub x (matrix-vec matrix) scalar))
-		(:uint8
-		 (fp8-scalar-sub x (matrix-vec matrix) scalar))
-		(:int
-		 (int-scalar-sub x (matrix-vec matrix) scalar))))
-   :direction :foreign)
+  (call-with-facet-and-visible-area
+   matrix
+   :foreign
+   #'(lambda (x)
+       (dtypecase matrix
+	 (:float
+	  (fp32-scalar-sub x (matrix-vec matrix) scalar))
+	 (:uint16
+	  (fp16-scalar-sub x (matrix-vec matrix) scalar))
+	 (:uint8
+	  (fp8-scalar-sub x (matrix-vec matrix) scalar))
+	 (:int
+	  (int-scalar-sub x (matrix-vec matrix) scalar)))))
   matrix)
 
 
@@ -339,20 +341,20 @@ SideEffects:
 
 Return:
   - modified matrix."
-  ;; tmp
   (declare (optimize (speed 3) (safety 0)))
-  (call-with-visible-area
-   matrix #'(lambda (x)
-	      (dtypecase matrix
-		(:float
-		 (fp32-scalar-mul x (matrix-vec matrix) scalar))
-		(:uint16
-		 (fp16-scalar-mul x (matrix-vec matrix) scalar))
-		(:uint8
-		 (fp8-scalar-mul x (matrix-vec matrix) scalar))
-		(:int
-		 (int-scalar-mul x (matrix-vec matrix) scalar))))
-   :direction :foreign)
+  (call-with-facet-and-visible-area
+   matrix
+   :foreign
+   #'(lambda (x)
+       (dtypecase matrix
+	 (:float
+	  (fp32-scalar-mul x (matrix-vec matrix) scalar))
+	 (:uint16
+	  (fp16-scalar-mul x (matrix-vec matrix) scalar))
+	 (:uint8
+	  (fp8-scalar-mul x (matrix-vec matrix) scalar))
+	 (:int
+	  (int-scalar-mul x (matrix-vec matrix) scalar)))))
   matrix)
 
 (defun %scalar-div (matrix scalar &aux (scalar (coerce scalar (dtype->lisp-type (matrix-dtype matrix)))))
@@ -369,18 +371,19 @@ SideEffects:
 Return:
   - modified matrix."
   (declare (optimize (speed 3) (safety 0)))
-  (call-with-visible-area
-   matrix #'(lambda (x)
-	      (dtypecase matrix
-		(:float
-		 (fp32-scalar-div x (matrix-vec matrix) scalar))
-		(:uint16
-		 (fp16-scalar-div x (matrix-vec matrix) scalar))
-		(:uint8
-		 (fp8-scalar-div x (matrix-vec matrix) scalar))
-		(:int
-		 (int-scalar-div x (matrix-vec matrix) scalar))))
-   :direction :foreign)
+  (call-with-facet-and-visible-area
+   matrix
+   :foreign
+   #'(lambda (x)
+       (dtypecase matrix
+	 (:float
+	  (fp32-scalar-div x (matrix-vec matrix) scalar))
+	 (:uint16
+	  (fp16-scalar-div x (matrix-vec matrix) scalar))
+	 (:uint8
+	  (fp8-scalar-div x (matrix-vec matrix) scalar))
+	 (:int
+	  (int-scalar-div x (matrix-vec matrix) scalar)))))
   matrix)
 
 
@@ -396,17 +399,18 @@ SideEffects:
 Return:
     - modified matrix."
   (declare (optimize (speed 3)))
-  (call-with-visible-area
-   matrix #'(lambda (x)
-	      (dtypecase matrix
-		(:float
-		 (fp32-fill x (matrix-vec matrix) scalar))
-		(:uint16
-		 (fp16-fill x (matrix-vec matrix) scalar))
-		(:uint8
-		 (fp8-fill x (matrix-vec matrix) scalar))
-		(:int
-		 (int-fill x (matrix-vec matrix) scalar))))
-   :direction :foreign)
+  (call-with-facet-and-visible-area
+   matrix
+   :foreign
+   #'(lambda (x)
+       (dtypecase matrix
+	 (:float
+	  (fp32-fill x (matrix-vec matrix) scalar))
+	 (:uint16
+	  (fp16-fill x (matrix-vec matrix) scalar))
+	 (:uint8
+	  (fp8-fill x (matrix-vec matrix) scalar))
+	 (:int
+	  (int-fill x (matrix-vec matrix) scalar)))))
   matrix)
 

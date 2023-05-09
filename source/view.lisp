@@ -1068,7 +1068,7 @@ Todo: Example"
     (t
      (the fixnum shape))))
 
-(defun call-with-visible-area-and-extope (matrix function &key (mat-operated-with nil) (direction :lisp))
+(defun call-with-visible-area-and-extope (matrix function &key (mat-operated-with nil))
   "Handles the external operation of matrix"
   (declare (optimize (speed 3))
 	   (type matrix matrix)
@@ -1096,7 +1096,6 @@ Todo: Example"
 		      (call-with-visible-area
 		       m*
 		       function
-		       :direction direction
 		       :mat-operated-with mat-operated-with
 		       :first-offset (the fixnum
 					  (* (the fixnum stride) (the fixnum ith))))))))
@@ -1104,6 +1103,30 @@ Todo: Example"
       (T
        (error "Can't handle with unknown ext-operation ~a" external-operation))))
   nil)
+
+(defmacro call-with-facet-and-visible-area
+    (matrix facet-type function
+     &key
+       (mat-operated-with nil)
+       (first-offset 0)
+     &aux
+       (facet-name (if (eql facet-type :foreign)
+		       'ForeignFacet
+		       'Simple-Array-Facet)))
+  
+  `(let ((,matrix (activate-facet ,matrix ',facet-name)))
+     ,(if mat-operated-with
+	  `(let ((,mat-operated-with
+		   (activate-facet ,mat-operated-with ',facet-name)))
+	     (call-with-visible-area
+	      ,matrix
+	      ,function
+	      :mat-operated-with ,mat-operated-with
+	      :first-offset ,first-offset))
+	  `(call-with-visible-area
+	    ,matrix
+	    ,function
+	    :first-offset ,first-offset))))
 
 ;; Had I had but a strongly statically typed language like Coalton!
 ;; I could inline call-with-visible-area... (It remains to be optimized, since it could unrolled and compield by SBCL.)
@@ -1113,15 +1136,13 @@ Todo: Example"
 ;; f(args) -> f(offsets, args)
 (declaim (ftype (function (matrix function &key
 				  (:mat-operated-with (or null matrix))
-				  (:first-offset fixnum)
-				  (:direction keyword))
+				  (:first-offset fixnum))
 			  null)
 		call-with-visible-area))
 (defun call-with-visible-area (matrix function
 			       &key
 				 (mat-operated-with nil)
-				 (first-offset 0)
-				 (direction :lisp))
+				 (first-offset 0))
   "Under this macro, three or more dimensions matrix are expanded into 2d, and set index-variable ViewInstruction.
 
 function - #'(lambda (lisp-structure) body)
@@ -1135,26 +1156,8 @@ Constraints: matrix.dims == mat-operated-with.dims, matrix.dims >= 2."
 	   (type matrix matrix)
 	   (type function function)
 	   (type fixnum first-offset)
-	   (type keyword direction))
+	   (type (or null matrix) mat-operated-with))
 
-  ;; TODO: Assert matrix.dims >= 2 (otherwise reshape and recursive it)
-
-  (unless (or (eql direction :lisp)
-	      (eql direction :foreign))
-    (error "Unknwon direction ~a. Available directions: :lisp :foreign" direction))
-
-  ;; Fix here later.
-
-  (if (eql direction :lisp)
-      (activate-facet! matrix 'Simple-Array-Facet)
-      (activate-facet! matrix 'ForeignFacet))
-
-  (when mat-operated-with
-    (if (eql direction :lisp)
-	(activate-facet! mat-operated-with 'Simple-Array-Facet)
-	(activate-facet! mat-operated-with 'ForeignFacet)))
-
-  
   ;; check matrix doesn't have broadcast
   ;; check if matrix's subscript include :indices (not :broadcast)
   
@@ -1165,7 +1168,6 @@ Constraints: matrix.dims == mat-operated-with.dims, matrix.dims >= 2."
     (let ((mat (if (and mat-operated-with
 			(matrix-external-operation mat-operated-with))
 		   (progn
-
 		     ;; Under (speed 3) declartion
 		     (format t "Warning: call-with-visible-area copied mat-operated-with~%")
 		     (%copy mat-operated-with))
@@ -1174,20 +1176,20 @@ Constraints: matrix.dims == mat-operated-with.dims, matrix.dims >= 2."
 	(call-with-visible-area-and-extope
 	 matrix
 	 function
-	 :mat-operated-with mat
-	 :direction direction))))
+	 :mat-operated-with mat))))
 
-  
-  (let ((dims (matrix-shape matrix))
-	(views (matrix-view matrix))
-	(strides (matrix-strides matrix))
-	(broadcasts (matrix-broadcasts matrix))
-	(broadcasts1 (if mat-operated-with
-			 (matrix-broadcasts mat-operated-with)
-			 nil))
-	(view-ptr1 (matrix-view-ptr matrix))
-	(view-ptr2 (when (not (null mat-operated-with))
-		     (matrix-view-ptr mat-operated-with))))
+  (let* ((direction1 (matrix-direction matrix))
+	 (direction2 (if mat-operated-with (matrix-direction mat-operated-with)))
+	 (dims     (matrix-shape matrix))
+	 (views    (matrix-view matrix))
+	 (strides (matrix-strides matrix))
+	 (broadcasts (matrix-broadcasts matrix))
+	 (broadcasts1 (if mat-operated-with
+			  (matrix-broadcasts mat-operated-with)
+			  nil))
+	 (view-ptr1 (matrix-view-ptr matrix))
+	 (view-ptr2 (when (not (null mat-operated-with))
+		      (matrix-view-ptr mat-operated-with))))
     
     
     (labels ((explore-batch (total-offset  ;; Offsets considered broadcast
@@ -1254,9 +1256,9 @@ Constraints: matrix.dims == mat-operated-with.dims, matrix.dims >= 2."
 		  ;; Instruction1 -> total-offset actual-offset
 		  ;; Instruction2 -> actual-offset, actual-offset
 
-		  (inject-offsets view-ptr1 direction total-offset actual-offset)
+		  (inject-offsets view-ptr1 direction1 total-offset actual-offset)
 		  (unless (null mat-operated-with)
-		    (inject-offsets view-ptr2 direction actual-offset actual-offset))
+		    (inject-offsets view-ptr2 direction2 actual-offset actual-offset))
 
 		  (if (null mat-operated-with)
 		      (funcall function view-ptr1)
@@ -1278,10 +1280,10 @@ Constraints: matrix.dims == mat-operated-with.dims, matrix.dims >= 2."
        0
        (length dims))
 
-      (inject-offsets view-ptr1 direction 0 0)
+      (inject-offsets view-ptr1 direction1 0 0)
       
       (when (not (null mat-operated-with))
-	(inject-offsets view-ptr2 direction 0 0))
+	(inject-offsets view-ptr2 direction2 0 0))
 	    
       nil)))
 
@@ -1311,8 +1313,8 @@ Usage:
      (let ((result (matrix out-dim)))
         (%adds result mat1*)
         (%adds result mat2*)))
-
 "
+  (declare (ignore out-shape index1 matrix1 index2 matrix2 body))
   )
 
 
@@ -1320,15 +1322,14 @@ Usage:
   "Convert matrix's visible area into common lisp's simple array"
   (let ((returning-array (make-array
 			  (apply #'* (shape matrix))
-			  :element-type t ;; FixMe
-			  )))
-    (call-with-visible-area
+			  :element-type (dtype->lisp-type (dtype matrix)))))
+    (call-with-facet-and-visible-area
      matrix
+     :lisp
      #'(lambda (x)
 	 (with-view-visible-strides (index x :absolute index1)
 	   (setf (aref returning-array index1)
-		 (aref (matrix-vec matrix) index))))
-     :direction :lisp)
+		 (aref (matrix-vec matrix) index)))))
     (if freep
 	(free-mat matrix))
     returning-array))
