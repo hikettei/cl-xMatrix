@@ -40,8 +40,8 @@
   (cond
     ((eql lisp-type 'single-float) :float)
     ((eql lisp-type 'fixnum) :int)
-    ((eql lisp-type '(unsigned-byte 8)) :uint8)  ;;'(integer -256 256))
-    ((eql lisp-type '(unsigned-byte 16)) :uint16) ;;'(integer -65536 65536))
+    ((equal lisp-type '(unsigned-byte 8)) :uint8)  ;;'(integer -256 256))
+    ((equal lisp-type '(unsigned-byte 16)) :uint16) ;;'(integer -65536 65536))
     (T (error "The given type is unknown:~a.~% Available dtype is following: ~a" lisp-type *available-dtypes*))))
 
 @export
@@ -205,6 +205,9 @@ Example:
 			s))
       shape))
 
+;; Enhancement:
+;; How matrices' vec displayed, depends on its facet.
+;; For Example: matrix with backing-array, isn't able to use broadcast.
 (defun print-matrix (matrix stream depth)
   (declare (ignore depth))
   ;; Considering Broadcasts: (1 10) (10 nil) -> (10 10)

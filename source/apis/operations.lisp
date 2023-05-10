@@ -17,17 +17,43 @@
 
 (annot:enable-annot-syntax)
 
-(defun %sumup (matrix)
+(defun %sumup-float (matrix)
+  (declare (optimize (speed 3) (safety 0))
+	   (type matrix matrix))
   (let ((total 0.0))
-    (declare (optimize (safety 0)))
+    (declare (type single-float total))
     (call-with-facet-and-visible-area
      matrix
      :lisp
-     #'(lambda (x)
+     #'(lambda (x &aux (vec (matrix-vec matrix)))
+	 (declare (type (simple-array single-float (*)) vec))
 	 (with-view-object (index x)
-	   (incf total
-		 (1d-mat-aref matrix index)))))
+	   (incf total (the single-float (aref vec index))))))
     total))
+
+(defun %sumup-int (matrix)
+  (declare (optimize (speed 3) (safety 0))
+	   (type matrix matrix))
+  (let ((total 0))
+    (declare (type fixnum total))
+    (call-with-facet-and-visible-area
+     matrix
+     :lisp
+     #'(lambda (x &aux (vec (matrix-vec matrix)))
+	 (declare (type (simple-array fixnum (*)) vec))
+	 (with-view-object (index x)
+	   (incf total (the fixnum (aref vec index))))))
+    total))
+
+(defun %sumup (matrix)
+  (declare (optimize (speed 3) (safety 0))
+	   (type matrix matrix)
+	   (inline %sumup-float %sumup-int))
+  (dtypecase matrix
+    (:float (%sumup-float matrix))
+    (:int      (%sumup-int matrix))
+    (:uint8    (%sumup-int matrix))
+    (:uint16   (%sumup-int matrix))))
 
 (defun %sum (matrix &key (axis 0) (out nil))
   "Sum up matrix (write docs)
@@ -51,7 +77,7 @@ todo: check out's dimensions/error check"
 
 (declaim (inline 1d-mat-aref))
 (defun 1d-mat-aref (matrix index)
-  ""
+  "Do not use if you're considering performance problems."
   (declare (optimize (speed 3)))
   (with-facet (matrix (matrix 'backing-array))
     ;; Fixme: can't optimize
@@ -65,73 +91,77 @@ todo: check out's dimensions/error check"
 ;; (defun add (), alias for %scalar-add %broadcast-add %adds, +
 ;; m+= instead of add is more intuitive naming?
 
+;; typedef is needed to optimize them.
 (defun %filter (matrix function)
   ""
-  (declare (optimize (speed 3) (safety 0))
-	   (type matrix matrix)
+  (declare (type matrix matrix)
 	   (type function function))
   (call-with-facet-and-visible-area
    matrix
    :lisp
-   #'(lambda (view)
+   #'(lambda (view &aux (vec (matrix-vec matrix)))
        (with-view-object (i view)
-	 (setf (1d-mat-aref matrix i) (funcall function (1d-mat-aref matrix i))))))
+	 (setf (aref vec i) (funcall function (aref vec i))))))
   matrix)
 
 
 (defun %index (matrix function)
   ""
-  (declare (optimize (speed 3) (safety 0))
-	   (type matrix matrix)
+  (declare (type matrix matrix)
 	   (type function function))
   (call-with-facet-and-visible-area
    matrix
    :lisp
-   #'(lambda (view)
+   #'(lambda (view &aux (vec (matrix-vec matrix)))
        (with-view-object (i view)
-	 (setf (1d-mat-aref matrix i) (funcall function i)))))
+	 (setf (aref vec i) (funcall function i)))))
   matrix)
 
 
 (defun %satisfies (matrix function)
   ""
-  (declare (optimize (speed 3) (safety 0))
-	   (type matrix matrix)
+  (declare (type matrix matrix)
 	   (type function function))
-  (let ((result (matrix (shape matrix) :dtype (dtype matrix)))
+  (let ((result  (matrix (shape matrix) :dtype (dtype matrix)))
 	(true-i  (coerce-to-mat-dtype 1 matrix))
 	(false-i (coerce-to-mat-dtype 0 matrix)))
-    (call-with-facet-and-visible-area
-     matrix
-     :lisp
-     #'(lambda (view)
-	 (with-view-object (i view :absolute ri)
-	   (setf (1d-mat-aref result ri)
-		 (if (funcall function (1d-mat-aref matrix i))
-		     true-i
-		     false-i)))))
-    result))
+    (with-facet (result* (result 'backing-array))
+      (call-with-facet-and-visible-area
+       matrix
+       :lisp
+       #'(lambda (view &aux
+			 (vec  (matrix-vec matrix))
+			 (vec1 (matrix-vec result*)))
+	   (with-view-object (i view :absolute ri)
+	     (setf (aref vec1 ri)
+		   (if (funcall function (aref vec i))
+		       true-i
+		       false-i)))))
+      result)))
 
 
 (defun %compare (matrix matrix1 function)
   "ex: (%compare a b #'<)"
-  (declare (optimize (speed 3) (safety 0))
-	   (type matrix matrix matrix1)
+  (declare (type matrix matrix matrix1)
 	   (type function function))
-  (let ((result (matrix (shape matrix) :dtype (dtype matrix)))
+  (let ((result  (matrix (shape matrix) :dtype (dtype matrix)))
 	(true-i  (coerce-to-mat-dtype 1 matrix))
 	(false-i (coerce-to-mat-dtype 0 matrix)))
-    (call-with-facet-and-visible-area
-     matrix
-     :lisp
-     #'(lambda (view1 view2)
-	 (with-two-of-views ((i view1) (k view2) :absolute ri)
-	   (setf (1d-mat-aref result ri)
-		 (if (funcall function (1d-mat-aref matrix i) (1d-mat-aref matrix1 k))
-		     true-i
-		     false-i))))
-     :mat-operated-with matrix1)
-    result))
+    (with-facet (result* (result 'backing-array))
+      (call-with-facet-and-visible-area
+       matrix
+       :lisp
+       #'(lambda (view1 view2 &aux
+				(vec1 (matrix-vec matrix))
+				(vec2 (matrix-vec matrix1))
+				(res  (matrix-vec result*)))
+	   (with-two-of-views ((i view1) (k view2) :absolute ri)
+	     (setf (aref res ri)
+		   (if (funcall function (aref vec1 i) (aref vec2 k))
+		       true-i
+		       false-i))))
+       :mat-operated-with matrix1)
+      result)))
 
 
 (defun %all? (tf-matrix)

@@ -55,7 +55,6 @@
 
     (multiple-value-bind (buckets protos)
 	(init-and-learn-offline X-error C :nsplits nsplits :verbose verbose)
-
       (when verbose
 	(let ((mse-orig
 		(progn
@@ -81,12 +80,14 @@
 
       (values buckets protos))))
 
+;; (disassemble #'sparsify-and-int8-a-enc)
 (defun sparsify-and-int8-a-enc (a-enc K
 				&aux
 				  (N (car (shape a-enc)))
 				  (C (second (shape a-enc)))
-				  (D (* C K)))				
-    "
+				  (D (* C K))
+				  (total-elements (the fixnum (* N D))))				
+  "
     returns X_binary from an encoded Matrix [N, C] vals (0-K)
     to (One-hot)
     [[0 0 0 ... 0 0 0]
@@ -96,17 +97,27 @@
      [0 0 0 ... 1 0 0]
      [0 0 0 ... 0 0 0]]
     "
-  (declare (optimize (speed 3) (safety 0))
+  (declare (optimize (speed 3)) ;; safety 0
+	   (type matrix a-enc)
 	   (type fixnum N C D K))
-  (let ((out (make-array (* N D) :element-type '(unsigned-byte 256))))
-    (declare (type (simple-array (unsigned-byte 256) (*)) out))
-    (dotimes (nth N)
-      (dotimes (cth C)
-	(let* ((code-left (round (the single-float (%sumup (view a-enc nth cth)))))
-	       (dim-left  (+ (the fixnum (* K cth)) code-left)))
-	  (declare (type fixnum code-left))
-	  (setf (aref out (+ (the fixnum (* N nth)) dim-left)) 1))))
-    out))
+
+  (assert (= (cl-xmatrix::matrix-offset a-enc) 0) nil "Assertion Failed with (= (matrix-offset a-enc) 0). Do not create offsets for a-enc")
+  
+  (with-facet (a-enc* (a-enc 'backing-array))
+    (let ((out (make-array total-elements :element-type '(unsigned-byte 256)))
+	  (a-arr (matrix-vec a-enc*)))
+      (declare (type (simple-array (unsigned-byte 256) (*)) out)
+	       (type (simple-array fixnum (*)) a-arr))
+      (dotimes (nth N)
+	(dotimes (cth C)
+	  (let* ((code-left (aref a-arr
+				  (the fixnum
+				       (+ (the fixnum (* N nth))
+					  cth))))
+		 (dim-left  (+ (the fixnum (* K cth)) code-left)))
+	    (declare (type fixnum code-left dim-left))
+	    (setf (aref out (+ (the fixnum (* N nth)) dim-left)) 1))))
+      out)))
 
 (defun optimize-protos-with-ridge! (protos x x-error buckets nsplits
 				    &key

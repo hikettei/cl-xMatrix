@@ -61,11 +61,16 @@
     (synchronize-vec  facet vec)
     (synchronize-view facet view)))
 
-(defclass Simple-Array-Facet (Facet-Of-Matrix)
+@export
+(defclass simple-array-facet (Facet-Of-Matrix)
   ((original-mat :initarg :orig-mat :reader facet-orig-mat)
    (vec  :initarg :vec  :reader facet-vec  :writer write-facet-vec :type simple-array)
    (view :initarg :view :reader facet-view :writer write-facet-view :type viewinstruction-lisp))
-  (:documentation "An fundamental facet of Lisp-Array (simple-array)"))
+  (:documentation "The facet simple-array-facet treats the array AS IT IS. That is, all creates offsets/views are ignored.
+
+Example:
+
+"))
 
 (defmethod synchronize-vec ((facet Simple-Array-Facet) array)
   (write-facet-vec array facet))
@@ -73,11 +78,12 @@
 (defmethod synchronize-view ((facet Simple-Array-Facet) view)
   (write-facet-view view facet))
 
+@export
 (defclass backing-array (Facet-Of-Matrix)
   ((original-mat :initarg :orig-mat :reader facet-orig-mat)
    (vec  :initarg :vec  :reader facet-vec  :writer write-facet-vec :type simple-array)
    (view :initarg :view :reader facet-view :writer write-facet-view :type viewinstruction-lisp))
-  (:documentation "An alias for Simple-Array-Facet"))
+  (:documentation "The facet backing-array is an alias for simple-array-facet (mgl-mat like naming)"))
 
 (defmethod synchronize-vec ((facet backing-array) array)
   (write-facet-vec array facet))
@@ -85,8 +91,8 @@
 (defmethod synchronize-view ((facet backing-array) view)
   (write-facet-view view facet))
 
-
 #+sbcl(progn
+@export
 (defclass ForeignFacet (Facet-Of-Matrix)
   ((original-mat :initarg :orig-mat :reader facet-orig-mat)
    (vec :initarg :vec :reader facet-vec :writer write-facet-vec)
