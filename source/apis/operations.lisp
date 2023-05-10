@@ -32,15 +32,13 @@
     total))
 
 (defun %sumup-int (matrix)
-  (declare (optimize (speed 3) (safety 0))
-	   (type matrix matrix))
+  (declare (type matrix matrix))
   (let ((total 0))
     (declare (type fixnum total))
     (call-with-facet-and-visible-area
      matrix
      :lisp
      #'(lambda (x &aux (vec (matrix-vec matrix)))
-	 (declare (type (simple-array fixnum (*)) vec))
 	 (with-view-object (index x)
 	   (incf total (the fixnum (aref vec index))))))
     total))

@@ -38,7 +38,7 @@
 
 
 (defclass Facet-Of-Matrix ()
-  ((original-mat :initarg :orig-mat :reader facet-orig-mat)
+  ((original-mat :initarg :orig-mat :reader facet-orig-mat :writer facet-update-mat)
    (vec :initarg :vec :reader facet-vec :writer write-facet-vec)
    (view :initarg :view :reader facet-view :writer write-facet-view)))
 
@@ -136,11 +136,13 @@ Example:
 			  (error "FacetNotFound")
 			  ;; Add Conditions: FacetNotFound
 			  )))))
-    
+
+    (facet-update-mat matrix target-facet)
     (synchronize-vec  target-facet (matrix-original-vec  matrix))
     (synchronize-view target-facet (matrix-original-view matrix))
+
+    ;; Update facet
     (setf (matrix-active-facet-name matrix) (type-of target-facet))
-    
     (setf (matrix-active-facet matrix) target-facet)))
 
 @export
@@ -212,3 +214,20 @@ Example:
 		    ,(expand-facets (cdr binding-specs) body)))))
     (expand-facets forms body)))
 
+
+;; ADDHERE: from-facets
+
+@export
+(defun from-facet (shape obj &key (direction :simple-array) (dtype :float))
+  "list/array -> matrix"
+  (case direction
+    (:simple-array
+     (matrix-from-array obj shape :dtype dtype))
+    (:list
+     (let ((result (matrix shape :dtype dtype)))
+       (%index result #'(lambda (i) (nth i obj)))
+       result))
+    (:foreign-waffe
+     (mgl-mat:with-facet (arr* ((cl-waffe:data obj) 'mgl-mat:backing-array))
+       (matrix-from-array arr* shape :dtype dtype)))
+    (T (error "Unknown direction: ~a" direction))))

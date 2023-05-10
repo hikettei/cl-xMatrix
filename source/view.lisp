@@ -521,12 +521,11 @@ Return: List (Consisted of strings which records error log)"
       (values subscript nil)))
 
 
-;; FixME: Optimize this function.
 (declaim (ftype (function (fixnum subscript-t) subscript-t) replace-tflist)
 	 (inline replace-tflist))
 (defun replace-tflist (orig-shape subscript)
   "Replace :tflist into :indices if exists, otherwise do nothing."
-  (declare (optimize (speed 3) (safety 0))
+  (declare (optimize (speed 3))
 	   (type fixnum orig-shape)
 	   (type subscript-t subscript))
 
@@ -545,12 +544,10 @@ Return: List (Consisted of strings which records error log)"
 	 ;; Todo: %satisfies return a matrix of bit.
 	 ;; Todo: Detect :tflist mat1 mat2
 	 ;; 1.0 = True, 0.0 = False.
-	 (let* ((mat (second subscript))
+	 (let* ((mat (the (simple-array single-float (*)) (convert-into-lisp-array (second subscript))))
 		(indices (loop for i fixnum upfrom 0
 				 below orig-shape
-			       if (locally (declare (optimize (speed 3)))
-				    (= 1 (round
-					  (1d-mat-aref mat i))))
+			       if (= (the single-float (aref mat i)) 1.0) 
 				 collect i)))
 	   `(:indices ,@indices)))
 	(t
@@ -663,6 +660,9 @@ specifing :- means orig-shape (todo: write docs)"
   (let* ((subscript (parse-relative-position orig-shape subscript))
 	 (subscript (replace-tflist orig-shape subscript)) ;; :tflist -> :indices
 	 (subscript (if padding-subscript ;; Padding
+			t
+			subscript))
+	 (subscript (if (null subscript)
 			t
 			subscript)))
 
@@ -1152,7 +1152,7 @@ matrix shouldn't possess broadcasted axis while mat-operated-with is ok.
 Returns - nil
 
 Constraints: matrix.dims == mat-operated-with.dims, matrix.dims >= 2."
-  (declare (optimize (speed 3) (safety 0))
+  (declare (optimize (speed 3))
 	   (type matrix matrix)
 	   (type function function)
 	   (type fixnum first-offset)
@@ -1280,10 +1280,6 @@ Constraints: matrix.dims == mat-operated-with.dims, matrix.dims >= 2."
        (length dims))
 
       (inject-offsets view-ptr1 direction1 0 0)
-      
-      (when (not (null mat-operated-with))
-	(inject-offsets view-ptr2 direction2 0 0))
-	    
       nil)))
 
 ;; (disassemble #'matrix-visible-row-major-index)
@@ -1321,7 +1317,8 @@ Usage:
   "Convert matrix's visible area into common lisp's simple array"
   (let ((returning-array (make-array
 			  (apply #'* (shape matrix))
-			  :element-type (dtype->lisp-type (dtype matrix)))))
+			  :element-type (dtype->lisp-type (dtype matrix))
+			  )))
     (call-with-facet-and-visible-area
      matrix
      :lisp
@@ -1341,12 +1338,4 @@ Usage:
 						       (matrix-dtype matrix)
 						       index)
 					     (aref lisp-array index1))))))
-
-@export
-(defun from-facet (shape obj &key (direction :simple-array) (dtype :float))
-  "list/array -> matrix"
-  (from-foreign-pointer
-   (allocate-mat-with-facet (apply #'* shape) obj dtype direction)
-   shape
-   :dtype dtype))
 

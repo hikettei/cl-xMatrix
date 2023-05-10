@@ -3,7 +3,7 @@
 
 
 (defpackage :cl-xmatrix
-  (:use :cl :cffi inlined-generic-function)
+  (:use :cl :cffi)
 
   ;; Utils for shared library
   (:export

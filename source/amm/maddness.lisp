@@ -86,7 +86,7 @@
 				  (N (car (shape a-enc)))
 				  (C (second (shape a-enc)))
 				  (D (* C K))
-				  (total-elements (the fixnum (* N D))))				
+				  (total-elements (* N D)))			
   "
     returns X_binary from an encoded Matrix [N, C] vals (0-K)
     to (One-hot)
@@ -99,20 +99,20 @@
     "
   (declare (optimize (speed 3)) ;; safety 0
 	   (type matrix a-enc)
-	   (type fixnum N C D K))
+	   (type fixnum N C D K total-elements))
 
   (assert (= (cl-xmatrix::matrix-offset a-enc) 0) nil "Assertion Failed with (= (matrix-offset a-enc) 0). Do not create offsets for a-enc")
-  
+
   (with-facet (a-enc* (a-enc 'backing-array))
     (let ((out (make-array total-elements :element-type '(unsigned-byte 256)))
 	  (a-arr (matrix-vec a-enc*)))
       (declare (type (simple-array (unsigned-byte 256) (*)) out)
-	       (type (simple-array fixnum (*)) a-arr))
+	       (type (simple-array (unsigned-byte 8) (*)) a-arr))
       (dotimes (nth N)
 	(dotimes (cth C)
 	  (let* ((code-left (aref a-arr
 				  (the fixnum
-				       (+ (the fixnum (* N nth))
+				       (+ (the fixnum (* C nth))
 					  cth))))
 		 (dim-left  (+ (the fixnum (* K cth)) code-left)))
 	    (declare (type fixnum code-left dim-left))
@@ -131,11 +131,10 @@
     Y [N, C]
     W [D, C * K] -> W.T [C * K, D] later reshaped to
     [C, K, D] -> prototype dimensons"
-  (with-caches ((A-enc `(,(car (shape X)) ,K) :place-key :out-cache :dtype :uint8)
-		
+  (with-caches ((A-enc `(,(car (shape X)) ,K) :place-key :out-cache :dtype :uint8)		
 		(ofs    `(1 ,K) :place-key :offsets :dtype :uint8))
     (multiple-value-bind (scales offsets thresholds dims) (flatten-buckets buckets :nsplits nsplits)
-
+      
       ;; Encoding A
       (maddness-encode-c
        (matrix-vec X)
@@ -148,14 +147,15 @@
        K
        (matrix-vec A-enc))
 
+      ;; ofs = [0, 1, 2, 3, ..., K]
       (%index ofs #'(lambda (i) i))
+      ;; ofs = [0, K, 2K, 3K, ... K^2]
       (%scalar-mul ofs K)
+      ;; adds A-enc[X[0], K] + ofs[X[0], 1.broadcast_to(K)]
       (%adds A-enc (view ofs `(:broadcast ,(car (shape X)))))
 
       (let ((x-binary (sparsify-and-int8-a-enc a-enc K)))
 	;; x-binary = [N D]
-	;;(print protos)
-	
 	(let ((result
 		(cl-xmatrix.amm.least-squares:optimize-with-ridge-regression
 		 x-binary
@@ -171,7 +171,7 @@
 			 :direction
 			 :foreign-waffe)))
 	    (%adds protos result)
-	    ;; todo: check how much improvement we got.
+	    ;; TODO: check how much improvement we got.
 	    ))))))
 
 (defun init-and-learn-offline (a-offline ;; a-offline is modified.
@@ -361,10 +361,11 @@ split-val dim"
 	   ;; Assertion: tflist isn't view-matrix
 	   (assert (not (cl-xmatrix::matrix-projected-p tflist)) nil "make-tflist-indices: Assertion Failed because the given tflist is a view-object.")
 
-	   ;; To Add: matrix but dtype=bit.
-	   (loop for i fixnum upfrom 0 below (first (shape tflist))
-		 if (= (the single-float (1d-mat-aref tflist i)) 1.0)
-		   collect i)))
+	   (with-facet (tflist (tflist 'backing-array))
+	     ;; To Add: matrix but dtype=bit.
+	     (loop for i fixnum upfrom 0 below (first (shape tflist))
+		   if (= (the single-float (aref (the (simple-array single-float (*)) (matrix-vec tflist)) i)) 1.0)
+		     collect i))))
 
     (let* ((jurisdictions (bucket-indices bucket))
 	   (x             (view subspace `(:indices ,@jurisdictions) best-dim))
@@ -499,10 +500,10 @@ X = [C, (0, 1, 2, ... D)]
 	  (%fill col-losses 0.0)
 	  (sumup-col-sum-sqs! col-losses buckets subspace)
 
-	  (with-facet (col-losses* col-losses :direction :simple-array)
+	  (with-facet (col-losses* (col-losses 'backing-array))
 	    ;; Sort By [Largest-Loss-Axis, ... , Smallest-Loss-Axis]
 	    
-	    (let* ((dim-orders (argsort col-losses* :test #'>))
+	    (let* ((dim-orders (argsort (matrix-vec col-losses*) :test #'>))
 		   (dim-size   (length dim-orders)))
 
 	      (with-cache (total-losses `(1 ,dim-size) :place-key :total-loss)
@@ -548,10 +549,10 @@ X = [C, (0, 1, 2, ... D)]
     (values min-loss max-loss)))
 
 (defun maxmin-all (matrix)
-  (with-facet (m* matrix :direction :simple-array)
-    (let ((sorts (argsort m* :test #'>)))
-      (values (coerce (aref m* (car sorts)) 'single-float)
-	      (coerce (aref m* (car (last sorts))) 'single-float)))))
+  (let* ((m* (convert-into-lisp-array matrix))
+	 (sorts (argsort m* :test #'>)))
+    (values (coerce (aref m* (car sorts))        'single-float)
+	    (coerce (aref m* (car (last sorts))) 'single-float))))
 
 (defun learn-quantized-params! (bucket subspace best-dim)
   "Appendix B"
@@ -575,11 +576,12 @@ X = [C, (0, 1, 2, ... D)]
       (setf (bucket-threshold-quantized bucket) quantized-threshold)
       nil)))
 
-(declaim (ftype (function ((simple-array t (*)) &key (:test function)) list) argsort))
+(declaim (ftype (function ((simple-array * (*)) &key (:test function)) list) argsort))
 (defun argsort (array &key (test #'>))
-  (declare (optimize (speed 3) (safety 0))
+  (declare ;;(optimize (speed 3))
 	   (type function test)
-	   (type (simple-array t (*)) array))
+	   (type (simple-array * (*)) array)
+	   )
   ;; Could be slow... Rewrite with C
   (mapcar #'second
           (stable-sort
@@ -594,9 +596,8 @@ X = [C, (0, 1, 2, ... D)]
   "Returns a sorted indices based n matrix's cols."
   (declare (optimize (speed 3) (safety 0))
 	   (type matrix matrix))
-  (with-facet (arr* (view matrix t dim) :direction :simple-array)
     ;; (Smallest-Index ... Largetst-Index)
-    (argsort arr* :test #'<)))
+  (argsort (convert-into-lisp-array (view matrix t dim)) :test #'<))
 
 
 (defun optimal-val-splits! (subspace bucket total-losses d dim tree-level)
@@ -698,8 +699,9 @@ subspace - original subspace
 
       ;; matrix->lisp-array conversations may contribute to low performance...
       ;; This could be reimplemented in C or define-vop.
-      (with-facet (s-out* s-out :direction :simple-array)
-	(let* ((best-idx (car (argsort s-out* :test #'<)))
+      (with-facet (s-out* (s-out 'backing-array))
+	(let* ((s-out* (matrix-vec s-out*))
+	       (best-idx (car (argsort s-out* :test #'<)))
 	       (next-idx (min (the fixnum
 				   (1- (the fixnum (car (shape subspace)))))
 			      (the fixnum
@@ -849,23 +851,29 @@ uint8_t* out_mat) {
 		(out-lut     `(,M ,C ,K) :dtype :uint8 :place-key :lutuint8))
     (let ((out-offset-sum* (foreign-alloc :float :initial-element 0.0))
 	  (out-scale*      (foreign-alloc :float :initial-element 0.0)))
+
       (mithral-lut-fp32-t
        (matrix-vec B)
        (car    (shape B))
        (second (shape B))
        K
-       (matrix-vec protos)
+       (matrix-vec (%copy protos))
        out-offset-sum*
        out-scale*
        (matrix-vec out-lut-f32)
        (matrix-vec out-lut))
+      
       ;; lut's shape?
       ;; prototypes are invaild?
       ;; anyway read the c codes.
       ;; prototypes in lisp is similar to python'sone.
       (values out-lut
-	      (mem-aref out-scale*      :float)
-	      (mem-aref out-offset-sum* :float)))))
+	      (prog1
+		  (mem-aref out-scale* :float)
+		(foreign-free out-scale*))
+	      (prog1
+		  (mem-aref out-offset-sum* :float)
+		(foreign-free out-offset-sum*))))))
 
 ;; mithral_dense_lut_f32
 ;; centroids = protos
@@ -907,9 +915,9 @@ uint8_t* out_mat) {
     out))
 
 (defun argmax (matrix)
-  (with-facet (m* matrix :direction :simple-array)
-    (let ((sorts (argsort m* :test #'>)))
-      (aref m* (car sorts)))))
+  (with-facet (m* (matrix 'backing-array))
+    (let ((sorts (argsort (matrix-vec m*) :test #'>)))
+      (aref (matrix-vec m*) (car sorts)))))
 
 (defun maddness-quantize-luts! (lut)
   "Appendix A: Quantizing Look up Tables"
@@ -1011,11 +1019,13 @@ Flatten buckets trained parameters following MaddnessHash."
   (assert (not (cl-xmatrix::matrix-projected-p tflist)) nil "make-tflist-indices: Assertion Failed because the given tflist is a view-object.")
 
   ;; To Add: matrix but dtype=bit.
-  (loop for i fixnum upfrom 0 below (first (shape tflist))
-	if (if lognot
-	       (not (= (the single-float (1d-mat-aref tflist i)) 0.0))
-	       (= (the single-float (1d-mat-aref tflist i)) 1.0))
-	  collect i))
+  (with-facet (tflist (tflist 'backing-array))
+    (loop with vec = (matrix-vec tflist)
+          for i fixnum upfrom 0 below (first (shape tflist))
+	  if (if lognot
+		 (not (= (the single-float (aref vec i)) 0.0))
+		 (= (the single-float (aref vec i)) 1.0))
+	    collect i)))
 
 ;; Not anymore used.
 (defun apply-hash-function! (A idx-out idx-tmp bucket)
@@ -1341,6 +1351,8 @@ A[N D] ... matrix to be encoded.
   ;; upcast_every = 32 is fixed.
   (with-cache (m* (shape matrix) :dtype :float :place-key :m1)
     ;; Rewrite it in C cuz it slow
+
+    ;; FIX
     (%index m* #'(lambda (i &aux (read-lut (1d-mat-aref matrix i)))
 		   (declare (type fixnum read-lut))
 		   ;; beta is overflowing.
@@ -1469,13 +1481,12 @@ A[N D] ... matrix to be encoded.
 (defun compute-on-openblas (a b &key (try-n 100))
   (declare (optimize (speed 3) (safety 0))
 	   (type matrix a b)
-	   (type fixnum try-n)
-	   (inline cl-waffe:data))
+	   (type fixnum try-n))
   (cl-waffe:with-no-grad
-    (with-facets ((a* a :direction :simple-array)
-		  (b* b :direction :simple-array))
-      (let* ((a* (cl-waffe:!reshape (cl-waffe:const a*) (shape a)))
-	     (b* (cl-waffe:!reshape (cl-waffe:const b*) (shape b)))
+    (with-facets ((a* (a 'backing-array))
+		  (b* (b 'backing-array)))
+      (let* ((a* (cl-waffe:!reshape (cl-waffe:const (matrix-vec a*)) (shape a)))
+	     (b* (cl-waffe:!reshape (cl-waffe:const (matrix-vec b*)) (shape b)))
 	     (c* (cl-waffe:!matmul a* (cl-waffe:!transpose b*)))) ;; outする領域をalloc
 	;; gc in advance for fair comparisons
 	(sb-ext:gc :full t)

@@ -89,9 +89,7 @@ Assertion: Matrix != View-Object"
 (defmacro with-cache ((var dimension &key (place-key :cache) (dtype :float)) &body body)
   "Caching Matrix"
   `(with-internal-system-caching (,var ,place-key)
-       (:if-exists (or (when (matrix-freep ,var)
-			 (overwrite (matrix ,dimension :dtype ,dtype)))
-		       (when (equal ,dimension (shape ,var))
+       (:if-exists (or (when (equal ,dimension (shape ,var))
 			 ,var)
 		       (progn
 			 (free-mat ,var)
@@ -110,7 +108,7 @@ Assertion: Matrix != View-Object"
     (expand-caches forms body)))
 
 @export
-(defun clear-caches (&key (verbose nil))
+(defun clear-caches (&key (verbose t))
   (maphash #'(lambda (key value)
 	       (declare (ignore key))
 	       (maphash #'(lambda (place-key matrix)

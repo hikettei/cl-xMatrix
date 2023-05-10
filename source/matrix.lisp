@@ -3,6 +3,7 @@
 (annot:enable-annot-syntax)
 
 
+;; TODO: add various dtype
 @export
 (defparameter *available-dtypes*
   `(:uint8
@@ -21,7 +22,7 @@
       t
       nil))
 
-;; Fix
+;; Fix: Rename :int -> :int32
 @export
 (defun dtype->lisp-type (dtype)
   "This function converts the given dtype keyword into a common lisp one."
@@ -29,7 +30,7 @@
   (case dtype
     (:float
      'single-float)
-    (:int 'fixnum)
+    (:int '(signed-byte 32))
     (:uint8 '(unsigned-byte 8))  ;;'(integer -256 256))
     (:uint16 '(unsigned-byte 16)) ;;'(integer -65536 65536))
     (T (error "The given type is unknown:~a.~% Available dtype is following: ~a" dtype *available-dtypes*))))
@@ -39,7 +40,7 @@
 (defun lisp-type->dtype (lisp-type)
   (cond
     ((eql lisp-type 'single-float) :float)
-    ((eql lisp-type 'fixnum) :int)
+    ((equal lisp-type '(signed-byte 32)) :int)
     ((equal lisp-type '(unsigned-byte 8)) :uint8)  ;;'(integer -256 256))
     ((equal lisp-type '(unsigned-byte 16)) :uint16) ;;'(integer -65536 65536))
     (T (error "The given type is unknown:~a.~% Available dtype is following: ~a" lisp-type *available-dtypes*))))
@@ -129,9 +130,13 @@ Example:
   ;; Todo: Free ViewInstruction-ptr
   ;; Todo: check if matrix exists
   ;; Todo: Count total-mem-usage not to forget memfree.
-  (unless (matrix-freep matrix) ;; FIXME: Heap Corruption???
-    ;(foreign-free (matrix-vec matrix))
-    )
+  ;;(unless (matrix-freep matrix) ;; FIXME: Heap Corruption???
+  ;;  (foreign-free (matrix-vec matrix))
+  ;; )
+
+  (when (gethash 'foreignfacet (matrix-facets matrix))
+    (foreign-free (facet-view (gethash 'foreignfacet (matrix-facets matrix)))))
+  
   (setf (matrix-freep matrix) t)
   nil)
 
@@ -292,6 +297,8 @@ Example:
    :active-facet (matrix-active-facet matrix)
    :dtype (matrix-dtype matrix)
    :shape (matrix-shape matrix)
+   :view  (matrix-view matrix)
+   :visible-shape (matrix-visible-shape matrix)
    :strides (matrix-strides matrix)))
 
 @export
@@ -393,7 +400,6 @@ Example:
 			   broadcast-options
 			   broadcasts)
 	    viewp parsed-view)
-      
       (setf (matrix-original-view view) (view-instruction 0 0 0 0 0 0 0 0 0 0))
       (initialize-views (matrix-original-view view) view :lisp)
       view)))
@@ -568,7 +574,8 @@ TODO: Type check, -1 args etc..."
        (mapc
 	#'(lambda (m)
 	    (if (typep m 'matrix)
-		(free-mat m)))
+		nil;(free-mat m)
+		))
 	*pinned-matrices*))))
 
 
