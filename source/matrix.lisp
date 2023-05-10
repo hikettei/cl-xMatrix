@@ -21,6 +21,7 @@
       t
       nil))
 
+;; Fix
 @export
 (defun dtype->lisp-type (dtype)
   "This function converts the given dtype keyword into a common lisp one."
@@ -207,8 +208,9 @@ Example:
 (defun print-matrix (matrix stream depth)
   (declare (ignore depth))
   ;; Considering Broadcasts: (1 10) (10 nil) -> (10 10)
-  (format stream "<Matrix :~(~a~) :shape ~a :view ~a :visible-shape ~a ~a ~% :vec ~a>"
+  (format stream "<Matrix[~(~a~)] :active-facet ~(~a~) ~%       :shape ~a -> :view ~a -> :visible-shape ~a ~a ~% :vec ~a>"
 	  (matrix-dtype matrix)
+	  (matrix-active-facet matrix)
 	  (matrix-shape matrix)
 	  (matrix-view matrix)
 	  (compute-visible-and-broadcasted-shape
@@ -231,16 +233,6 @@ Example:
   #-(or sbcl)
   (allocate-mat size :dtype dtype)) ;; TODO: Error
 
-;; visible-vec
-
-;; ViewInstruction
-;; Matrix-Vec
-
-;; with-facetで, matrix-vecの値などを切り変える。
-
-(defmacro mref ()
-  "Matrix-vecarefの補助 strideをもとにIndexを再計算してくれる (Unroll sitai)"
-  )
 
 ;; Matrix(simple-array, lisp-view-object)
 ;; |-> CFFIFacet(simple-array.pointer, cffi-view-object)

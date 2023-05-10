@@ -95,7 +95,7 @@
 
 (defmethod synchronize-vec ((facet ForeignFacet) array)
   (write-facet-vec (cl-array->foreign-ptr
-		    (facet-vec facet)
+		    array
 		    (array-total-size array)
 		    (lisp-type->dtype (array-element-type array)))
 		   facet))
@@ -116,7 +116,8 @@
 @export
 (defun activate-facet! (matrix facet-name &key (if-doesnt-exist :create))
   "TODO: DOC"
-  (declare (type (and keyword (member :create :error)) if-doesnt-exist)
+  (declare (optimize (speed 3))
+	   (type (and keyword (member :create :error)) if-doesnt-exist)
 	   (type matrix matrix))
 
   (let ((target-facet (or
@@ -129,6 +130,11 @@
 			  (error "FacetNotFound")
 			  ;; Add Conditions: FacetNotFound
 			  )))))
+    
+    (synchronize-vec  target-facet (matrix-original-vec  matrix))
+    (synchronize-view target-facet (matrix-original-view matrix))
+    (setf (matrix-active-facet-name matrix) (type-of target-facet))
+    
     (setf (matrix-active-facet matrix) target-facet)))
 
 @export
